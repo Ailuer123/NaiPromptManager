@@ -70,7 +70,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentVie
         </nav>
 
         <div className="p-4 border-t border-gray-200 dark:border-gray-800">
-          <div className="text-xs text-gray-500 dark:text-gray-600 text-center md:text-left">v0.2.6 Pro</div>
+          <div className="text-xs text-gray-500 dark:text-gray-600 text-center md:text-left">v0.2.7 Pro</div>
         </div>
       </aside>
 

@@ -42,6 +42,43 @@ const json = (data: any, status = 200) =>
 const error = (msg: string, status = 500) => 
   new Response(JSON.stringify({ error: msg }), { headers: { 'Content-Type': 'application/json', ...corsHeaders }, status });
 
+// SQL Schema for Auto-Initialization
+const INIT_SQL = `
+  CREATE TABLE IF NOT EXISTS chains (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    tags TEXT,
+    preview_image TEXT,
+    created_at INTEGER,
+    updated_at INTEGER
+  );
+  CREATE TABLE IF NOT EXISTS versions (
+    id TEXT PRIMARY KEY,
+    chain_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    base_prompt TEXT,
+    negative_prompt TEXT,
+    modules TEXT,
+    params TEXT,
+    created_at INTEGER,
+    FOREIGN KEY(chain_id) REFERENCES chains(id) ON DELETE CASCADE
+  );
+  CREATE TABLE IF NOT EXISTS artists (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    image_url TEXT
+  );
+  CREATE TABLE IF NOT EXISTS inspirations (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    image_url TEXT,
+    prompt TEXT,
+    created_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_versions_chain_id ON versions(chain_id);
+`;
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -49,8 +86,6 @@ export default {
     const method = request.method;
 
     // 1. 如果不是 API 请求，直接返回静态资源 (Frontend)
-    // Cloudflare Pages Advanced Mode 约定：_worker.js 接管所有请求
-    // 我们只拦截 /api/ 开头的请求，其余交给 ASSETS
     if (!path.startsWith('/api/')) {
       return env.ASSETS.fetch(request);
     }
@@ -100,19 +135,36 @@ export default {
       }
 
       // --- Database Guard ---
-      // Check if DB is configured for routes that require it
       if ((path.startsWith('/api/chains') || path.startsWith('/api/artists') || path.startsWith('/api/inspirations')) && !env.DB) {
-        return error('Database not configured. Please create a D1 database and update wrangler.toml.', 503);
+        return error('Database not configured. Please bind a D1 database named "DB" in Cloudflare Pages settings and REDEPLOY.', 503);
       }
 
-      // Helper for non-null DB assertion (safe because of guard above)
       const db = env.DB!;
+
+      // Helper: Auto Init DB if table missing
+      const ensureDbInitialized = async () => {
+         // Try to run init SQL if a query fails, or just rely on error handling below?
+         // Let's rely on specific error handling for robustness.
+      };
 
       // --- Chains ---
       if (path === '/api/chains' && method === 'GET') {
-        const chainsResult = await db.prepare('SELECT * FROM chains ORDER BY updated_at DESC').all();
+        let chainsResult;
+        try {
+            chainsResult = await db.prepare('SELECT * FROM chains ORDER BY updated_at DESC').all();
+        } catch (e: any) {
+            // Auto-init if table missing
+            if (e.message && (e.message.includes('no such table') || e.message.includes('object not found'))) {
+                await db.exec(INIT_SQL);
+                chainsResult = await db.prepare('SELECT * FROM chains ORDER BY updated_at DESC').all();
+            } else {
+                throw e;
+            }
+        }
+        
         const chains = chainsResult.results;
 
+        // Fetch Versions (Assuming if chains table exists, versions exists or will be created by INIT_SQL)
         const versionsResult = await db.prepare(`
           SELECT v.* FROM versions v
           INNER JOIN (
@@ -141,9 +193,18 @@ export default {
         const id = crypto.randomUUID();
         const now = Date.now();
         
-        await db.prepare(
-          'INSERT INTO chains (id, name, description, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
-        ).bind(id, name, description, '[]', now, now).run();
+        try {
+            await db.prepare(
+            'INSERT INTO chains (id, name, description, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+            ).bind(id, name, description, '[]', now, now).run();
+        } catch (e: any) {
+             if (e.message && (e.message.includes('no such table') || e.message.includes('object not found'))) {
+                await db.exec(INIT_SQL);
+                await db.prepare(
+                  'INSERT INTO chains (id, name, description, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+                ).bind(id, name, description, '[]', now, now).run();
+             } else throw e;
+        }
 
         const vId = crypto.randomUUID();
         const defaultModules = JSON.stringify([{ id: crypto.randomUUID(), name: "光照", content: "cinematic lighting", isActive: true }]);
@@ -212,12 +273,28 @@ export default {
 
       // --- Artists ---
       if (path === '/api/artists' && method === 'GET') {
-        const { results } = await db.prepare('SELECT * FROM artists ORDER BY name ASC').all();
+        let results;
+        try {
+             const res = await db.prepare('SELECT * FROM artists ORDER BY name ASC').all();
+             results = res.results;
+        } catch (e: any) {
+            if (e.message && (e.message.includes('no such table'))) {
+                await db.exec(INIT_SQL);
+                results = []; // Empty initially
+            } else throw e;
+        }
         return json(results);
       }
       if (path === '/api/artists' && method === 'POST') {
         const body = await request.json() as any;
-        await db.prepare('INSERT OR REPLACE INTO artists (id, name, image_url) VALUES (?, ?, ?)').bind(body.id, body.name, body.imageUrl).run();
+        try {
+            await db.prepare('INSERT OR REPLACE INTO artists (id, name, image_url) VALUES (?, ?, ?)').bind(body.id, body.name, body.imageUrl).run();
+        } catch (e: any) {
+            if (e.message && e.message.includes('no such table')) {
+                await db.exec(INIT_SQL);
+                await db.prepare('INSERT OR REPLACE INTO artists (id, name, image_url) VALUES (?, ?, ?)').bind(body.id, body.name, body.imageUrl).run();
+            } else throw e;
+        }
         return json({ success: true });
       }
       const artistIdMatch = path.match(/^\/api\/artists\/([^\/]+)$/);
@@ -228,12 +305,28 @@ export default {
 
       // --- Inspirations ---
       if (path === '/api/inspirations' && method === 'GET') {
-        const { results } = await db.prepare('SELECT * FROM inspirations ORDER BY created_at DESC').all();
+        let results;
+        try {
+            const res = await db.prepare('SELECT * FROM inspirations ORDER BY created_at DESC').all();
+            results = res.results;
+        } catch (e: any) {
+             if (e.message && e.message.includes('no such table')) {
+                await db.exec(INIT_SQL);
+                results = [];
+             } else throw e;
+        }
         return json(results);
       }
       if (path === '/api/inspirations' && method === 'POST') {
         const body = await request.json() as any;
-        await db.prepare('INSERT OR REPLACE INTO inspirations (id, title, image_url, prompt, created_at) VALUES (?, ?, ?, ?, ?)').bind(body.id, body.title, body.imageUrl, body.prompt, body.createdAt).run();
+        try {
+             await db.prepare('INSERT OR REPLACE INTO inspirations (id, title, image_url, prompt, created_at) VALUES (?, ?, ?, ?, ?)').bind(body.id, body.title, body.imageUrl, body.prompt, body.createdAt).run();
+        } catch(e: any) {
+             if (e.message && e.message.includes('no such table')) {
+                 await db.exec(INIT_SQL);
+                 await db.prepare('INSERT OR REPLACE INTO inspirations (id, title, image_url, prompt, created_at) VALUES (?, ?, ?, ?, ?)').bind(body.id, body.title, body.imageUrl, body.prompt, body.createdAt).run();
+             } else throw e;
+        }
         return json({ success: true });
       }
       const inspIdMatch = path.match(/^\/api\/inspirations\/([^\/]+)$/);
@@ -247,7 +340,6 @@ export default {
         return error('Not Found', 404);
       }
       
-      // Should effectively be unreachable due to first check, but safe guard
       return env.ASSETS.fetch(request);
 
     } catch (e: any) {

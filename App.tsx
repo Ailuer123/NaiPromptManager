@@ -158,7 +158,7 @@ const App = () => {
                 </form>
                 
                 <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-700/50 flex justify-between items-center text-xs text-gray-400">
-                     <span>v0.2.6 Pro</span>
+                     <span>v0.2.7 Pro</span>
                      <button onClick={toggleTheme} className="hover:text-gray-600 dark:hover:text-gray-200">
                          {isDark ? '切换亮色' : '切换深色'}
                      </button>
@@ -197,17 +197,17 @@ const App = () => {
                             </ul>
                         </li>
                         <li>点击 <strong>Save</strong>。</li>
-                        <li>回到 Deployments 页面，点击 <strong>Retry deployment</strong> 或推送新代码以重新部署。</li>
+                        <li className="font-bold text-indigo-600 dark:text-indigo-400">非常重要：回到 Deployments 页面，点击最新的部署，然后点击 "Retry deployment" (重新部署) 以使配置生效！</li>
                     </ol>
                 </div>
 
                 <div className="flex justify-between items-center border-t border-gray-100 dark:border-gray-700 pt-6">
-                    <span className="text-xs text-gray-400">v0.2.6 Pro</span>
+                    <span className="text-xs text-gray-400">v0.2.7 Pro</span>
                     <button 
                         onClick={() => window.location.reload()} 
                         className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold shadow-lg transition-transform active:scale-[0.98]"
                     >
-                        我已配置，刷新页面
+                        我已重新部署，刷新页面
                     </button>
                 </div>
             </div>
