@@ -1,4 +1,5 @@
 
+
 // Add missing D1 type definitions locally
 interface D1Result<T = unknown> {
   results: T[];
@@ -125,7 +126,7 @@ export default {
 
         if (!naiRes.ok) {
            const errText = await naiRes.text();
-           return error(`NAI API Error: ${errText}`, naiRes.status);
+           return error(`NAI API API Error: ${errText}`, naiRes.status);
         }
         
         const blob = await naiRes.blob();
@@ -142,9 +143,14 @@ export default {
       const db = env.DB!;
 
       // Helper: Auto Init DB if table missing
-      const ensureDbInitialized = async () => {
-         // Try to run init SQL if a query fails, or just rely on error handling below?
-         // Let's rely on specific error handling for robustness.
+      // Replaces db.exec() which can be unstable with 'meta.duration' errors in some environments
+      const initDB = async () => {
+        const statements = INIT_SQL.split(';')
+            .map(s => s.trim())
+            .filter(s => s.length > 0);
+        for (const sql of statements) {
+            await db.prepare(sql).run();
+        }
       };
 
       // --- Chains ---
@@ -155,7 +161,7 @@ export default {
         } catch (e: any) {
             // Auto-init if table missing
             if (e.message && (e.message.includes('no such table') || e.message.includes('object not found'))) {
-                await db.exec(INIT_SQL);
+                await initDB();
                 chainsResult = await db.prepare('SELECT * FROM chains ORDER BY updated_at DESC').all();
             } else {
                 throw e;
@@ -199,7 +205,7 @@ export default {
             ).bind(id, name, description, '[]', now, now).run();
         } catch (e: any) {
              if (e.message && (e.message.includes('no such table') || e.message.includes('object not found'))) {
-                await db.exec(INIT_SQL);
+                await initDB();
                 await db.prepare(
                   'INSERT INTO chains (id, name, description, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
                 ).bind(id, name, description, '[]', now, now).run();
@@ -279,7 +285,7 @@ export default {
              results = res.results;
         } catch (e: any) {
             if (e.message && (e.message.includes('no such table'))) {
-                await db.exec(INIT_SQL);
+                await initDB();
                 results = []; // Empty initially
             } else throw e;
         }
@@ -291,7 +297,7 @@ export default {
             await db.prepare('INSERT OR REPLACE INTO artists (id, name, image_url) VALUES (?, ?, ?)').bind(body.id, body.name, body.imageUrl).run();
         } catch (e: any) {
             if (e.message && e.message.includes('no such table')) {
-                await db.exec(INIT_SQL);
+                await initDB();
                 await db.prepare('INSERT OR REPLACE INTO artists (id, name, image_url) VALUES (?, ?, ?)').bind(body.id, body.name, body.imageUrl).run();
             } else throw e;
         }
@@ -311,7 +317,7 @@ export default {
             results = res.results;
         } catch (e: any) {
              if (e.message && e.message.includes('no such table')) {
-                await db.exec(INIT_SQL);
+                await initDB();
                 results = [];
              } else throw e;
         }
@@ -323,7 +329,7 @@ export default {
              await db.prepare('INSERT OR REPLACE INTO inspirations (id, title, image_url, prompt, created_at) VALUES (?, ?, ?, ?, ?)').bind(body.id, body.title, body.imageUrl, body.prompt, body.createdAt).run();
         } catch(e: any) {
              if (e.message && e.message.includes('no such table')) {
-                 await db.exec(INIT_SQL);
+                 await initDB();
                  await db.prepare('INSERT OR REPLACE INTO inspirations (id, title, image_url, prompt, created_at) VALUES (?, ?, ?, ?, ?)').bind(body.id, body.title, body.imageUrl, body.prompt, body.createdAt).run();
              } else throw e;
         }
