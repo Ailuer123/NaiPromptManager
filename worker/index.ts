@@ -261,7 +261,12 @@ export default {
       if (path === '/api/users' && method === 'GET') {
          if (currentUser.role !== 'admin') return error('Forbidden', 403);
          const res = await db.prepare('SELECT id, username, role, created_at FROM users ORDER BY created_at DESC').all();
-         return json(res.results);
+         return json(res.results.map((u: any) => ({
+             id: u.id,
+             username: u.username,
+             role: u.role,
+             createdAt: u.created_at
+         })));
       }
 
       // Delete User (Admin Only)
@@ -286,13 +291,24 @@ export default {
         }
 
         const chainsResult = await db.prepare('SELECT * FROM chains ORDER BY updated_at DESC').all();
+        
+        // Fix: Map snake_case DB columns to camelCase API response
         const data = chainsResult.results.map((c: any) => ({
-          ...c,
-          userId: c.user_id, // Map for frontend
+          id: c.id,
+          userId: c.user_id,
+          username: c.username,
+          name: c.name,
+          description: c.description,
           tags: JSON.parse(c.tags || '[]'),
+          previewImage: c.preview_image,
+          basePrompt: c.base_prompt,
+          negativePrompt: c.negative_prompt,
           modules: JSON.parse(c.modules || '[]'),
-          params: JSON.parse(c.params || '{}')
+          params: JSON.parse(c.params || '{}'),
+          createdAt: c.created_at,
+          updatedAt: c.updated_at
         }));
+        
         return json(data);
       }
 
@@ -381,7 +397,16 @@ export default {
       // --- Inspirations (Shared Read, Owner/Admin Write) ---
       if (path === '/api/inspirations' && method === 'GET') {
         const res = await db.prepare('SELECT * FROM inspirations ORDER BY created_at DESC').all();
-        return json(res.results.map((i: any) => ({ ...i, userId: i.user_id }))); // Map userId
+        // Fix: Map snake_case to camelCase
+        return json(res.results.map((i: any) => ({ 
+            id: i.id,
+            userId: i.user_id,
+            username: i.username,
+            title: i.title,
+            imageUrl: i.image_url,
+            prompt: i.prompt,
+            createdAt: i.created_at
+        }))); 
       }
       if (path === '/api/inspirations' && method === 'POST') {
         const body = await request.json() as any;

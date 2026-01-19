@@ -142,7 +142,7 @@ const App = () => {
                 </form>
                 
                 <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-700/50 flex justify-between items-center text-xs text-gray-400">
-                     <span>v0.3.0 RBAC</span>
+                     <span>v0.3.1 RBAC</span>
                      <button onClick={toggleTheme} className="hover:text-gray-600 dark:hover:text-gray-200">{isDark ? '切换亮色' : '切换深色'}</button>
                 </div>
             </div>
@@ -184,11 +184,14 @@ const App = () => {
 
   return (
     <div className="flex flex-col h-screen">
-       <Layout onNavigate={handleNavigate} currentView={view} isDark={isDark} toggleTheme={toggleTheme}>
-         <div className="absolute top-2 right-2 z-50 flex items-center gap-2">
-             <span className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">👤 {currentUser.username} ({currentUser.role})</span>
-             <button onClick={handleLogout} className="text-xs text-red-500 hover:text-red-700 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2 py-1 rounded shadow-sm">退出</button>
-         </div>
+       <Layout 
+         onNavigate={handleNavigate} 
+         currentView={view} 
+         isDark={isDark} 
+         toggleTheme={toggleTheme}
+         currentUser={currentUser}
+         onLogout={handleLogout}
+       >
          {renderContent()}
        </Layout>
     </div>

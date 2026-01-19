@@ -1,6 +1,6 @@
 
-
 import React, { ReactNode } from 'react';
+import { User } from '../types';
 
 interface LayoutProps {
   children: ReactNode;
@@ -8,9 +8,11 @@ interface LayoutProps {
   currentView: string;
   isDark: boolean;
   toggleTheme: () => void;
+  currentUser?: User | null;
+  onLogout?: () => void;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentView, isDark, toggleTheme }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentView, isDark, toggleTheme, currentUser, onLogout }) => {
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans transition-colors duration-300">
       {/* Sidebar */}
@@ -80,7 +82,24 @@ export const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentVie
               <span className="text-xl mr-0 md:mr-2">{isDark ? '🌙' : '☀️'}</span>
               <span className="hidden md:block text-sm font-medium">{isDark ? '切换亮色' : '切换深色'}</span>
           </button>
-          <div className="text-xs text-gray-500 dark:text-gray-600 text-center md:text-left">v0.2.8 Pro</div>
+
+          {currentUser && (
+            <div className="flex items-center justify-between md:justify-start p-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800/50">
+                <div className="flex items-center overflow-hidden">
+                    <div className="w-6 h-6 rounded bg-indigo-500 text-white flex items-center justify-center text-xs font-bold mr-0 md:mr-2 flex-shrink-0">
+                        {currentUser.username[0].toUpperCase()}
+                    </div>
+                    <span className="hidden md:block text-xs font-medium text-indigo-900 dark:text-indigo-200 truncate">{currentUser.username}</span>
+                </div>
+                {onLogout && (
+                    <button onClick={onLogout} className="text-gray-400 hover:text-red-500 ml-2" title="退出登录">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                    </button>
+                )}
+            </div>
+          )}
+
+          <div className="text-xs text-gray-500 dark:text-gray-600 text-center md:text-left">v0.3.1 Pro</div>
         </div>
       </aside>
 
