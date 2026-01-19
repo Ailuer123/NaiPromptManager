@@ -3,11 +3,13 @@ name = "nai-prompt-manager"
 compatibility_date = "2024-04-01"
 pages_build_output_dir = "dist"
 
-# 配置 D1 数据库 (Cloudflare Pages Dashboard 中也需要绑定)
-[[d1_databases]]
-binding = "DB"
-database_name = "nai-db"
-database_id = "YOUR_D1_DATABASE_ID_HERE" 
+# [重要] 数据库配置说明
+# 由于 database_id 不支持环境变量，为了避免部署报错，请按照以下步骤在 Cloudflare 后台配置：
+# 1. 进入 Pages 项目 -> Settings -> Functions
+# 2. 找到 "D1 Database Bindings"
+# 3. 添加绑定:
+#    - Variable name: DB
+#    - D1 database: 选择你创建的数据库 (e.g., nai-db)
 
 [vars]
 # 这里的变量用于本地开发，生产环境请在 Pages Dashboard 的 Settings -> Environment variables 中设置

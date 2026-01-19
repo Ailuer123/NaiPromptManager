@@ -18,6 +18,7 @@ const App = () => {
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   const [chains, setChains] = useState<ChainWithVersion[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dbConfigError, setDbConfigError] = useState(false);
   
   // Auth State
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -29,11 +30,17 @@ const App = () => {
 
   // Fetch data
   const refreshData = async () => {
+    setLoading(true);
     try {
       const data = await db.getAllChains();
       setChains(data);
-    } catch (e) {
+      setDbConfigError(false);
+    } catch (e: any) {
       console.error("Failed to fetch chains:", e);
+      // Check if it's the specific 503 error we set in the worker
+      if (e.message && e.message.includes('Database not configured')) {
+          setDbConfigError(true);
+      }
     } finally {
       setLoading(false);
     }
@@ -151,7 +158,7 @@ const App = () => {
                 </form>
                 
                 <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-700/50 flex justify-between items-center text-xs text-gray-400">
-                     <span>v0.2.2 Pro</span>
+                     <span>v0.2.6 Pro</span>
                      <button onClick={toggleTheme} className="hover:text-gray-600 dark:hover:text-gray-200">
                          {isDark ? '切换亮色' : '切换深色'}
                      </button>
@@ -161,10 +168,62 @@ const App = () => {
     );
   }
 
+  // --- Database Setup Guide ---
+  if (dbConfigError) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 p-4 font-sans">
+            <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-xl w-full max-w-2xl border border-red-200 dark:border-red-900">
+                <div className="flex items-center gap-4 mb-6">
+                    <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-600 dark:text-red-400">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                    </div>
+                    <div>
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">数据库未连接</h2>
+                        <p className="text-gray-500 dark:text-gray-400">Database Connection Missing</p>
+                    </div>
+                </div>
+                
+                <div className="space-y-4 text-gray-600 dark:text-gray-300 mb-8">
+                    <p>检测到 Cloudflare D1 数据库尚未绑定。请按照以下步骤在 Cloudflare Dashboard 中完成配置：</p>
+                    <ol className="list-decimal pl-5 space-y-2 bg-gray-50 dark:bg-gray-900 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+                        <li>登录 Cloudflare Dashboard，进入 <strong>Pages</strong>。</li>
+                        <li>点击本项目 (nai-prompt-manager)。</li>
+                        <li>进入 <strong>Settings (设置)</strong> &gt; <strong>Functions (函数)</strong>。</li>
+                        <li>向下滚动找到 <strong>D1 Database Bindings</strong> 部分。</li>
+                        <li>点击 <strong>Add binding</strong>：
+                            <ul className="list-disc pl-5 mt-1 text-sm">
+                                <li><strong>Variable name:</strong> <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">DB</code> (必须完全一致)</li>
+                                <li><strong>D1 database:</strong> 选择你创建的数据库 (e.g. nai-db)</li>
+                            </ul>
+                        </li>
+                        <li>点击 <strong>Save</strong>。</li>
+                        <li>回到 Deployments 页面，点击 <strong>Retry deployment</strong> 或推送新代码以重新部署。</li>
+                    </ol>
+                </div>
+
+                <div className="flex justify-between items-center border-t border-gray-100 dark:border-gray-700 pt-6">
+                    <span className="text-xs text-gray-400">v0.2.6 Pro</span>
+                    <button 
+                        onClick={() => window.location.reload()} 
+                        className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold shadow-lg transition-transform active:scale-[0.98]"
+                    >
+                        我已配置，刷新页面
+                    </button>
+                </div>
+            </div>
+        </div>
+      );
+  }
+
   // --- Render Main App ---
   const renderContent = () => {
     if (loading && chains.length === 0 && view === 'list') {
-        return <div className="flex h-full items-center justify-center text-gray-500 dark:text-gray-400">加载中...</div>;
+        return <div className="flex h-full items-center justify-center text-gray-500 dark:text-gray-400">
+            <div className="flex flex-col items-center gap-4">
+                <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                <p>正在连接云端数据库...</p>
+            </div>
+        </div>;
     }
 
     switch (view) {

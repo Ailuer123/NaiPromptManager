@@ -25,7 +25,7 @@ interface D1Database {
 // Pages Advanced Mode 自动注入 ASSETS fetcher
 interface Env {
   ASSETS: { fetch: (request: Request) => Promise<Response> };
-  DB: D1Database;
+  DB?: D1Database; // DB is optional now until configured
   NAI_API_KEY: string;
   MASTER_KEY: string;
 }
@@ -99,12 +99,21 @@ export default {
         });
       }
 
+      // --- Database Guard ---
+      // Check if DB is configured for routes that require it
+      if ((path.startsWith('/api/chains') || path.startsWith('/api/artists') || path.startsWith('/api/inspirations')) && !env.DB) {
+        return error('Database not configured. Please create a D1 database and update wrangler.toml.', 503);
+      }
+
+      // Helper for non-null DB assertion (safe because of guard above)
+      const db = env.DB!;
+
       // --- Chains ---
       if (path === '/api/chains' && method === 'GET') {
-        const chainsResult = await env.DB.prepare('SELECT * FROM chains ORDER BY updated_at DESC').all();
+        const chainsResult = await db.prepare('SELECT * FROM chains ORDER BY updated_at DESC').all();
         const chains = chainsResult.results;
 
-        const versionsResult = await env.DB.prepare(`
+        const versionsResult = await db.prepare(`
           SELECT v.* FROM versions v
           INNER JOIN (
             SELECT chain_id, MAX(version) as max_ver FROM versions GROUP BY chain_id
@@ -132,7 +141,7 @@ export default {
         const id = crypto.randomUUID();
         const now = Date.now();
         
-        await env.DB.prepare(
+        await db.prepare(
           'INSERT INTO chains (id, name, description, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
         ).bind(id, name, description, '[]', now, now).run();
 
@@ -140,7 +149,7 @@ export default {
         const defaultModules = JSON.stringify([{ id: crypto.randomUUID(), name: "光照", content: "cinematic lighting", isActive: true }]);
         const defaultParams = JSON.stringify({ width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral' });
         
-        await env.DB.prepare(
+        await db.prepare(
           'INSERT INTO versions (id, chain_id, version, base_prompt, negative_prompt, modules, params, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
         ).bind(vId, id, 1, 'masterpiece, best quality, {character}', 'lowres, bad anatomy', defaultModules, defaultParams, now).run();
 
@@ -161,14 +170,14 @@ export default {
            fields.push('updated_at = ?');
            values.push(Date.now());
            values.push(id);
-           await env.DB.prepare(`UPDATE chains SET ${fields.join(', ')} WHERE id = ?`).bind(...values).run();
+           await db.prepare(`UPDATE chains SET ${fields.join(', ')} WHERE id = ?`).bind(...values).run();
         }
         return json({ success: true });
       }
 
       if (chainIdMatch && method === 'DELETE') {
         const id = chainIdMatch[1];
-        await env.DB.prepare('DELETE FROM chains WHERE id = ?').bind(id).run();
+        await db.prepare('DELETE FROM chains WHERE id = ?').bind(id).run();
         return json({ success: true });
       }
 
@@ -179,11 +188,11 @@ export default {
         const chainId = match[1];
         const body = await request.json() as any;
 
-        const maxVerResult = await env.DB.prepare('SELECT MAX(version) as max_v FROM versions WHERE chain_id = ?').bind(chainId).first<{ max_v: number }>();
+        const maxVerResult = await db.prepare('SELECT MAX(version) as max_v FROM versions WHERE chain_id = ?').bind(chainId).first<{ max_v: number }>();
         const nextVer = ((maxVerResult?.max_v) || 0) + 1;
 
         const newId = crypto.randomUUID();
-        await env.DB.prepare(
+        await db.prepare(
           'INSERT INTO versions (id, chain_id, version, base_prompt, negative_prompt, modules, params, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
         ).bind(
           newId, 
@@ -196,40 +205,40 @@ export default {
           Date.now()
         ).run();
 
-        await env.DB.prepare('UPDATE chains SET updated_at = ? WHERE id = ?').bind(Date.now(), chainId).run();
+        await db.prepare('UPDATE chains SET updated_at = ? WHERE id = ?').bind(Date.now(), chainId).run();
 
         return json({ id: newId, version: nextVer });
       }
 
       // --- Artists ---
       if (path === '/api/artists' && method === 'GET') {
-        const { results } = await env.DB.prepare('SELECT * FROM artists ORDER BY name ASC').all();
+        const { results } = await db.prepare('SELECT * FROM artists ORDER BY name ASC').all();
         return json(results);
       }
       if (path === '/api/artists' && method === 'POST') {
         const body = await request.json() as any;
-        await env.DB.prepare('INSERT OR REPLACE INTO artists (id, name, image_url) VALUES (?, ?, ?)').bind(body.id, body.name, body.imageUrl).run();
+        await db.prepare('INSERT OR REPLACE INTO artists (id, name, image_url) VALUES (?, ?, ?)').bind(body.id, body.name, body.imageUrl).run();
         return json({ success: true });
       }
       const artistIdMatch = path.match(/^\/api\/artists\/([^\/]+)$/);
       if (artistIdMatch && method === 'DELETE') {
-        await env.DB.prepare('DELETE FROM artists WHERE id = ?').bind(artistIdMatch[1]).run();
+        await db.prepare('DELETE FROM artists WHERE id = ?').bind(artistIdMatch[1]).run();
         return json({ success: true });
       }
 
       // --- Inspirations ---
       if (path === '/api/inspirations' && method === 'GET') {
-        const { results } = await env.DB.prepare('SELECT * FROM inspirations ORDER BY created_at DESC').all();
+        const { results } = await db.prepare('SELECT * FROM inspirations ORDER BY created_at DESC').all();
         return json(results);
       }
       if (path === '/api/inspirations' && method === 'POST') {
         const body = await request.json() as any;
-        await env.DB.prepare('INSERT OR REPLACE INTO inspirations (id, title, image_url, prompt, created_at) VALUES (?, ?, ?, ?, ?)').bind(body.id, body.title, body.imageUrl, body.prompt, body.createdAt).run();
+        await db.prepare('INSERT OR REPLACE INTO inspirations (id, title, image_url, prompt, created_at) VALUES (?, ?, ?, ?, ?)').bind(body.id, body.title, body.imageUrl, body.prompt, body.createdAt).run();
         return json({ success: true });
       }
       const inspIdMatch = path.match(/^\/api\/inspirations\/([^\/]+)$/);
       if (inspIdMatch && method === 'DELETE') {
-        await env.DB.prepare('DELETE FROM inspirations WHERE id = ?').bind(inspIdMatch[1]).run();
+        await db.prepare('DELETE FROM inspirations WHERE id = ?').bind(inspIdMatch[1]).run();
         return json({ success: true });
       }
 
