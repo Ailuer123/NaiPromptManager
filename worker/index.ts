@@ -1,5 +1,5 @@
 
-// Add missing D1 type definitions locally to avoid compilation errors if @cloudflare/workers-types is missing or not configured
+// Add missing D1 type definitions locally
 interface D1Result<T = unknown> {
   results: T[];
   success: boolean;
@@ -22,20 +22,20 @@ interface D1Database {
   exec<T = unknown>(query: string): Promise<D1Result<T>>;
 }
 
-export interface Env {
+// Pages Advanced Mode 自动注入 ASSETS fetcher
+interface Env {
+  ASSETS: { fetch: (request: Request) => Promise<Response> };
   DB: D1Database;
   NAI_API_KEY: string;
   MASTER_KEY: string;
 }
 
-// 简单的 CORS 头处理
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Master-Key',
 };
 
-// 辅助响应函数
 const json = (data: any, status = 200) => 
   new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json', ...corsHeaders }, status });
 
@@ -44,17 +44,24 @@ const error = (msg: string, status = 500) =>
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
-    }
-
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
 
+    // 1. 如果不是 API 请求，直接返回静态资源 (Frontend)
+    // Cloudflare Pages Advanced Mode 约定：_worker.js 接管所有请求
+    // 我们只拦截 /api/ 开头的请求，其余交给 ASSETS
+    if (!path.startsWith('/api/')) {
+      return env.ASSETS.fetch(request);
+    }
+
+    // 2. 处理 API CORS Preflight
+    if (method === 'OPTIONS') {
+      return new Response(null, { headers: corsHeaders });
+    }
+
     try {
       // --- Auth Check (Admin Only Routes) ---
-      // 对于修改数据的操作，验证 Master Key
       if (['PUT', 'DELETE'].includes(method) || (path.startsWith('/api/artists') && method === 'POST') || (path.startsWith('/api/inspirations') && method === 'POST')) {
          const authHeader = request.headers.get('X-Master-Key');
          if (authHeader !== env.MASTER_KEY) {
@@ -72,7 +79,6 @@ export default {
       // --- NovelAI Proxy ---
       if (path === '/api/generate' && method === 'POST') {
         const body = await request.json();
-        // 这里可以添加更多校验逻辑
         const naiRes = await fetch("https://image.novelai.net/ai/generate-image", {
           method: "POST",
           headers: {
@@ -87,7 +93,6 @@ export default {
            return error(`NAI API Error: ${errText}`, naiRes.status);
         }
         
-        // 直接透传 NAI 的二进制流 (Zip)
         const blob = await naiRes.blob();
         return new Response(blob, {
           headers: { ...corsHeaders, 'Content-Type': 'application/zip' }
@@ -96,14 +101,9 @@ export default {
 
       // --- Chains ---
       if (path === '/api/chains' && method === 'GET') {
-        // 获取所有 Chains 并附带最新版本信息
-        // 由于 SQLite 复杂查询在 Worker 中拼接可能较乱，这里先取出所有 Chain，再取出所有最新 Version 组装
         const chainsResult = await env.DB.prepare('SELECT * FROM chains ORDER BY updated_at DESC').all();
         const chains = chainsResult.results;
 
-        // 获取每个 Chain 的最新版本
-        // 优化：一次性取出所有最新版本
-        // 这里的 SQL 逻辑是取出每个 chain_id 对应的 version 最大的那一行
         const versionsResult = await env.DB.prepare(`
           SELECT v.* FROM versions v
           INNER JOIN (
@@ -136,7 +136,6 @@ export default {
           'INSERT INTO chains (id, name, description, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
         ).bind(id, name, description, '[]', now, now).run();
 
-        // 创建初始版本
         const vId = crypto.randomUUID();
         const defaultModules = JSON.stringify([{ id: crypto.randomUUID(), name: "光照", content: "cinematic lighting", isActive: true }]);
         const defaultParams = JSON.stringify({ width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral' });
@@ -152,7 +151,6 @@ export default {
       if (chainIdMatch && method === 'PUT') {
         const id = chainIdMatch[1];
         const updates = await request.json() as any;
-        // 动态构建 UPDATE 语句
         const fields = [];
         const values = [];
         if (updates.name !== undefined) { fields.push('name = ?'); values.push(updates.name); }
@@ -181,7 +179,6 @@ export default {
         const chainId = match[1];
         const body = await request.json() as any;
 
-        // 获取当前最大版本号
         const maxVerResult = await env.DB.prepare('SELECT MAX(version) as max_v FROM versions WHERE chain_id = ?').bind(chainId).first<{ max_v: number }>();
         const nextVer = ((maxVerResult?.max_v) || 0) + 1;
 
@@ -199,7 +196,6 @@ export default {
           Date.now()
         ).run();
 
-        // 更新 Chain 的 updated_at
         await env.DB.prepare('UPDATE chains SET updated_at = ? WHERE id = ?').bind(Date.now(), chainId).run();
 
         return json({ id: newId, version: nextVer });
@@ -237,7 +233,14 @@ export default {
         return json({ success: true });
       }
 
-      return error('Not Found', 404);
+      // Fallback for unknown API routes
+      if (path.startsWith('/api/')) {
+        return error('Not Found', 404);
+      }
+      
+      // Should effectively be unreachable due to first check, but safe guard
+      return env.ASSETS.fetch(request);
+
     } catch (e: any) {
       return error(e.message, 500);
     }
