@@ -33,7 +33,7 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, onCreate, onSelect
       <div className="max-w-7xl mx-auto">
         <header className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Prompt 链管理</h1>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">我的画师串</h1>
             <p className="text-gray-500 dark:text-gray-400">管理并迭代你的 NovelAI 提示词风格组合。</p>
           </div>
           <div className="flex gap-4">
@@ -49,7 +49,7 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, onCreate, onSelect
               className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-lg font-medium transition-colors shadow-lg shadow-indigo-500/20 flex items-center"
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-              新建 Chain
+              新建画师串
             </button>
           </div>
         </header>
@@ -57,7 +57,7 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, onCreate, onSelect
         {filteredChains.length === 0 ? (
           <div className="text-center py-20 bg-gray-100 dark:bg-gray-800/50 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700">
             <p className="text-gray-500 text-lg mb-4">暂无数据</p>
-            <button onClick={() => setIsModalOpen(true)} className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 font-medium">创建第一个 Prompt Chain</button>
+            <button onClick={() => setIsModalOpen(true)} className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 font-medium">创建第一个画师串</button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -101,7 +101,7 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, onCreate, onSelect
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-800 rounded-xl p-8 w-full max-w-md border border-gray-200 dark:border-gray-700 shadow-2xl">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">新建 Prompt Chain</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">新建画师串</h2>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">名称</label>

@@ -165,7 +165,6 @@ async function processImageUpload(
     }
 
     // Upload to R2
-    // FIXED: Use bytes.buffer to pass ArrayBuffer instead of Uint8Array to satisfy the interface
     await env.BUCKET.put(filename, bytes.buffer, {
         httpMetadata: { contentType: `image/${ext}` }
     });
@@ -191,7 +190,10 @@ export default {
         if (!env.BUCKET) return error('Bucket not configured', 503);
         
         // Extract key from path: /api/assets/folder/file.png -> folder/file.png
-        const key = path.replace('/api/assets/', '');
+        // FIX: Add decodeURIComponent to handle spaces and special chars in filenames
+        const rawKey = path.replace('/api/assets/', '');
+        const key = decodeURIComponent(rawKey);
+        
         const object = await env.BUCKET.get(key);
 
         if (!object) return error('File not found', 404);
@@ -422,7 +424,7 @@ export default {
         const id = chainIdMatch[1];
         const updates = await request.json() as any;
         
-        const chain = await db.prepare('SELECT user_id FROM chains WHERE id = ?').bind(id).first<{user_id: string}>();
+        const chain = await db.prepare('SELECT user_id, preview_image FROM chains WHERE id = ?').bind(id).first<{user_id: string, preview_image: string}>();
         if (!chain) return error('Not Found', 404);
         if (chain.user_id && chain.user_id !== currentUser.id && currentUser.role !== 'admin') {
             return error('Permission Denied', 403);
@@ -431,12 +433,24 @@ export default {
         const fields = [];
         const values = [];
         
-        // --- Process Image Upload to R2 if needed ---
+        // --- Process Image Upload & Delete Old Image ---
         if (updates.previewImage && updates.previewImage.startsWith('data:')) {
             try {
-                // Pass current user to check/update quota
+                // 1. Upload new image
                 const r2Url = await processImageUpload(env, updates.previewImage, 'covers', id, currentUser);
                 updates.previewImage = r2Url;
+
+                // 2. Delete old image if it exists and is an R2 file (starts with /api/assets/)
+                if (env.BUCKET && chain.preview_image && chain.preview_image.startsWith('/api/assets/')) {
+                    try {
+                        const oldKey = chain.preview_image.replace('/api/assets/', '');
+                        await env.BUCKET.delete(oldKey);
+                        // Optional: Decrement user storage usage? Hard to track exactly, skipping for now complexity.
+                    } catch (err) {
+                        console.error('Failed to delete old image', err);
+                    }
+                }
+
             } catch (e: any) {
                 return error(`Image upload failed: ${e.message}`, 413); // 413 Payload Too Large
             }

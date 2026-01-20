@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
 import { Artist } from '../types';
@@ -127,7 +126,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
         }
     }
     setCart(newCart);
-    alert('抽取完成！已加入购物车');
+    // Removed alert as requested
   };
 
   const handleImport = () => {

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { PromptChain, PromptModule, User } from '../types';
 import { extractVariables, compilePrompt } from '../services/promptUtils';
 import { generateImage } from '../services/naiService';
@@ -52,6 +52,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // --- Initialization ---
   useEffect(() => {
@@ -202,7 +203,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
 
   const handleSavePreview = async () => {
     if (!generatedImage || !isOwner) return;
-    if(confirm('将当前生成的图片设为该 Chain 的封面图？')) {
+    if(confirm('将当前生成的图片设为该画师串的封面图？\n\n警告：此操作将永久删除旧的封面图（如果是上传的图片）。')) {
         try {
             await onUpdateChain(chain.id, { previewImage: generatedImage });
             alert('封面已更新 (刷新列表查看效果)');
@@ -210,6 +211,29 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
             alert('设置封面失败: ' + e.message);
         }
     }
+  };
+
+  const handleUploadCover = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!isOwner) return;
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      if(confirm('您确定要上传新封面吗？\n\n警告：此操作将永久删除旧的封面图文件。')) {
+          const reader = new FileReader();
+          reader.onloadend = async () => {
+              try {
+                  const base64 = reader.result as string;
+                  await onUpdateChain(chain.id, { previewImage: base64 });
+                  alert('封面已更新');
+              } catch(err: any) {
+                  alert('上传失败: ' + err.message);
+              }
+          };
+          reader.readAsDataURL(file);
+      } else {
+          // Clear input if cancelled
+          if (fileInputRef.current) fileInputRef.current.value = '';
+      }
   };
 
   return (
@@ -267,7 +291,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
               <div className="p-6 space-y-6 max-w-3xl mx-auto w-full pb-24">
                   {!isOwner && (
                       <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 p-3 rounded mb-4 text-sm text-yellow-700 dark:text-yellow-400">
-                          您正在查看他人的 Prompt Chain，无法直接修改。您可以调整参数进行测试，或点击右上角“另存为”保存到您的列表。
+                          您正在查看他人的画师串，无法直接修改。您可以调整参数进行测试，或点击右上角“另存为”保存到您的列表。
                       </div>
                   )}
 
@@ -388,7 +412,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                             : 'bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
                         }`}
                     >
-                        保存 Chain
+                        保存画师串
                     </button>
                 </div>
               )}
@@ -436,7 +460,38 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                                 {isOwner && <button onClick={handleSavePreview} className="bg-indigo-600/90 text-white px-3 py-1.5 rounded text-xs">设为封面</button>}
                             </div>
                           </>
-                      ) : <div className="text-gray-400 text-xs">预览区</div>}
+                      ) : (
+                          chain.previewImage ? (
+                                <>
+                                    <img src={chain.previewImage} alt="Cover" className="max-w-full max-h-full object-contain shadow-2xl opacity-50 grayscale hover:grayscale-0 transition-all duration-500" />
+                                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                        <span className="bg-black/50 text-white px-3 py-1 rounded text-xs">当前封面</span>
+                                    </div>
+                                    <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                         <a href={chain.previewImage} download="cover.png" className="bg-black/70 text-white px-3 py-1.5 rounded text-xs text-center cursor-pointer pointer-events-auto">下载封面</a>
+                                    </div>
+                                </>
+                          ) : <div className="text-gray-400 text-xs">预览区</div>
+                      )}
+                      
+                      {/* Manual Upload Cover Button */}
+                      {isOwner && (
+                         <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                             <input 
+                                type="file" 
+                                ref={fileInputRef}
+                                className="hidden" 
+                                accept="image/*" 
+                                onChange={handleUploadCover}
+                             />
+                             <button 
+                                onClick={() => fileInputRef.current?.click()}
+                                className="bg-gray-800/80 hover:bg-gray-700 text-white px-3 py-1.5 rounded text-xs shadow-lg backdrop-blur"
+                             >
+                                 手动上传封面
+                             </button>
+                         </div>
+                      )}
                   </div>
               </div>
           </div>

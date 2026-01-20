@@ -15,6 +15,7 @@ export const ArtistAdmin: React.FC<ArtistAdminProps> = ({ currentUser }) => {
   const [artists, setArtists] = useState<Artist[]>([]);
   const [artistName, setArtistName] = useState('');
   const [artistImg, setArtistImg] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
   
   // User Management State
   const [users, setUsers] = useState<User[]>([]);
@@ -41,9 +42,26 @@ export const ArtistAdmin: React.FC<ArtistAdminProps> = ({ currentUser }) => {
 
   const handleArtistSave = async () => {
     if (!artistName.trim() || !artistImg.trim()) return;
-    await db.saveArtist({ id: crypto.randomUUID(), name: artistName.trim(), imageUrl: artistImg });
-    setArtistName(''); setArtistImg('');
+    const id = editingId || crypto.randomUUID();
+    await db.saveArtist({ id, name: artistName.trim(), imageUrl: artistImg });
+    
+    setArtistName(''); 
+    setArtistImg(''); 
+    setEditingId(null);
     refreshArtists();
+  };
+
+  const handleEditArtist = (artist: Artist) => {
+      setEditingId(artist.id);
+      setArtistName(artist.name);
+      setArtistImg(artist.imageUrl);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+      setEditingId(null);
+      setArtistName('');
+      setArtistImg('');
   };
 
   const handleArtistDelete = async (id: string) => {
@@ -105,7 +123,7 @@ export const ArtistAdmin: React.FC<ArtistAdminProps> = ({ currentUser }) => {
         {activeTab === 'artist' && isAdmin && (
             <>
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl mb-8 shadow">
-                    <h2 className="font-bold dark:text-white mb-4">添加画师</h2>
+                    <h2 className="font-bold dark:text-white mb-4">{editingId ? '编辑画师' : '添加画师'}</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         <input type="text" value={artistName} onChange={e => setArtistName(e.target.value)} className="p-2 border rounded dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="画师名称" />
                         <div className="flex gap-2">
@@ -114,7 +132,10 @@ export const ArtistAdmin: React.FC<ArtistAdminProps> = ({ currentUser }) => {
                              <input type="text" value={artistImg} onChange={e => setArtistImg(e.target.value)} className="flex-1 p-2 border rounded dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="图片 URL/Base64" />
                         </div>
                     </div>
-                    <button onClick={handleArtistSave} className="bg-indigo-600 text-white px-6 py-2 rounded">添加</button>
+                    <div className="flex gap-2">
+                        <button onClick={handleArtistSave} className="bg-indigo-600 text-white px-6 py-2 rounded">{editingId ? '保存修改' : '添加'}</button>
+                        {editingId && <button onClick={handleCancelEdit} className="bg-gray-400 text-white px-6 py-2 rounded">取消</button>}
+                    </div>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {artists.map(a => (
@@ -123,7 +144,10 @@ export const ArtistAdmin: React.FC<ArtistAdminProps> = ({ currentUser }) => {
                                 <img src={a.imageUrl} className="w-8 h-8 rounded object-cover" />
                                 <span className="dark:text-white font-bold">{a.name}</span>
                             </div>
-                            <button onClick={() => handleArtistDelete(a.id)} className="text-red-500">删除</button>
+                            <div className="flex gap-2 text-sm">
+                                <button onClick={() => handleEditArtist(a)} className="text-indigo-500 hover:text-indigo-700">编辑</button>
+                                <button onClick={() => handleArtistDelete(a.id)} className="text-red-500 hover:text-red-700">删除</button>
+                            </div>
                         </div>
                     ))}
                 </div>
