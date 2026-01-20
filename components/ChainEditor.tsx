@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { PromptChain, PromptModule, User } from '../types';
-import { extractVariables, compilePrompt } from '../services/promptUtils';
+import { compilePrompt } from '../services/promptUtils';
 import { generateImage } from '../services/naiService';
 import { localHistory } from '../services/localHistory';
+import { api } from '../services/api';
 
 interface ChainEditorProps {
   chain: PromptChain;
@@ -36,6 +37,11 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
   const [modules, setModules] = useState<PromptModule[]>(chain.modules || []);
   const [params, setParams] = useState(chain.params || { width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral' });
   
+  // --- New: Subject/Variable Prompt State ---
+  // Using variableValues['subject'] for persistence to avoid DB migration, 
+  // but conceptually this is a single "Subject" field now.
+  const [subjectPrompt, setSubjectPrompt] = useState('');
+  
   const [hasChanges, setHasChanges] = useState(false);
 
   // Sync dirty state with parent
@@ -44,13 +50,13 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
   }, [hasChanges, setIsDirty]);
 
   // --- Testing State ---
-  const [variables, setVariables] = useState<Record<string, string>>(chain.variableValues || {});
   const [activeModules, setActiveModules] = useState<Record<string, boolean>>({});
   const [finalPrompt, setFinalPrompt] = useState('');
   
   // --- Generation State ---
   const [apiKey, setApiKey] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isUploading, setIsUploading] = useState(false); // New Upload State
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -59,12 +65,18 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
   useEffect(() => {
     setBasePrompt(chain.basePrompt || '');
     setNegativePrompt(chain.negativePrompt || '');
-    setModules(chain.modules || []);
+    // Ensure modules have a default position if missing
+    setModules((chain.modules || []).map(m => ({
+        ...m,
+        position: m.position || 'post'
+    })));
     setParams(chain.params || { width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral' });
     setChainName(chain.name);
     setChainDesc(chain.description);
-    // Initialize variable values from saved state
-    setVariables(chain.variableValues || {});
+    
+    // Initialize Subject Prompt from persisted variableValues or empty
+    const savedVars = chain.variableValues || {};
+    setSubjectPrompt(savedVars['subject'] || '');
     
     // Initialize module active state from saved state
     const initialModules: Record<string, boolean> = {};
@@ -80,17 +92,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
     if (savedKey) setApiKey(savedKey);
   }, [chain]);
 
-  // --- Logic: Variables & Compilation ---
-  const requiredVars = useMemo(() => {
-    let textToScan = (basePrompt || '') + ' ';
-    (modules || []).forEach(m => {
-      if (activeModules[m.id] ?? true) { 
-        textToScan += m.content + ' ';
-      }
-    });
-    return extractVariables(textToScan);
-  }, [basePrompt, modules, activeModules]);
-
+  // --- Logic: Compilation ---
   useEffect(() => {
     const tempChain = {
         basePrompt,
@@ -99,9 +101,11 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
             isActive: activeModules[m.id] ?? true
         }))
     } as any; 
-    const compiled = compilePrompt(tempChain, variables);
+    
+    // Compile using new logic: Base + Pre + Subject + Post
+    const compiled = compilePrompt(tempChain, subjectPrompt);
     setFinalPrompt(compiled);
-  }, [basePrompt, modules, activeModules, variables]);
+  }, [basePrompt, modules, activeModules, subjectPrompt]);
 
   const handleApiKeyChange = (val: string) => {
       setApiKey(val);
@@ -121,7 +125,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
   };
 
   // --- Handlers: Prompt Editing ---
-  const handleModuleChange = (index: number, key: keyof PromptModule, value: string) => {
+  const handleModuleChange = (index: number, key: keyof PromptModule, value: any) => {
     if (!isOwner) return;
     const newModules = [...modules];
     newModules[index] = { ...newModules[index], [key]: value };
@@ -135,7 +139,8 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
       id: crypto.randomUUID(),
       name: '新模块',
       content: '',
-      isActive: true
+      isActive: true,
+      position: 'post'
     };
     setModules([...modules, newModule]);
     setActiveModules(prev => ({ ...prev, [newModule.id]: true }));
@@ -178,6 +183,9 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
           isActive: activeModules[m.id] ?? true
       }));
 
+      // Store subject prompt in variableValues for persistence
+      const varValues = { 'subject': subjectPrompt };
+
       onUpdateChain(chain.id, {
           name: chainName,
           description: chainDesc,
@@ -185,7 +193,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
           negativePrompt,
           modules: updatedModules,
           params,
-          variableValues: variables // Persist variable values
+          variableValues: varValues
       });
       setHasChanges(false);
       setIsEditingInfo(false);
@@ -204,7 +212,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
           negativePrompt,
           modules: updatedModules,
           params,
-          variableValues: variables
+          variableValues: { 'subject': subjectPrompt }
       });
   };
 
@@ -241,11 +249,23 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
   const handleSavePreview = async () => {
     if (!generatedImage || !isOwner) return;
     if(confirm('将当前生成的图片设为该画师串的封面图？\n\n警告：此操作将永久删除旧的封面图（如果是上传的图片）。')) {
+        setIsUploading(true);
         try {
-            await onUpdateChain(chain.id, { previewImage: generatedImage });
+            // Convert Base64 to File object for upload
+            const res = await fetch(generatedImage);
+            const blob = await res.blob();
+            const file = new File([blob], "preview.png", { type: "image/png" });
+
+            // 1. Upload Binary
+            const uploadRes = await api.uploadFile(file, 'covers');
+            
+            // 2. Update Chain with URL
+            await onUpdateChain(chain.id, { previewImage: uploadRes.url });
             notify('封面已更新 (刷新列表查看效果)');
         } catch(e: any) {
             notify('设置封面失败: ' + e.message, 'error');
+        } finally {
+            setIsUploading(false);
         }
     }
   };
@@ -256,17 +276,19 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
       if (!file) return;
 
       if(confirm('您确定要上传新封面吗？\n\n警告：此操作将永久删除旧的封面图文件。')) {
-          const reader = new FileReader();
-          reader.onloadend = async () => {
-              try {
-                  const base64 = reader.result as string;
-                  await onUpdateChain(chain.id, { previewImage: base64 });
-                  notify('封面已更新');
-              } catch(err: any) {
-                  notify('上传失败: ' + err.message, 'error');
-              }
-          };
-          reader.readAsDataURL(file);
+          setIsUploading(true);
+          try {
+              // 1. Upload Binary
+              const res = await api.uploadFile(file, 'covers');
+              
+              // 2. Update Chain with URL
+              await onUpdateChain(chain.id, { previewImage: res.url });
+              notify('封面已更新');
+          } catch(err: any) {
+              notify('上传失败: ' + err.message, 'error');
+          } finally {
+              setIsUploading(false);
+          }
       } else {
           // Clear input if cancelled
           if (fileInputRef.current) fileInputRef.current.value = '';
@@ -278,15 +300,9 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
           navigator.clipboard.writeText(negativePrompt);
           notify('负面提示词已复制');
       } else {
-          // Use current finalPrompt which is already compiled with modules and variables
           navigator.clipboard.writeText(finalPrompt);
           notify('完整正面提示词已复制');
       }
-  };
-
-  const handleVariableChange = (key: string, value: string) => {
-      setVariables(prev => ({ ...prev, [key]: value }));
-      if (isOwner) setHasChanges(true); // Mark dirty on variable change
   };
 
   return (
@@ -314,7 +330,6 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
         </div>
         
         <div className="flex items-center gap-4">
-             {/* Copy Buttons */}
              <div className="flex gap-2 mr-2">
                 <button 
                     onClick={() => copyPromptToClipboard(false)} 
@@ -368,7 +383,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                   {/* Base Prompt */}
                   <section>
                     <div className="flex justify-between items-end mb-2">
-                        <label className="block text-sm font-semibold text-indigo-500 dark:text-indigo-400">基础 Prompt (Base)</label>
+                        <label className="block text-sm font-semibold text-indigo-500 dark:text-indigo-400">1. 基础 Prompt (Base)</label>
                     </div>
                     <textarea
                       disabled={!isOwner}
@@ -381,7 +396,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                    {/* Modules */}
                   <section>
                     <div className="flex justify-between items-center mb-3">
-                        <label className="block text-sm font-semibold text-indigo-500 dark:text-indigo-400">模块 (Modules)</label>
+                        <label className="block text-sm font-semibold text-indigo-500 dark:text-indigo-400">2. 风格模块 (Modules)</label>
                         {isOwner && (
                             <button onClick={addModule} className="text-xs flex items-center bg-gray-200 dark:bg-gray-800 px-2 py-1 rounded hover:bg-gray-300 dark:hover:bg-gray-700">
                                 添加
@@ -400,6 +415,23 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                                         value={mod.name}
                                         onChange={(e) => handleModuleChange(idx, 'name', e.target.value)}
                                     />
+                                    {/* Pre/Post Toggle */}
+                                    <div className="flex bg-gray-200 dark:bg-gray-700 rounded p-0.5 ml-2">
+                                        <button 
+                                            onClick={() => handleModuleChange(idx, 'position', 'pre')}
+                                            disabled={!isOwner}
+                                            className={`px-2 py-0.5 text-[10px] rounded transition-colors ${mod.position === 'pre' ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-indigo-300 font-bold' : 'text-gray-500'}`}
+                                        >
+                                            前置
+                                        </button>
+                                        <button 
+                                            onClick={() => handleModuleChange(idx, 'position', 'post')}
+                                            disabled={!isOwner}
+                                            className={`px-2 py-0.5 text-[10px] rounded transition-colors ${(mod.position === 'post' || !mod.position) ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-indigo-300 font-bold' : 'text-gray-500'}`}
+                                        >
+                                            后置
+                                        </button>
+                                    </div>
                                     <div className="flex-1"></div>
                                     {isOwner && (
                                         <button onClick={() => removeModule(idx)} className="text-gray-400 hover:text-red-500">
@@ -495,22 +527,19 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
           {/* Right Panel (Testing) */}
           <div className="w-full lg:w-1/2 flex flex-col bg-gray-100 dark:bg-black/20">
               <div className="flex-1 flex flex-col p-6 overflow-hidden">
-                  {/* Variables */}
-                  <div className="mb-4 bg-white dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-800 max-h-48 overflow-y-auto">
-                      <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">变量填充</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {requiredVars.map(v => (
-                              <div key={v}>
-                                  <label className="block text-xs font-medium text-indigo-600 dark:text-indigo-300 mb-1">{v}</label>
-                                  <input
-                                      type="text"
-                                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-sm outline-none focus:border-indigo-500"
-                                      value={variables[v] || ''}
-                                      onChange={(e) => handleVariableChange(v, e.target.value)}
-                                  />
-                              </div>
-                          ))}
-                      </div>
+                  {/* Subject / Variable Input */}
+                  <div className="mb-4 bg-white dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-800">
+                      <h3 className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-2">3. 主体 / 变量提示词 (Subject)</h3>
+                      <p className="text-[10px] text-gray-400 mb-2">此处内容将插入在 Base + 前置模块之后，后置模块之前。</p>
+                      <textarea
+                          className="w-full h-32 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-3 text-sm outline-none focus:border-indigo-500 font-mono resize-none"
+                          placeholder="例如：1girl, solo, white dress, sitting..."
+                          value={subjectPrompt}
+                          onChange={(e) => {
+                             setSubjectPrompt(e.target.value);
+                             if (isOwner) setHasChanges(true); // Treat subject input as part of the saved chain now
+                          }}
+                      />
                   </div>
 
                   {/* Generated Image */}
@@ -531,7 +560,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                             <img src={generatedImage} alt="Generated" className="max-w-full max-h-full object-contain shadow-2xl" />
                             <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <a href={generatedImage} download={getDynamicFilename('nai')} className="bg-black/70 text-white px-3 py-1.5 rounded text-xs">下载</a>
-                                {isOwner && <button onClick={handleSavePreview} className="bg-indigo-600/90 text-white px-3 py-1.5 rounded text-xs">设为封面</button>}
+                                {isOwner && <button onClick={handleSavePreview} disabled={isUploading} className="bg-indigo-600/90 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1">{isUploading ? '上传中...' : '设为封面'}</button>}
                             </div>
                           </>
                       ) : (
@@ -560,9 +589,10 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                              />
                              <button 
                                 onClick={() => fileInputRef.current?.click()}
+                                disabled={isUploading}
                                 className="bg-gray-800/80 hover:bg-gray-700 text-white px-3 py-1.5 rounded text-xs shadow-lg backdrop-blur"
                              >
-                                 手动上传封面
+                                 {isUploading ? '上传中...' : '手动上传封面'}
                              </button>
                          </div>
                       )}

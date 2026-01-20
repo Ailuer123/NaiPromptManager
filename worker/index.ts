@@ -353,6 +353,44 @@ export default {
       const currentUser = await getSessionUser();
       if (!currentUser) return error('Unauthorized', 401);
 
+      // --- NEW: Binary Upload Endpoint (Multipart) ---
+      if (path === '/api/upload' && method === 'POST') {
+          if (!env.BUCKET) return error('R2 Bucket not configured', 503);
+          
+          const formData = await request.formData();
+          const file = formData.get('file');
+
+          if (!file || !(file instanceof File)) {
+              return error('No file uploaded or invalid format', 400);
+          }
+
+          const folder = formData.get('folder') as string || 'misc';
+          const ext = file.name.split('.').pop() || 'png';
+          const filename = `${folder}/${currentUser.id}_${Date.now()}.${ext}`;
+          
+          const arrayBuffer = await file.arrayBuffer();
+          const fileSize = arrayBuffer.byteLength;
+
+          // Quota Check
+          if (currentUser.role !== 'admin') {
+              const currentUsage = currentUser.storage_usage || 0;
+              if (currentUsage + fileSize > MAX_STORAGE_QUOTA) {
+                  return error(`Storage quota exceeded. Limit: 300MB`, 413);
+              }
+          }
+
+          // Upload to R2
+          await env.BUCKET.put(filename, arrayBuffer, {
+              httpMetadata: { contentType: file.type }
+          });
+
+          // Update Usage
+          await db.prepare('UPDATE users SET storage_usage = COALESCE(storage_usage, 0) + ? WHERE id = ?')
+              .bind(fileSize, currentUser.id).run();
+
+          return json({ url: `/api/assets/${filename}`, size: fileSize });
+      }
+
       // --- User Management ---
       if (path === '/api/users' && method === 'POST') {
           if (currentUser.role !== 'admin') return error('Forbidden', 403);
@@ -410,9 +448,10 @@ export default {
         const body = await request.json() as any;
         const id = crypto.randomUUID();
         const now = Date.now();
-        const basePrompt = body.basePrompt || 'masterpiece, best quality, {character}';
+        const basePrompt = body.basePrompt || 'masterpiece, best quality';
         const negPrompt = body.negativePrompt || 'lowres, bad anatomy';
-        const modules = body.modules ? JSON.stringify(body.modules) : JSON.stringify([{ id: crypto.randomUUID(), name: "光照", content: "cinematic lighting", isActive: true }]);
+        // Updated Default module with position: 'post'
+        const modules = body.modules ? JSON.stringify(body.modules) : JSON.stringify([{ id: crypto.randomUUID(), name: "光照", content: "cinematic lighting", isActive: true, position: 'post' }]);
         const params = body.params ? JSON.stringify(body.params) : JSON.stringify({ width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral' });
         const vars = body.variableValues ? JSON.stringify(body.variableValues) : '{}';
 
@@ -439,27 +478,28 @@ export default {
         const fields = [];
         const values = [];
         
-        // --- Process Image Upload & Delete Old Image ---
+        // --- Legacy Base64 Support & Delete Old Image Logic ---
+        // If the new previewImage is DIFFERENT from the old one, we might want to clean up the old one
+        if (updates.previewImage && chain.preview_image && chain.preview_image !== updates.previewImage) {
+             // Only delete if it's an internal asset
+             if (env.BUCKET && chain.preview_image.startsWith('/api/assets/')) {
+                 try {
+                     const oldKey = chain.preview_image.replace('/api/assets/', '');
+                     await env.BUCKET.delete(oldKey);
+                 } catch (err) {
+                     console.error('Failed to delete old image', err);
+                 }
+             }
+        }
+        
+        // If sending base64 (Legacy fallback), process it
         if (updates.previewImage && updates.previewImage.startsWith('data:')) {
-            try {
-                // 1. Upload new image
+             try {
                 const r2Url = await processImageUpload(env, updates.previewImage, 'covers', id, currentUser);
                 updates.previewImage = r2Url;
-
-                // 2. Delete old image if it exists and is an R2 file (starts with /api/assets/)
-                if (env.BUCKET && chain.preview_image && chain.preview_image.startsWith('/api/assets/')) {
-                    try {
-                        const oldKey = chain.preview_image.replace('/api/assets/', '');
-                        await env.BUCKET.delete(oldKey);
-                        // Optional: Decrement user storage usage? Hard to track exactly, skipping for now complexity.
-                    } catch (err) {
-                        console.error('Failed to delete old image', err);
-                    }
-                }
-
-            } catch (e: any) {
-                return error(`Image upload failed: ${e.message}`, 413); // 413 Payload Too Large
-            }
+             } catch (e: any) {
+                return error(`Image upload failed: ${e.message}`, 413);
+             }
         }
 
         if (updates.name !== undefined) { fields.push('name = ?'); values.push(updates.name); }

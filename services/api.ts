@@ -70,5 +70,18 @@ export const api = {
     });
     if (!res.ok) throw new Error(await res.text());
     return res.blob();
+  },
+
+  // NEW: Upload File (Multipart)
+  uploadFile: async (file: File, folder: string = 'misc') => {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('folder', folder);
+
+      const res = await fetch(`${API_BASE}/upload`, {
+          method: 'POST',
+          body: formData, // Browser sets Content-Type: multipart/form-data with boundary
+      });
+      return handleResponse(res);
   }
 };

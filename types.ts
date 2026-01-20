@@ -16,6 +16,7 @@ export interface PromptModule {
   name: string;
   content: string;
   isActive: boolean; // For testing toggle
+  position?: 'pre' | 'post'; // New: Order control
 }
 
 export interface NAIParams {
@@ -43,7 +44,7 @@ export interface PromptChain {
   modules: PromptModule[];
   params: NAIParams;
   
-  // New: Persist variable inputs
+  // New: Persist variable inputs (Now used for the single Subject/Variable prompt)
   variableValues?: Record<string, string>;
 
   createdAt: number;

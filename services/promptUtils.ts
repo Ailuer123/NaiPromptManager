@@ -1,61 +1,67 @@
 import { PromptChain } from '../types';
 
 /**
- * Extracts variable names from a string (e.g., "{character}").
- */
-export const extractVariables = (text: string): string[] => {
-  const regex = /\{([a-zA-Z0-9_]+)\}/g;
-  const matches = new Set<string>();
-  let match;
-  while ((match = regex.exec(text)) !== null) {
-    matches.add(match[1]);
-  }
-  return Array.from(matches);
-};
-
-/**
- * Compiles the final prompt string by combining base, modules, and substituting variables.
+ * Compiles the final prompt string by combining parts in a fixed order:
+ * 1. Base Prompt
+ * 2. Pre-Modules (isActive & position='pre')
+ * 3. Subject/Variable Prompt (User Input)
+ * 4. Post-Modules (isActive & position='post' or undefined)
  */
 export const compilePrompt = (
   chain: Pick<PromptChain, 'basePrompt' | 'modules'>,
-  variables: Record<string, string>,
+  subjectPrompt: string = '',
   activeModulesOnly: boolean = true
 ): string => {
   let promptParts: string[] = [];
 
   // 1. Add Base Prompt
-  if (chain.basePrompt) promptParts.push(chain.basePrompt);
+  if (chain.basePrompt && chain.basePrompt.trim()) {
+      promptParts.push(chain.basePrompt.trim());
+  }
 
-  // 2. Add Modules
+  // 2. Add Pre-Modules
   if (chain.modules) {
-      chain.modules.forEach((mod) => {
-        if (!activeModulesOnly || mod.isActive) {
-          promptParts.push(mod.content);
-        }
+      const preModules = chain.modules.filter(m => {
+          const isActive = !activeModulesOnly || m.isActive;
+          return isActive && m.position === 'pre';
+      });
+      preModules.forEach(m => {
+          if (m.content.trim()) promptParts.push(m.content.trim());
       });
   }
 
-  // 3. Join with commas (NAI style)
+  // 3. Add Subject/Variable Prompt
+  if (subjectPrompt && subjectPrompt.trim()) {
+      promptParts.push(subjectPrompt.trim());
+  }
+
+  // 4. Add Post-Modules (Default to post if position is missing)
+  if (chain.modules) {
+      const postModules = chain.modules.filter(m => {
+          const isActive = !activeModulesOnly || m.isActive;
+          return isActive && (m.position === 'post' || !m.position);
+      });
+      postModules.forEach(m => {
+          if (m.content.trim()) promptParts.push(m.content.trim());
+      });
+  }
+
+  // 5. Join with commas and clean up
+  // NAI generally prefers comma separation.
+  // We join with ", " then clean up potential double commas.
   let fullPrompt = promptParts.join(', ');
 
-  // 4. Substitute Variables
-  fullPrompt = fullPrompt.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, key) => {
-    return variables[key] || ''; // Replace with value or empty string if missing
-  });
-
-  // 5. Cleanup (remove double commas, leading/trailing commas)
-  fullPrompt = fullPrompt.replace(/,\s*,/g, ',').replace(/^,\s*/, '').replace(/,\s*$/, '');
+  // Cleanup: remove double commas, leading/trailing commas/spaces
+  fullPrompt = fullPrompt
+      .replace(/,\s*,/g, ',')
+      .replace(/^,\s*/, '')
+      .replace(/,\s*$/, '');
 
   return fullPrompt;
 };
 
 /**
- * Identify all unique variables across base prompt and all modules
+ * Legacy support: identify variables is no longer needed with the new structure.
+ * Keeping an empty implementation or removing it would be fine, 
+ * but removing it is cleaner as the UI logic has changed.
  */
-export const getAllVariablesInVersion = (chain: Pick<PromptChain, 'basePrompt' | 'modules'>): string[] => {
-  const allText = [
-    chain.basePrompt,
-    ...(chain.modules || []).map(m => m.content)
-  ].join(' ');
-  return extractVariables(allText);
-};
