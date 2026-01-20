@@ -6,9 +6,10 @@ import { LocalGenItem, User } from '../types';
 
 interface GenHistoryProps {
     currentUser: User;
+    notify: (msg: string, type?: 'success' | 'error') => void;
 }
 
-export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser }) => {
+export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify }) => {
     const [items, setItems] = useState<LocalGenItem[]>([]);
     const [lightbox, setLightbox] = useState<LocalGenItem | null>(null);
     const [isPublishing, setIsPublishing] = useState(false);
@@ -42,7 +43,7 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser }) => {
     const handlePublish = async () => {
         if (!lightbox) return;
         if (!publishTitle.trim()) {
-            alert('请输入标题');
+            notify('请输入标题', 'error');
             return;
         }
         setIsPublishing(true);
@@ -56,12 +57,12 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser }) => {
                 username: currentUser.username,
                 createdAt: Date.now()
             });
-            alert('发布成功！已加入灵感图库');
+            notify('发布成功！已加入灵感图库');
             setIsPublishing(false);
             setPublishTitle('');
             // Optional: Close lightbox or stay
         } catch (e: any) {
-            alert('发布失败: ' + e.message);
+            notify('发布失败: ' + e.message, 'error');
             setIsPublishing(false);
         }
     };
@@ -156,7 +157,7 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser }) => {
                                          </button>
                                      </div>
                                  </div>
-                                 <button onClick={() => navigator.clipboard.writeText(lightbox.prompt)} className="w-full py-2 border border-gray-300 dark:border-gray-600 rounded text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-800">复制 Prompt</button>
+                                 <button onClick={() => { navigator.clipboard.writeText(lightbox.prompt); notify('Prompt 已复制'); }} className="w-full py-2 border border-gray-300 dark:border-gray-600 rounded text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-800">复制 Prompt</button>
                              </div>
                          </div>
                      </div>

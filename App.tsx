@@ -35,6 +35,14 @@ const App = () => {
   // Theme State
   const [isDark, setIsDark] = useState(() => localStorage.getItem('nai_theme') === 'dark');
 
+  // Toast State
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+
+  const notify = (message: string, type: 'success' | 'error' = 'success') => {
+      setToast({ message, type });
+      setTimeout(() => setToast(null), 3000);
+  };
+
   // Check Session on Load
   useEffect(() => {
     db.getMe().then(user => {
@@ -127,7 +135,7 @@ const App = () => {
   const handleForkChain = async (chain: PromptChain) => {
       const name = chain.name + ' (Fork)';
       await db.createChain(name, chain.description, chain);
-      alert('Fork 成功！已保存到您的列表');
+      notify('Fork 成功！已保存到您的列表');
       await refreshData();
       setView('list');
   };
@@ -169,7 +177,7 @@ const App = () => {
                 </form>
                 
                 <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-700/50 flex justify-between items-center text-xs text-gray-400">
-                     <span>v0.4.0 Cache</span>
+                     <span>v0.4.1</span>
                      <button onClick={toggleTheme} className="hover:text-gray-600 dark:hover:text-gray-200">{isDark ? '切换亮色' : '切换深色'}</button>
                 </div>
             </div>
@@ -200,6 +208,7 @@ const App = () => {
                     onDelete={handleDelete}
                     onRefresh={refreshData}
                     isLoading={loading}
+                    notify={notify}
                />;
       case 'edit':
         const editChain = getSelectedChain();
@@ -211,6 +220,7 @@ const App = () => {
                 onBack={() => handleNavigate('list')} 
                 onFork={handleForkChain} 
                 setIsDirty={setIsEditorDirty}
+                notify={notify}
                />;
       case 'library':
           return <ArtistLibrary 
@@ -218,17 +228,19 @@ const App = () => {
                     toggleTheme={toggleTheme} 
                     artistsData={artistsCache} 
                     onRefresh={loadArtists} 
+                    notify={notify}
                  />;
       case 'inspiration':
           return <InspirationGallery 
                     currentUser={currentUser} 
                     inspirationsData={inspirationsCache} 
                     onRefresh={loadInspirations} 
+                    notify={notify}
                  />;
       case 'admin':
           return <ArtistAdmin currentUser={currentUser} />;
       case 'history':
-          return <GenHistory currentUser={currentUser} />;
+          return <GenHistory currentUser={currentUser} notify={notify} />;
       default:
         return <div>Unknown View</div>;
     }
@@ -243,6 +255,7 @@ const App = () => {
          toggleTheme={toggleTheme}
          currentUser={currentUser}
          onLogout={handleLogout}
+         toast={toast}
        >
          {renderContent()}
        </Layout>

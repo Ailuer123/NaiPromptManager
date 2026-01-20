@@ -12,6 +12,7 @@ interface ChainEditorProps {
   onBack: () => void;
   onFork: (chain: PromptChain) => void;
   setIsDirty: (isDirty: boolean) => void;
+  notify: (msg: string, type?: 'success' | 'error') => void;
 }
 
 const RESOLUTIONS = {
@@ -20,7 +21,7 @@ const RESOLUTIONS = {
   Square: { width: 1024, height: 1024, label: "方形 (1024x1024)" },
 };
 
-export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, onUpdateChain, onBack, onFork, setIsDirty }) => {
+export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, onUpdateChain, onBack, onFork, setIsDirty, notify }) => {
   // Permission Check
   const isOwner = chain.userId === currentUser.id || currentUser.role === 'admin';
 
@@ -107,6 +108,18 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
       localStorage.setItem('nai_api_key', val);
   };
 
+  const getDynamicFilename = (prefix: string) => {
+      const now = new Date();
+      // Format: YYYY-MM-DD-HH-mm-ss
+      const timestamp = now.getFullYear() + '-' +
+          String(now.getMonth() + 1).padStart(2, '0') + '-' +
+          String(now.getDate()).padStart(2, '0') + '-' +
+          String(now.getHours()).padStart(2, '0') + '-' +
+          String(now.getMinutes()).padStart(2, '0') + '-' +
+          String(now.getSeconds()).padStart(2, '0');
+      return `${prefix}_${timestamp}.png`;
+  };
+
   // --- Handlers: Prompt Editing ---
   const handleModuleChange = (index: number, key: keyof PromptModule, value: string) => {
     if (!isOwner) return;
@@ -153,7 +166,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
     if (w === 832 && h === 1216) return 'Portrait';
     if (w === 1216 && h === 832) return 'Landscape';
     if (w === 1024 && h === 1024) return 'Square';
-    return 'Custom';
+    return ''; // Invalid/Custom
   };
 
   const handleSaveAll = () => {
@@ -176,6 +189,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
       });
       setHasChanges(false);
       setIsEditingInfo(false);
+      notify('画师串已保存');
   };
 
   const handleFork = () => {
@@ -218,6 +232,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
         
     } catch (e: any) {
         setErrorMsg(e.message);
+        notify(e.message, 'error');
     } finally {
         setIsGenerating(false);
     }
@@ -228,9 +243,9 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
     if(confirm('将当前生成的图片设为该画师串的封面图？\n\n警告：此操作将永久删除旧的封面图（如果是上传的图片）。')) {
         try {
             await onUpdateChain(chain.id, { previewImage: generatedImage });
-            alert('封面已更新 (刷新列表查看效果)');
+            notify('封面已更新 (刷新列表查看效果)');
         } catch(e: any) {
-            alert('设置封面失败: ' + e.message);
+            notify('设置封面失败: ' + e.message, 'error');
         }
     }
   };
@@ -246,9 +261,9 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
               try {
                   const base64 = reader.result as string;
                   await onUpdateChain(chain.id, { previewImage: base64 });
-                  alert('封面已更新');
+                  notify('封面已更新');
               } catch(err: any) {
-                  alert('上传失败: ' + err.message);
+                  notify('上传失败: ' + err.message, 'error');
               }
           };
           reader.readAsDataURL(file);
@@ -261,11 +276,11 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
   const copyPromptToClipboard = (isNegative: boolean) => {
       if (isNegative) {
           navigator.clipboard.writeText(negativePrompt);
-          alert('负面提示词已复制');
+          notify('负面提示词已复制');
       } else {
           // Use current finalPrompt which is already compiled with modules and variables
           navigator.clipboard.writeText(finalPrompt);
-          alert('完整正面提示词已复制');
+          notify('完整正面提示词已复制');
       }
   };
 
@@ -416,7 +431,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
 
                   {/* Params */}
                   <section className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                     <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">参数设置 (测试用)</h3>
+                     <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">参数设置</h3>
                      <div className="grid grid-cols-2 gap-4">
                          <div>
                              <label className="text-xs text-gray-500 dark:text-gray-500 block mb-1">图片尺寸</label>
@@ -429,15 +444,19 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                                   {Object.entries(RESOLUTIONS).map(([key, val]) => (
                                       <option key={key} value={key}>{val.label}</option>
                                   ))}
-                                  <option value="Custom" disabled>自定义 ({params.width}x{params.height})</option>
                                </select>
                          </div>
                          <div className="flex gap-2">
                              <div className="flex-1">
-                                 <label className="text-xs text-gray-500 dark:text-gray-500 block mb-1">Steps</label>
+                                 <label className="text-xs text-gray-500 dark:text-gray-500 block mb-1">Steps (Max 28)</label>
                                  <input type="number" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm" 
                                     value={params.steps} 
-                                    onChange={(e) => {setParams({...params, steps: parseInt(e.target.value)}); if(isOwner) setHasChanges(true);}}
+                                    max={28}
+                                    onChange={(e) => {
+                                        const val = Math.min(28, parseInt(e.target.value) || 0);
+                                        setParams({...params, steps: val}); 
+                                        if(isOwner) setHasChanges(true);
+                                    }}
                                  />
                              </div>
                              <div className="flex-1">
@@ -511,7 +530,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                           <>
                             <img src={generatedImage} alt="Generated" className="max-w-full max-h-full object-contain shadow-2xl" />
                             <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <a href={generatedImage} download="nai.png" className="bg-black/70 text-white px-3 py-1.5 rounded text-xs">下载</a>
+                                <a href={generatedImage} download={getDynamicFilename('nai')} className="bg-black/70 text-white px-3 py-1.5 rounded text-xs">下载</a>
                                 {isOwner && <button onClick={handleSavePreview} className="bg-indigo-600/90 text-white px-3 py-1.5 rounded text-xs">设为封面</button>}
                             </div>
                           </>
@@ -523,7 +542,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                                         <span className="bg-black/50 text-white px-3 py-1 rounded text-xs">当前封面</span>
                                     </div>
                                     <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                         <a href={chain.previewImage} download="cover.png" className="bg-black/70 text-white px-3 py-1.5 rounded text-xs text-center cursor-pointer pointer-events-auto">下载封面</a>
+                                         <a href={chain.previewImage} download={getDynamicFilename('cover')} className="bg-black/70 text-white px-3 py-1.5 rounded text-xs text-center cursor-pointer pointer-events-auto">下载封面</a>
                                     </div>
                                 </>
                           ) : <div className="text-gray-400 text-xs">预览区</div>

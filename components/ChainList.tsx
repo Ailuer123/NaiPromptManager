@@ -9,9 +9,10 @@ interface ChainListProps {
   onDelete: (id: string) => void;
   onRefresh: () => void;
   isLoading: boolean;
+  notify: (msg: string, type?: 'success' | 'error') => void;
 }
 
-export const ChainList: React.FC<ChainListProps> = ({ chains, onCreate, onSelect, onDelete, onRefresh, isLoading }) => {
+export const ChainList: React.FC<ChainListProps> = ({ chains, onCreate, onSelect, onDelete, onRefresh, isLoading, notify }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
@@ -28,7 +29,7 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, onCreate, onSelect
   const copyFullPrompt = (chain: PromptChain, negative = false) => {
       if (negative) {
           navigator.clipboard.writeText(chain.negativePrompt);
-          alert('负面提示词已复制');
+          notify('负面提示词已复制');
           return;
       }
 
@@ -44,7 +45,7 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, onCreate, onSelect
       // Cleanup text
       const full = parts.join(', ').replace(/,\s*,/g, ',').replace(/^,\s*/, '').replace(/,\s*$/, '');
       navigator.clipboard.writeText(full);
-      alert('完整正面提示词已复制');
+      notify('完整正面提示词已复制');
   };
 
   const filteredChains = chains.filter(c => 

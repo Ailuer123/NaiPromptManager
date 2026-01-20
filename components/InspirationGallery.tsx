@@ -9,6 +9,7 @@ interface InspirationGalleryProps {
     // New props for caching
     inspirationsData: Inspiration[] | null;
     onRefresh: () => Promise<void>;
+    notify: (msg: string, type?: 'success' | 'error') => void;
 }
 
 // Lazy Loading Component (Reused logic, kept separate per component for modularity if needed)
@@ -48,7 +49,7 @@ const LazyImage: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
     );
 };
 
-export const InspirationGallery: React.FC<InspirationGalleryProps> = ({ currentUser, inspirationsData, onRefresh }) => {
+export const InspirationGallery: React.FC<InspirationGalleryProps> = ({ currentUser, inspirationsData, onRefresh, notify }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [lightboxImg, setLightboxImg] = useState<{item: Inspiration, isEditing: boolean} | null>(null);
   const [uploadMode, setUploadMode] = useState(false);
@@ -79,7 +80,7 @@ export const InspirationGallery: React.FC<InspirationGalleryProps> = ({ currentU
   const copyPrompt = (prompt: string, e?: React.MouseEvent) => {
     if(e) e.stopPropagation();
     navigator.clipboard.writeText(prompt);
-    alert('Prompt 已复制');
+    notify('Prompt 已复制');
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

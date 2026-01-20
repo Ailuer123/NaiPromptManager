@@ -10,9 +10,10 @@ interface LayoutProps {
   toggleTheme: () => void;
   currentUser?: User | null;
   onLogout?: () => void;
+  toast?: { message: string, type: 'success' | 'error' } | null; // Add Toast Prop
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentView, isDark, toggleTheme, currentUser, onLogout }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentView, isDark, toggleTheme, currentUser, onLogout, toast }) => {
   // 300MB in bytes
   const MAX_STORAGE = 300 * 1024 * 1024;
   
@@ -27,7 +28,22 @@ export const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentVie
   };
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans transition-colors duration-300">
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans transition-colors duration-300 relative">
+      
+      {/* Toast Notification */}
+      {toast && (
+          <div className="fixed top-6 left-1/2 transform -translate-x-1/2 z-50 animate-fade-in-down">
+              <div className={`px-6 py-3 rounded-lg shadow-xl flex items-center gap-2 ${
+                  toast.type === 'error' 
+                  ? 'bg-red-500 text-white' 
+                  : 'bg-gray-800 dark:bg-white text-white dark:text-gray-900'
+              }`}>
+                  <span>{toast.type === 'error' ? '❌' : '✅'}</span>
+                  <span className="font-medium text-sm">{toast.message}</span>
+              </div>
+          </div>
+      )}
+
       {/* Sidebar */}
       <aside className="w-20 md:w-64 flex-shrink-0 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col transition-colors duration-300">
         <div className="p-4 md:p-6 flex items-center justify-center md:justify-start space-x-3 border-b border-gray-200 dark:border-gray-800">
@@ -139,7 +155,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentVie
             </div>
           )}
 
-          <div className="text-xs text-gray-500 dark:text-gray-600 text-center md:text-left">v0.4.0 Cache</div>
+          <div className="text-xs text-gray-500 dark:text-gray-600 text-center md:text-left">v0.4.1</div>
         </div>
       </aside>
 

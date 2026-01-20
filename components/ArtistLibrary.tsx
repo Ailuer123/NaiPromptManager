@@ -13,6 +13,7 @@ interface ArtistLibraryProps {
   // New props for caching
   artistsData: Artist[] | null;
   onRefresh: () => Promise<void>;
+  notify: (msg: string, type?: 'success' | 'error') => void;
 }
 
 // Helper to get first char
@@ -60,7 +61,7 @@ const LazyImage: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
     );
 };
 
-export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleTheme, artistsData, onRefresh }) => {
+export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleTheme, artistsData, onRefresh, notify }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
@@ -147,7 +148,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
     const str = cart.map(formatTag).join(', ');
     navigator.clipboard.writeText(str);
     addToHistory(str);
-    alert('组合串已复制！');
+    notify('组合串已复制！');
   };
 
   const filteredArtists = (artistsData || []).filter(a => {
@@ -218,7 +219,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
       setCart(finalCart);
       setShowImport(false);
       setImportText('');
-      alert(`已导入 ${newItems.length} 位画师`);
+      notify(`已导入 ${newItems.length} 位画师`);
   };
 
   const scrollToLetter = (char: string) => {
@@ -431,7 +432,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-2">
               {history.map((h, i) => (
-                  <div key={i} onClick={() => {navigator.clipboard.writeText(h.text); alert('已复制')}} className="p-3 bg-gray-100 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-indigo-500 cursor-pointer transition-colors">
+                  <div key={i} onClick={() => {navigator.clipboard.writeText(h.text); notify('已复制')}} className="p-3 bg-gray-100 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-indigo-500 cursor-pointer transition-colors">
                       <div className="text-xs text-gray-800 dark:text-gray-200 break-all line-clamp-3 font-mono">{h.text}</div>
                       <div className="text-[10px] text-gray-400 mt-2 text-right">{h.time}</div>
                   </div>
