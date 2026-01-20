@@ -13,6 +13,19 @@ interface LayoutProps {
 }
 
 export const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentView, isDark, toggleTheme, currentUser, onLogout }) => {
+  // 300MB in bytes
+  const MAX_STORAGE = 300 * 1024 * 1024;
+  
+  const getUsagePercentage = () => {
+      if (!currentUser || !currentUser.storageUsage) return 0;
+      return Math.min(100, (currentUser.storageUsage / MAX_STORAGE) * 100);
+  };
+
+  const formatBytes = (bytes?: number) => {
+      if (!bytes) return '0 MB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans transition-colors duration-300">
       {/* Sidebar */}
@@ -87,6 +100,21 @@ export const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentVie
         </nav>
 
         <div className="p-4 border-t border-gray-200 dark:border-gray-800 flex flex-col gap-3">
+          {currentUser && currentUser.role !== 'admin' && (
+              <div className="hidden md:block mb-2">
+                  <div className="flex justify-between text-xs text-gray-500 mb-1">
+                      <span>存储空间</span>
+                      <span>{formatBytes(currentUser.storageUsage)} / 300MB</span>
+                  </div>
+                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-500 ${getUsagePercentage() > 90 ? 'bg-red-500' : 'bg-indigo-500'}`} 
+                        style={{ width: `${getUsagePercentage()}%` }}
+                      ></div>
+                  </div>
+              </div>
+          )}
+
           <button 
                 onClick={toggleTheme} 
                 className="w-full flex items-center justify-center md:justify-start p-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
@@ -111,7 +139,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, onNavigate, currentVie
             </div>
           )}
 
-          <div className="text-xs text-gray-500 dark:text-gray-600 text-center md:text-left">v0.3.2 History</div>
+          <div className="text-xs text-gray-500 dark:text-gray-600 text-center md:text-left">v0.3.3 Quota</div>
         </div>
       </aside>
 

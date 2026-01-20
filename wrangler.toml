@@ -4,14 +4,21 @@ compatibility_date = "2024-04-01"
 pages_build_output_dir = "dist"
 
 # [D1 Database Configuration]
-# 为了让 Preview 和 Production 都能稳定找到数据库，建议保留此配置
-# 请将下方的 id 替换为你真实的 D1 Database ID (在 Cloudflare Dashboard -> D1 可以看到)
+# 请将下方的 id 替换为你真实的 D1 Database ID
 [[d1_databases]]
 binding = "DB"
 database_name = "nai-db"
 database_id = "04b0c4f6-8b3b-4e1d-a880-2dfe4f7d75f7"
 
+# [R2 Bucket Configuration]
+# 绑定 R2 Bucket，用于存储封面图和灵感图
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "nai-assets" # 请替换为你真实创建的 Bucket 名称
+
 [vars]
 # 这里的变量用于本地开发，生产环境建议在 Pages Dashboard 的 Settings -> Environment variables 中设置
 NAI_API_KEY = ""
 MASTER_KEY = "admin888"
+# 你的 R2 公开访问域名 (不带 /)
+R2_PUBLIC_URL = "https://pub-xxxxxx.r2.dev" 

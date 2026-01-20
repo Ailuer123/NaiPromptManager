@@ -8,6 +8,7 @@ export interface User {
   username: string;
   role: UserRole;
   createdAt: number;
+  storageUsage?: number; // Bytes used
 }
 
 export interface PromptModule {

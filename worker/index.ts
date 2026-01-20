@@ -22,10 +22,25 @@ interface D1Database {
   exec<T = unknown>(query: string): Promise<D1Result<T>>;
 }
 
+// R2 Type Definitions
+interface R2ObjectBody {
+  body: ReadableStream;
+  writeHttpMetadata(headers: Headers): void;
+  httpEtag: string;
+}
+
+interface R2Bucket {
+    put(key: string, body: ReadableStream | ArrayBuffer | string, options?: any): Promise<any>;
+    get(key: string): Promise<R2ObjectBody | null>;
+    delete(key: string): Promise<void>;
+}
+
 interface Env {
   ASSETS: { fetch: (request: Request) => Promise<Response> };
   DB?: D1Database;
-  MASTER_KEY: string; // Legacy env var, kept to avoid deployment errors
+  BUCKET?: R2Bucket; // R2 Binding
+  MASTER_KEY: string; 
+  R2_PUBLIC_URL?: string; // Kept for legacy compatibility if needed
 }
 
 const corsHeaders = {
@@ -49,9 +64,10 @@ const INIT_SQL = `
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     username TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL, -- Simple storage for this demo, usually should be salted hash
-    role TEXT DEFAULT 'user', -- 'admin' or 'user'
-    created_at INTEGER
+    password TEXT NOT NULL, 
+    role TEXT DEFAULT 'user', 
+    created_at INTEGER,
+    storage_usage INTEGER DEFAULT 0
   );
   CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
@@ -61,8 +77,8 @@ const INIT_SQL = `
   );
   CREATE TABLE IF NOT EXISTS chains (
     id TEXT PRIMARY KEY,
-    user_id TEXT, -- Owner
-    username TEXT, -- Cache for display
+    user_id TEXT, 
+    username TEXT, 
     name TEXT NOT NULL,
     description TEXT,
     tags TEXT,
@@ -90,6 +106,9 @@ const INIT_SQL = `
   );
 `;
 
+// Constants
+const MAX_STORAGE_QUOTA = 300 * 1024 * 1024; // 300MB
+
 // Helper: Parse Cookies
 function parseCookies(request: Request) {
   const cookieHeader = request.headers.get('Cookie');
@@ -103,11 +122,88 @@ function parseCookies(request: Request) {
   return cookies;
 }
 
+// Helper: Process Base64 Image and Upload to R2 with Quota Check
+async function processImageUpload(
+    env: Env, 
+    imageData: string, 
+    folder: string, 
+    id: string,
+    user?: { id: string, role: string, storage_usage?: number }
+): Promise<string> {
+    // If it's already a URL (starts with http or /api), return it as is
+    if (imageData.startsWith('http') || imageData.startsWith('/api/')) return imageData;
+
+    if (!env.BUCKET) {
+        throw new Error("R2 Bucket not configured");
+    }
+
+    // Expecting data:image/png;base64,xxxxxx
+    const matches = imageData.match(/^data:image\/([a-zA-Z]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+        throw new Error("Invalid image data format");
+    }
+
+    const ext = matches[1]; // png, jpeg, etc.
+    const base64Data = matches[2];
+    const filename = `${folder}/${id}_${Date.now()}.${ext}`;
+
+    // Convert Base64 to Uint8Array for storage
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    const fileSize = bytes.length;
+
+    // --- Quota Check ---
+    if (user && user.role !== 'admin') {
+        const currentUsage = user.storage_usage || 0;
+        if (currentUsage + fileSize > MAX_STORAGE_QUOTA) {
+            throw new Error(`Storage quota exceeded (300MB limit). Current: ${(currentUsage/1024/1024).toFixed(1)}MB`);
+        }
+    }
+
+    // Upload to R2
+    await env.BUCKET.put(filename, bytes, {
+        httpMetadata: { contentType: `image/${ext}` }
+    });
+    
+    // Update User Usage if upload successful
+    if (user && env.DB) {
+        await env.DB.prepare('UPDATE users SET storage_usage = COALESCE(storage_usage, 0) + ? WHERE id = ?')
+            .bind(fileSize, user.id).run();
+    }
+
+    // Return internal API path instead of public URL
+    return `/api/assets/${filename}`;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
+
+    // --- R2 Asset Proxy Route (Allow public GET access for images) ---
+    if (path.startsWith('/api/assets/') && method === 'GET') {
+        if (!env.BUCKET) return error('Bucket not configured', 503);
+        
+        // Extract key from path: /api/assets/folder/file.png -> folder/file.png
+        const key = path.replace('/api/assets/', '');
+        const object = await env.BUCKET.get(key);
+
+        if (!object) return error('File not found', 404);
+
+        const headers = new Headers();
+        object.writeHttpMetadata(headers);
+        headers.set('etag', object.httpEtag);
+        // Cache for 1 year (immutable assets)
+        headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+        headers.set('Access-Control-Allow-Origin', '*'); // Allow cross-origin for canvas
+        
+        return new Response(object.body, { headers });
+    }
 
     if (!path.startsWith('/api/')) {
       return env.ASSETS.fetch(request);
@@ -129,13 +225,19 @@ export default {
       for (const sql of statements) {
           await db.prepare(sql).run();
       }
+      // Migration for storage_usage column
+      try {
+          await db.prepare("ALTER TABLE users ADD COLUMN storage_usage INTEGER DEFAULT 0").run();
+      } catch (e) {
+          // Column likely exists
+      }
+
       // Create Default Admin if not exists
       try {
         const admin = await db.prepare('SELECT * FROM users WHERE username = ?').bind('admin').first();
         if (!admin) {
             const adminId = crypto.randomUUID();
-            // Default: admin / admin_996
-            await db.prepare('INSERT INTO users (id, username, password, role, created_at) VALUES (?, ?, ?, ?, ?)')
+            await db.prepare('INSERT INTO users (id, username, password, role, created_at, storage_usage) VALUES (?, ?, ?, ?, ?, 0)')
               .bind(adminId, 'admin', 'admin_996', 'admin', Date.now()).run();
         }
       } catch (e) { console.error('Admin init failed', e) }
@@ -152,8 +254,8 @@ export default {
         
         if (!session) return null;
 
-        return await db.prepare('SELECT id, username, role FROM users WHERE id = ?')
-            .bind(session.user_id).first<{id: string, username: string, role: string}>();
+        return await db.prepare('SELECT id, username, role, storage_usage FROM users WHERE id = ?')
+            .bind(session.user_id).first<{id: string, username: string, role: string, storage_usage: number}>();
     };
 
     try {
@@ -168,14 +270,10 @@ export default {
       // Login
       if (path === '/api/auth/login' && method === 'POST') {
           const { username, password } = await request.json() as any;
-          
-          try {
-             // Ensure tables exist on first login attempt
-             await db.prepare('SELECT 1 FROM users').first(); 
-          } catch(e) { await initDB(); }
+          try { await db.prepare('SELECT 1 FROM users').first(); } catch(e) { await initDB(); }
 
           const user = await db.prepare('SELECT * FROM users WHERE username = ? AND password = ?')
-              .bind(username, password).first<{id: string, role: string}>();
+              .bind(username, password).first<{id: string, role: string, storage_usage: number}>();
 
           if (!user) return error('用户名或密码错误', 401);
 
@@ -185,7 +283,7 @@ export default {
           await db.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)')
               .bind(sessionId, user.id, expiresAt).run();
 
-          return json({ success: true, user: { id: user.id, username, role: user.role } }, 200, {
+          return json({ success: true, user: { id: user.id, username, role: user.role, storageUsage: user.storage_usage || 0 } }, 200, {
               'Set-Cookie': `session_id=${sessionId}; Expires=${new Date(expiresAt).toUTCString()}; Path=/; SameSite=Lax; HttpOnly`
           });
       }
@@ -205,13 +303,18 @@ export default {
       if (path === '/api/auth/me' && method === 'GET') {
           const user = await getSessionUser();
           if (!user) return error('Unauthorized', 401);
-          return json(user);
+          return json({
+              id: user.id, 
+              username: user.username, 
+              role: user.role,
+              storageUsage: user.storage_usage || 0
+          });
       }
 
-      // --- NAI Proxy (Public wrapper, but we check session) ---
+      // --- NAI Proxy ---
       if (path === '/api/generate' && method === 'POST') {
         const body = await request.json();
-        const clientAuth = request.headers.get('Authorization'); // Key comes from frontend localstorage still
+        const clientAuth = request.headers.get('Authorization'); 
         if (!clientAuth) return error('Missing API Key', 401);
 
         const naiRes = await fetch("https://image.novelai.net/ai/generate-image", {
@@ -230,16 +333,13 @@ export default {
       if (!currentUser) return error('Unauthorized', 401);
 
       // --- User Management ---
-      
-      // Create User (Admin Only)
       if (path === '/api/users' && method === 'POST') {
           if (currentUser.role !== 'admin') return error('Forbidden', 403);
           const { username, password } = await request.json() as any;
           if (!username || !password) return error('Missing fields', 400);
-          
           try {
               const id = crypto.randomUUID();
-              await db.prepare('INSERT INTO users (id, username, password, role, created_at) VALUES (?, ?, ?, ?, ?)')
+              await db.prepare('INSERT INTO users (id, username, password, role, created_at, storage_usage) VALUES (?, ?, ?, ?, ?, 0)')
                   .bind(id, username, password, 'user', Date.now()).run();
               return json({ success: true });
           } catch(e: any) {
@@ -248,7 +348,6 @@ export default {
           }
       }
 
-      // Change Password (Self)
       if (path === '/api/users/password' && method === 'PUT') {
           const { password } = await request.json() as any;
           if (!password) return error('Missing password', 400);
@@ -257,19 +356,14 @@ export default {
           return json({ success: true });
       }
       
-      // Get User List (Admin Only)
       if (path === '/api/users' && method === 'GET') {
          if (currentUser.role !== 'admin') return error('Forbidden', 403);
-         const res = await db.prepare('SELECT id, username, role, created_at FROM users ORDER BY created_at DESC').all();
+         const res = await db.prepare('SELECT id, username, role, created_at, storage_usage FROM users ORDER BY created_at DESC').all();
          return json(res.results.map((u: any) => ({
-             id: u.id,
-             username: u.username,
-             role: u.role,
-             createdAt: u.created_at
+             id: u.id, username: u.username, role: u.role, createdAt: u.created_at, storageUsage: u.storage_usage
          })));
       }
 
-      // Delete User (Admin Only)
       if (path.startsWith('/api/users/') && method === 'DELETE') {
          if (currentUser.role !== 'admin') return error('Forbidden', 403);
          const id = path.split('/').pop();
@@ -280,10 +374,8 @@ export default {
 
       // --- Chains ---
       if (path === '/api/chains' && method === 'GET') {
-        // Ensure schema columns exist
         try { await db.prepare('SELECT user_id FROM chains LIMIT 1').run(); } 
         catch { 
-           // Migration columns
            try { await db.prepare("ALTER TABLE chains ADD COLUMN user_id TEXT").run(); } catch {}
            try { await db.prepare("ALTER TABLE chains ADD COLUMN username TEXT").run(); } catch {}
            try { await db.prepare("ALTER TABLE inspirations ADD COLUMN user_id TEXT").run(); } catch {}
@@ -291,24 +383,12 @@ export default {
         }
 
         const chainsResult = await db.prepare('SELECT * FROM chains ORDER BY updated_at DESC').all();
-        
-        // Fix: Map snake_case DB columns to camelCase API response
         const data = chainsResult.results.map((c: any) => ({
-          id: c.id,
-          userId: c.user_id,
-          username: c.username,
-          name: c.name,
-          description: c.description,
-          tags: JSON.parse(c.tags || '[]'),
-          previewImage: c.preview_image,
-          basePrompt: c.base_prompt,
-          negativePrompt: c.negative_prompt,
-          modules: JSON.parse(c.modules || '[]'),
-          params: JSON.parse(c.params || '{}'),
-          createdAt: c.created_at,
-          updatedAt: c.updated_at
+          id: c.id, userId: c.user_id, username: c.username, name: c.name, description: c.description,
+          tags: JSON.parse(c.tags || '[]'), previewImage: c.preview_image, basePrompt: c.base_prompt,
+          negativePrompt: c.negative_prompt, modules: JSON.parse(c.modules || '[]'), params: JSON.parse(c.params || '{}'),
+          createdAt: c.created_at, updatedAt: c.updated_at
         }));
-        
         return json(data);
       }
 
@@ -316,8 +396,6 @@ export default {
         const body = await request.json() as any;
         const id = crypto.randomUUID();
         const now = Date.now();
-        
-        // Use provided modules/params or defaults
         const basePrompt = body.basePrompt || 'masterpiece, best quality, {character}';
         const negPrompt = body.negativePrompt || 'lowres, bad anatomy';
         const modules = body.modules ? JSON.stringify(body.modules) : JSON.stringify([{ id: crypto.randomUUID(), name: "光照", content: "cinematic lighting", isActive: true }]);
@@ -327,7 +405,7 @@ export default {
         `INSERT INTO chains 
         (id, user_id, username, name, description, tags, preview_image, base_prompt, negative_prompt, modules, params, created_at, updated_at) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).bind(id, currentUser.id, currentUser.username, body.name, body.description, '[]', body.previewImage || null, basePrompt, negPrompt, modules, params, now, now).run();
+        ).bind(id, currentUser.id, currentUser.username, body.name, body.description, '[]', null, basePrompt, negPrompt, modules, params, now, now).run();
 
         return json({ id });
       }
@@ -337,7 +415,6 @@ export default {
         const id = chainIdMatch[1];
         const updates = await request.json() as any;
         
-        // Ownership check
         const chain = await db.prepare('SELECT user_id FROM chains WHERE id = ?').bind(id).first<{user_id: string}>();
         if (!chain) return error('Not Found', 404);
         if (chain.user_id && chain.user_id !== currentUser.id && currentUser.role !== 'admin') {
@@ -347,6 +424,17 @@ export default {
         const fields = [];
         const values = [];
         
+        // --- Process Image Upload to R2 if needed ---
+        if (updates.previewImage && updates.previewImage.startsWith('data:')) {
+            try {
+                // Pass current user to check/update quota
+                const r2Url = await processImageUpload(env, updates.previewImage, 'covers', id, currentUser);
+                updates.previewImage = r2Url;
+            } catch (e: any) {
+                return error(`Image upload failed: ${e.message}`, 413); // 413 Payload Too Large
+            }
+        }
+
         if (updates.name !== undefined) { fields.push('name = ?'); values.push(updates.name); }
         if (updates.description !== undefined) { fields.push('description = ?'); values.push(updates.description); }
         if (updates.previewImage !== undefined) { fields.push('preview_image = ?'); values.push(updates.previewImage); }
@@ -372,11 +460,13 @@ export default {
                 return error('Permission Denied', 403);
             }
             await db.prepare('DELETE FROM chains WHERE id = ?').bind(id).run();
+            // Note: Currently we don't decrement storage on delete because R2 delete doesn't return size easily without extra DB columns.
+            // This is a known trade-off for simplicity.
         }
         return json({ success: true });
       }
 
-      // --- Artists (Admin Only Write) ---
+      // --- Artists ---
       if (path === '/api/artists' && method === 'GET') {
          const res = await db.prepare('SELECT * FROM artists ORDER BY name ASC').all();
          return json(res.results);
@@ -384,6 +474,12 @@ export default {
       if (path === '/api/artists' && method === 'POST') {
         if (currentUser.role !== 'admin') return error('Forbidden', 403);
         const body = await request.json() as any;
+        
+        // Admin upload, no quota check needed
+        if (body.imageUrl && body.imageUrl.startsWith('data:')) {
+             body.imageUrl = await processImageUpload(env, body.imageUrl, 'artists', body.id || crypto.randomUUID());
+        }
+
         await db.prepare('INSERT OR REPLACE INTO artists (id, name, image_url) VALUES (?, ?, ?)').bind(body.id, body.name, body.imageUrl).run();
         return json({ success: true });
       }
@@ -394,24 +490,31 @@ export default {
         return json({ success: true });
       }
 
-      // --- Inspirations (Shared Read, Owner/Admin Write) ---
+      // --- Inspirations ---
       if (path === '/api/inspirations' && method === 'GET') {
         const res = await db.prepare('SELECT * FROM inspirations ORDER BY created_at DESC').all();
-        // Fix: Map snake_case to camelCase
         return json(res.results.map((i: any) => ({ 
-            id: i.id,
-            userId: i.user_id,
-            username: i.username,
-            title: i.title,
-            imageUrl: i.image_url,
-            prompt: i.prompt,
-            createdAt: i.created_at
+            id: i.id, userId: i.user_id, username: i.username, title: i.title, 
+            imageUrl: i.image_url, prompt: i.prompt, createdAt: i.created_at
         }))); 
       }
+      
       if (path === '/api/inspirations' && method === 'POST') {
         const body = await request.json() as any;
+        let imageUrl = body.imageUrl;
+
+        // --- Process Image Upload to R2 ---
+        if (imageUrl && imageUrl.startsWith('data:')) {
+            try {
+                // Pass user for quota check
+                imageUrl = await processImageUpload(env, imageUrl, 'inspirations', body.id || crypto.randomUUID(), currentUser);
+            } catch (e: any) {
+                return error(`Image upload failed: ${e.message}`, 413);
+            }
+        }
+
         await db.prepare('INSERT OR REPLACE INTO inspirations (id, user_id, username, title, image_url, prompt, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-            .bind(body.id, currentUser.id, currentUser.username, body.title, body.imageUrl, body.prompt, body.createdAt).run();
+            .bind(body.id, currentUser.id, currentUser.username, body.title, imageUrl, body.prompt, body.createdAt).run();
         return json({ success: true });
       }
       
@@ -420,14 +523,9 @@ export default {
           const { ids } = await request.json() as { ids: string[] };
           if (!ids || ids.length === 0) return json({ success: true });
 
-          // Need to verify ownership for each or be admin
           if (currentUser.role === 'admin') {
-              // Efficient delete for admin
-              // D1 doesn't support array binding in IN nicely yet in all drivers, assume simple loop for safety or JSON string check
-              // Using loop for safety in D1 alpha/beta nuances
               for (const id of ids) await db.prepare('DELETE FROM inspirations WHERE id = ?').bind(id).run();
           } else {
-              // User can only delete their own
               for (const id of ids) {
                   await db.prepare('DELETE FROM inspirations WHERE id = ? AND user_id = ?').bind(id, currentUser.id).run();
               }
@@ -435,7 +533,7 @@ export default {
           return json({ success: true });
       }
 
-      // Update Inspiration (Title/Prompt)
+      // Update Inspiration
       if (path.startsWith('/api/inspirations/') && method === 'PUT') {
          const id = path.split('/').pop();
          const updates = await request.json() as any;
@@ -465,7 +563,6 @@ export default {
          return json({ success: true });
       }
 
-      // Fallback
       if (path.startsWith('/api/')) return error('Not Found', 404);
       return env.ASSETS.fetch(request);
 
