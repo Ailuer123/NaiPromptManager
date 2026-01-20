@@ -165,7 +165,8 @@ async function processImageUpload(
     }
 
     // Upload to R2
-    await env.BUCKET.put(filename, bytes, {
+    // Use bytes.buffer to pass ArrayBuffer instead of Uint8Array to satisfy the interface
+    await env.BUCKET.put(filename, bytes.buffer, {
         httpMetadata: { contentType: `image/${ext}` }
     });
     
