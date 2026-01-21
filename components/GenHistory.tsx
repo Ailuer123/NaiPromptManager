@@ -24,6 +24,13 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify }) =
         setItems(data);
     };
 
+    const getDownloadFilename = () => {
+        const now = new Date();
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+        return `NAI-${timestamp}.png`;
+    };
+
     const handleDelete = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
         if (confirm('确定删除这张图片记录吗？(无法恢复)')) {
@@ -158,6 +165,13 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify }) =
                                      </div>
                                  </div>
                                  <button onClick={() => { navigator.clipboard.writeText(lightbox.prompt); notify('Prompt 已复制'); }} className="w-full py-2 border border-gray-300 dark:border-gray-600 rounded text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-800">复制 Prompt</button>
+                                 <a 
+                                    href={lightbox.imageUrl} 
+                                    download={getDownloadFilename()}
+                                    className="w-full block py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded text-center text-sm"
+                                 >
+                                    下载原图
+                                 </a>
                              </div>
                          </div>
                      </div>

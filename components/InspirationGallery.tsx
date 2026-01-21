@@ -71,6 +71,13 @@ export const InspirationGallery: React.FC<InspirationGalleryProps> = ({ currentU
       setIsLoading(false);
   };
 
+  const getDownloadFilename = () => {
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+      return `NAI-${timestamp}.png`;
+  };
+
   const copyPrompt = (prompt: string, e?: React.MouseEvent) => {
     if(e) e.stopPropagation();
     navigator.clipboard.writeText(prompt);
@@ -289,6 +296,13 @@ export const InspirationGallery: React.FC<InspirationGalleryProps> = ({ currentU
                                 {canEdit(lightboxImg.item) && (
                                     <button onClick={() => setLightboxImg({...lightboxImg, isEditing: true})} className="w-full py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg">编辑详情</button>
                                 )}
+                                <a 
+                                    href={lightboxImg.item.imageUrl} 
+                                    download={getDownloadFilename()}
+                                    className="w-full py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg text-center"
+                                >
+                                    下载原图
+                                </a>
                               </>
                           )}
                       </div>

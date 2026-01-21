@@ -114,16 +114,12 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
       localStorage.setItem('nai_api_key', val);
   };
 
-  const getDynamicFilename = (prefix: string) => {
+  const getDownloadFilename = () => {
       const now = new Date();
-      // Format: YYYY-MM-DD-HH-mm-ss
-      const timestamp = now.getFullYear() + '-' +
-          String(now.getMonth() + 1).padStart(2, '0') + '-' +
-          String(now.getDate()).padStart(2, '0') + '-' +
-          String(now.getHours()).padStart(2, '0') + '-' +
-          String(now.getMinutes()).padStart(2, '0') + '-' +
-          String(now.getSeconds()).padStart(2, '0');
-      return `${prefix}_${timestamp}.png`;
+      const pad = (n: number) => String(n).padStart(2, '0');
+      // NAI-YYYY-MM-DD-HH-MI-SS.png
+      const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+      return `NAI-${timestamp}.png`;
   };
 
   // --- Handlers: Prompt Editing ---
@@ -258,7 +254,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
             const blob = await res.blob();
             
             // Create proper File object for upload
-            const file = new File([blob], getDynamicFilename('cover'), { type: 'image/png' });
+            const file = new File([blob], getDownloadFilename(), { type: 'image/png' });
 
             // 1. Upload Binary (Direct)
             const uploadRes = await api.uploadFile(file, 'covers');
@@ -573,7 +569,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                           <>
                             <img src={generatedImage} alt="Generated" className="max-w-full max-h-full object-contain shadow-2xl" />
                             <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                                <a href={generatedImage} download={getDynamicFilename('nai')} className="bg-black/70 text-white px-3 py-1.5 rounded text-xs">下载</a>
+                                <a href={generatedImage} download={getDownloadFilename()} className="bg-black/70 text-white px-3 py-1.5 rounded text-xs">下载</a>
                                 {isOwner && <button onClick={(e) => { e.stopPropagation(); handleSavePreview(); }} disabled={isUploading} className="bg-indigo-600/90 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1">{isUploading ? '上传中...' : '设为封面'}</button>}
                             </div>
                           </>
@@ -585,7 +581,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                                         <span className="bg-black/50 text-white px-3 py-1 rounded text-xs">当前封面</span>
                                     </div>
                                     <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                                         <a href={chain.previewImage} download={getDynamicFilename('cover')} className="bg-black/70 text-white px-3 py-1.5 rounded text-xs text-center cursor-pointer pointer-events-auto">下载封面</a>
+                                         <a href={chain.previewImage} download={getDownloadFilename()} className="bg-black/70 text-white px-3 py-1.5 rounded text-xs text-center cursor-pointer pointer-events-auto">下载封面</a>
                                     </div>
                                 </>
                           ) : <div className="text-gray-400 text-xs">预览区</div>
