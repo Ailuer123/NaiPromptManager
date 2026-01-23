@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { PromptChain, PromptModule, User } from '../types';
+import { PromptChain, PromptModule, User, CharacterParams } from '../types';
 import { compilePrompt } from '../services/promptUtils';
 import { generateImage } from '../services/naiService';
 import { localHistory } from '../services/localHistory';
@@ -38,7 +38,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
   const [basePrompt, setBasePrompt] = useState(chain.basePrompt || '');
   const [negativePrompt, setNegativePrompt] = useState(chain.negativePrompt || '');
   const [modules, setModules] = useState<PromptModule[]>(chain.modules || []);
-  const [params, setParams] = useState(chain.params || { width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: -1 });
+  const [params, setParams] = useState(chain.params || { width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: 0, qualityToggle: true, ucPreset: 0 });
   
   // --- New: Subject/Variable Prompt State ---
   const [subjectPrompt, setSubjectPrompt] = useState('');
@@ -73,7 +73,8 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
         position: m.position || 'post'
     })));
     setParams({
-        width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: -1,
+        width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: 0, 
+        qualityToggle: true, ucPreset: 0, characters: [],
         ...chain.params
     });
     setChainName(chain.name);
@@ -171,6 +172,30 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
     if (w === 1216 && h === 832) return 'Landscape';
     if (w === 1024 && h === 1024) return 'Square';
     return '';
+  };
+
+  // --- Character Handlers ---
+  const addCharacter = () => {
+      if (!isOwner) return;
+      const newChar: CharacterParams = { id: crypto.randomUUID(), prompt: "character description", x: 0.5, y: 0.5 };
+      setParams({ ...params, characters: [...(params.characters || []), newChar] });
+      setHasChanges(true);
+  };
+
+  const updateCharacter = (idx: number, updates: Partial<CharacterParams>) => {
+      if (!isOwner || !params.characters) return;
+      const newChars = [...params.characters];
+      newChars[idx] = { ...newChars[idx], ...updates };
+      setParams({ ...params, characters: newChars });
+      setHasChanges(true);
+  };
+
+  const removeCharacter = (idx: number) => {
+      if (!isOwner || !params.characters) return;
+      const newChars = [...params.characters];
+      newChars.splice(idx, 1);
+      setParams({ ...params, characters: newChars });
+      setHasChanges(true);
   };
 
   // --- Import Logic ---
@@ -326,8 +351,8 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
     setErrorMsg(null);
     try {
         const activeParams = { ...params };
-        if (activeParams.seed === -1) delete activeParams.seed;
-
+        // 0 means random, but for generateImage we pass it as is (logic handled in service)
+        
         const img = await generateImage(apiKey, finalPrompt, negativePrompt, activeParams);
         setGeneratedImage(img);
         
@@ -482,7 +507,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                   {/* Base Prompt */}
                   <section>
                     <div className="flex justify-between items-end mb-2">
-                        <label className="block text-sm font-semibold text-indigo-500 dark:text-indigo-400">1. 基础 Prompt (Base)</label>
+                        <label className="block text-sm font-semibold text-indigo-500 dark:text-indigo-400">1. 基础场景/背景 (Base)</label>
                         {/* Import Button */}
                         {isOwner && (
                             <div>
@@ -507,6 +532,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                       disabled={!isOwner}
                       className={`w-full border rounded-lg p-3 outline-none font-mono text-sm leading-relaxed min-h-[100px] ${!isOwner ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 cursor-not-allowed' : 'bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-200 focus:ring-1 focus:ring-indigo-500'}`}
                       value={basePrompt}
+                      placeholder="e.g. outdoors, sky, clouds, masterpiece, best quality"
                       onChange={(e) => {setBasePrompt(e.target.value); setHasChanges(true)}}
                     />
                   </section>
@@ -566,6 +592,67 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                     </div>
                   </section>
 
+                  {/* Character Management (New V4.5) */}
+                  <section className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-4 border border-indigo-100 dark:border-indigo-800/50">
+                      <div className="flex justify-between items-center mb-3">
+                          <label className="block text-sm font-semibold text-indigo-600 dark:text-indigo-300">3. 多角色管理 (V4.5 Characters)</label>
+                          {isOwner && (
+                              <button onClick={addCharacter} className="text-xs flex items-center bg-white dark:bg-gray-700 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-600 shadow-sm text-indigo-600 dark:text-indigo-200">
+                                  + 添加角色
+                              </button>
+                          )}
+                      </div>
+                      
+                      <div className="space-y-3">
+                          {(params.characters || []).length === 0 && (
+                              <div className="text-xs text-gray-400 text-center py-2">暂无角色定义，Prompt 将作为整体处理。</div>
+                          )}
+                          {(params.characters || []).map((char, idx) => (
+                              <div key={char.id} className="bg-white dark:bg-gray-800 rounded p-3 border border-gray-200 dark:border-gray-700 shadow-sm">
+                                  <div className="flex gap-3 items-start">
+                                      <div className="flex-1">
+                                          <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">Prompt</label>
+                                          <textarea 
+                                              disabled={!isOwner}
+                                              value={char.prompt}
+                                              onChange={(e) => updateCharacter(idx, { prompt: e.target.value })}
+                                              className="w-full text-xs p-2 border border-gray-300 dark:border-gray-600 rounded bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 h-16 resize-none focus:ring-1 focus:ring-indigo-500 outline-none"
+                                              placeholder="e.g. 1girl, blue hair, standing"
+                                          />
+                                      </div>
+                                      <div className="w-24 flex flex-col gap-2">
+                                          <div>
+                                              <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">Center X</label>
+                                              <input 
+                                                  type="number" step="0.1" min="0" max="1"
+                                                  disabled={!isOwner}
+                                                  value={char.x}
+                                                  onChange={(e) => updateCharacter(idx, { x: parseFloat(e.target.value) })}
+                                                  className="w-full text-xs p-1 border rounded bg-gray-50 dark:bg-gray-900 dark:border-gray-600 dark:text-white"
+                                              />
+                                          </div>
+                                          <div>
+                                              <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">Center Y</label>
+                                              <input 
+                                                  type="number" step="0.1" min="0" max="1"
+                                                  disabled={!isOwner}
+                                                  value={char.y}
+                                                  onChange={(e) => updateCharacter(idx, { y: parseFloat(e.target.value) })}
+                                                  className="w-full text-xs p-1 border rounded bg-gray-50 dark:bg-gray-900 dark:border-gray-600 dark:text-white"
+                                              />
+                                          </div>
+                                      </div>
+                                      {isOwner && (
+                                          <button onClick={() => removeCharacter(idx)} className="text-gray-400 hover:text-red-500 mt-6">
+                                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                          </button>
+                                      )}
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  </section>
+
                   {/* Negative Prompt */}
                   <section>
                     <label className="block text-sm font-semibold text-red-500 dark:text-red-400 mb-2">负面 Prompt</label>
@@ -580,6 +667,43 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                   {/* Params */}
                   <section className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
                      <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">参数设置</h3>
+                     
+                     {/* V4.5 Quality & Preset */}
+                     <div className="grid grid-cols-2 gap-4 mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+                         <div className="flex items-center gap-2">
+                             <input 
+                                type="checkbox" 
+                                id="qualityToggle"
+                                disabled={!isOwner}
+                                checked={params.qualityToggle ?? true}
+                                onChange={(e) => {
+                                    setParams({ ...params, qualityToggle: e.target.checked });
+                                    if(isOwner) setHasChanges(true);
+                                }}
+                                className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                             />
+                             <label htmlFor="qualityToggle" className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer select-none">
+                                 Quality Tags (Auto)
+                             </label>
+                         </div>
+                         <div>
+                             <label className="text-xs text-gray-500 dark:text-gray-500 block mb-1">负面预设 (UC Preset)</label>
+                             <select 
+                                disabled={!isOwner}
+                                className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm"
+                                value={params.ucPreset ?? 0}
+                                onChange={(e) => {
+                                    setParams({ ...params, ucPreset: parseInt(e.target.value) });
+                                    if(isOwner) setHasChanges(true);
+                                }}
+                             >
+                                 <option value={0}>Heavy (Default)</option>
+                                 <option value={1}>Light</option>
+                                 <option value={2}>None</option>
+                             </select>
+                         </div>
+                     </div>
+
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                          <div>
                              <label className="text-xs text-gray-500 dark:text-gray-500 block mb-1">图片尺寸</label>
@@ -616,14 +740,14 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                              </div>
                              {/* Seed Input */}
                              <div className="flex-1">
-                                 <label className="text-xs text-gray-500 dark:text-gray-500 block mb-1">Seed (-1随机)</label>
+                                 <label className="text-xs text-gray-500 dark:text-gray-500 block mb-1">Seed (0随机)</label>
                                  <input 
                                     type="text" 
                                     className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm" 
-                                    value={params.seed ?? -1} 
+                                    value={params.seed ?? 0} 
                                     onChange={(e) => {
                                         const val = parseInt(e.target.value);
-                                        setParams({...params, seed: isNaN(val) ? -1 : val}); 
+                                        setParams({...params, seed: isNaN(val) ? 0 : val}); 
                                         if(isOwner) setHasChanges(true);
                                     }}
                                  />
@@ -660,7 +784,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                   {/* Subject / Variable Input */}
                   <div className="mb-4 bg-white dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-800">
                       <h3 className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-2">3. 主体 / 变量提示词 (Subject)</h3>
-                      <p className="text-[10px] text-gray-400 mb-2">此处内容将插入在 Base + 前置模块之后，后置模块之前。</p>
+                      <p className="text-[10px] text-gray-400 mb-2">此处内容将作为整体描述插入，或作为 Base Caption 的补充。</p>
                       <textarea
                           className="w-full h-24 md:h-32 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-3 text-sm outline-none focus:border-indigo-500 font-mono resize-none"
                           placeholder="例如：1girl, solo, white dress, sitting..."

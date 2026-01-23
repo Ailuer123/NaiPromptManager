@@ -1,14 +1,23 @@
 
-
 import JSZip from 'jszip';
 import { NAIParams } from '../types';
 import { api } from './api';
 
 export const generateImage = async (apiKey: string, prompt: string, negative: string, params: NAIParams) => {
-  const seed = params.seed ?? Math.floor(Math.random() * 4294967295);
+  // Logic update: If seed is 0 or undefined, pass 0 to API (Random). 
+  // If user explicitly sets a seed (other than 0), use it.
+  // Note: NAI API treats 0 as "random seed" usually, so we pass it as explicit 0 or strict random integer.
+  const seed = (params.seed === undefined || params.seed === null) ? 0 : params.seed;
+
+  // Prepare Character Captions for V4.5
+  const hasCharacters = params.characters && params.characters.length > 0;
+  const charCaptions = hasCharacters ? params.characters!.map(c => ({
+      char_caption: c.prompt,
+      centers: [ { x: c.x, y: c.y } ]
+  })) : [];
 
   const payload = {
-    input: prompt,
+    input: prompt, // Keep flat input as fallback or for summary
     model: "nai-diffusion-4-5-full",
     action: "generate",
     parameters: {
@@ -19,8 +28,12 @@ export const generateImage = async (apiKey: string, prompt: string, negative: st
       sampler: params.sampler,
       steps: params.steps,
       n_samples: 1,
-      ucPreset: 0,
-      qualityToggle: true,
+      
+      // V4.5 Specifics
+      qualityToggle: params.qualityToggle ?? true, // Default to true
+      ucPreset: params.ucPreset ?? 0, // Default to 0 (Heavy)
+      
+      // Legacy / Standard params
       sm: false,
       sm_dyn: false,
       dynamic_thresholding: false,
@@ -35,10 +48,10 @@ export const generateImage = async (apiKey: string, prompt: string, negative: st
       
       v4_prompt: {
         caption: {
-          base_caption: prompt,
-          char_captions: []
+          base_caption: prompt, // The compiled global prompt
+          char_captions: charCaptions
         },
-        use_coords: false,
+        use_coords: hasCharacters, // Only enable coords if we have characters
         use_order: true
       },
       v4_negative_prompt: {

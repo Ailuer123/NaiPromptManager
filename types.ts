@@ -19,6 +19,13 @@ export interface PromptModule {
   position?: 'pre' | 'post'; // New: Order control
 }
 
+export interface CharacterParams {
+  id: string;
+  prompt: string;
+  x: number; // 0.0 to 1.0
+  y: number; // 0.0 to 1.0
+}
+
 export interface NAIParams {
   width: number;
   height: number;
@@ -26,6 +33,10 @@ export interface NAIParams {
   scale: number; // CFG Scale
   sampler: string;
   seed?: number;
+  // V4.5 Specifics
+  qualityToggle?: boolean; // Default true
+  ucPreset?: number; // 0: Heavy, 1: Light, 2: None
+  characters?: CharacterParams[]; // Multi-character support
 }
 
 // Flattened Chain Structure (No more separate versions table)

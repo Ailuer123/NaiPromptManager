@@ -227,21 +227,21 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                 </div>
 
                 {/* Guest Settings Block */}
-                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 p-6 rounded-xl shadow">
-                    <h2 className="font-bold text-yellow-800 dark:text-yellow-200 mb-2">游客访问设置</h2>
-                    <p className="text-sm text-yellow-700 dark:text-yellow-400 mb-4">设置游客登录时使用的全局口令 (存储于数据库 users 表 guest 账户)</p>
+                <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6 rounded-xl shadow">
+                    <h2 className="font-bold text-gray-800 dark:text-gray-200 mb-2">游客访问设置</h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">设置游客登录时使用的全局口令 (存储于数据库 users 表 guest 账户)</p>
                     <div className="flex flex-col md:flex-row gap-4">
                         <input 
                             type="text" 
                             value={guestCode} 
                             onChange={e => setGuestCode(e.target.value)} 
-                            className="flex-1 p-2 border border-yellow-300 dark:border-yellow-700 rounded bg-white dark:bg-gray-900 dark:text-white" 
+                            className="flex-1 p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 dark:text-white font-mono" 
                             placeholder="游客口令" 
                         />
                         <button 
                             onClick={handleUpdateGuestCode} 
                             disabled={isUpdatingGuest}
-                            className="bg-yellow-600 hover:bg-yellow-500 text-white px-6 py-2 rounded transition-colors disabled:opacity-50"
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded transition-colors disabled:opacity-50"
                         >
                             {isUpdatingGuest ? '更新中...' : '更新口令'}
                         </button>
