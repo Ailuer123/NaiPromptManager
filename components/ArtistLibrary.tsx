@@ -64,6 +64,34 @@ const LazyImage: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
     );
 };
 
+// --- Benchmark Config Interface ---
+interface BenchmarkConfig {
+    prompts: string[]; // [Slot 1, Slot 2, Slot 3]
+    negative: string;
+    seed: number;
+    steps: number;
+    scale: number;
+}
+
+const DEFAULT_BENCHMARK_CONFIG: BenchmarkConfig = {
+    prompts: [
+        "1girl, portrait, face focus, detailed eyes, hands on face, detailed fingers, expression, masterpiece, best quality",
+        "1girl, cowboy shot, detailed torso, anatomy focus, detailed skin, soft lighting, masterpiece, best quality",
+        "1girl, full body, wide shot, detailed background, complex scene, perspective, scenery, masterpiece, best quality"
+    ],
+    negative: "lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry",
+    seed: -1, // Random
+    steps: 28,
+    scale: 5
+};
+
+// Queue Item Interface
+interface GenTask {
+    uniqueId: string;
+    artist: Artist;
+    slot: number;
+}
+
 export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleTheme, artistsData, onRefresh, notify }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -83,14 +111,19 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
   
   // Benchmark / Preview Mode State
   const [viewMode, setViewMode] = useState<'original' | 'benchmark'>('original');
-  const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [activeSlot, setActiveSlot] = useState<number>(0); // 0, 1, 2
+  
+  // Benchmark Settings
+  const [showConfig, setShowConfig] = useState(false);
+  const [config, setConfig] = useState<BenchmarkConfig>(DEFAULT_BENCHMARK_CONFIG);
+  const [apiKey, setApiKey] = useState('');
 
-  // Check admin via checking if we can get user info or just check if a specific key exists?
-  // Ideally passed via props, but for minimal diff we can infer or use a simple check.
-  // Actually, generation logic requires API Key.
-  const apiKey = localStorage.getItem('nai_api_key');
+  // Queue System
+  const [taskQueue, setTaskQueue] = useState<GenTask[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [currentTask, setCurrentTask] = useState<GenTask | null>(null);
 
-  // Load data via Props (Caching handled in App)
+  // Load data & Config
   useEffect(() => {
     const savedFav = localStorage.getItem('nai_fav_artists');
     if (savedFav) setFavorites(new Set(JSON.parse(savedFav)));
@@ -100,7 +133,18 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
 
     const savedHistory = localStorage.getItem('nai_copy_history');
     if (savedHistory) setHistory(JSON.parse(savedHistory));
+
+    const savedConfig = localStorage.getItem('nai_benchmark_config');
+    if (savedConfig) setConfig(JSON.parse(savedConfig));
+
+    const savedKey = localStorage.getItem('nai_api_key');
+    if (savedKey) setApiKey(savedKey);
   }, []);
+
+  const handleApiKeyChange = (val: string) => {
+      setApiKey(val);
+      localStorage.setItem('nai_api_key', val);
+  };
 
   const handleRefresh = async () => {
       setIsLoading(true);
@@ -240,41 +284,94 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
     }
   };
 
-  // --- Benchmark Logic ---
-  const handleGeneratePreview = async (artist: Artist, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!apiKey) {
-        notify('请先在编辑器或登录页填入 API Key', 'error');
-        return;
-    }
-    setGeneratingId(artist.id);
-    try {
-        const prompt = `artist:${artist.name}, 1girl, portrait, simple background, masterpiece, best quality`;
-        const negative = `lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry`;
-        
-        // Generate Image (Small size for preview)
-        const base64Img = await generateImage(apiKey, prompt, negative, {
-            width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: 0,
-            qualityToggle: true, ucPreset: 0
-        });
+  const saveConfig = () => {
+      localStorage.setItem('nai_benchmark_config', JSON.stringify(config));
+      setShowConfig(false);
+      notify('配置已保存');
+  };
 
-        // Update DB (Wait for API update)
-        // We use the same endpoint as creating artist, but we just need to update previewUrl
-        // Since we don't have a partial update endpoint easily, we pass everything
-        await api.post('/artists', {
-            id: artist.id,
-            name: artist.name,
-            imageUrl: artist.imageUrl,
-            previewUrl: base64Img // Backend handles upload to R2
-        });
+  // --- Queue Processor ---
+  useEffect(() => {
+      const processNext = async () => {
+          if (isProcessing || taskQueue.length === 0) return;
+          
+          const task = taskQueue[0];
+          setIsProcessing(true);
+          setCurrentTask(task);
 
-        notify(`已生成 ${artist.name} 的实测图`);
-        await onRefresh();
-    } catch (err: any) {
-        notify('生成失败: ' + err.message, 'error');
-    } finally {
-        setGeneratingId(null);
-    }
+          try {
+              // Actual generation Logic
+              const slotPrompt = config.prompts[task.slot] || config.prompts[0];
+              const prompt = `artist:${task.artist.name}, ${slotPrompt}`;
+              const negative = config.negative;
+              const seed = config.seed === -1 ? 0 : config.seed;
+
+              const base64Img = await generateImage(apiKey, prompt, negative, {
+                  width: 832, height: 1216, steps: config.steps, scale: config.scale, sampler: 'k_euler_ancestral', seed: seed,
+                  qualityToggle: true, ucPreset: 0
+              });
+
+              // Construct update payload
+              // We need the latest version of the artist to avoid overwriting parallel updates if any
+              // Ideally we fetch fresh, but for now we rely on the task object + previous updates?
+              // The `onRefresh` helps, but here we optimistically update based on what we have + new data.
+              
+              // Note: `task.artist` might be stale if multiple tasks for same artist run sequentially.
+              // We should fetch the current artist benchmarks from the cache props if possible, 
+              // but props are only updated onRefresh.
+              // A simple fix: Pass full benchmarks array. 
+              // Wait, we need to know the EXISTING benchmarks.
+              // Since we are in a component, we can try to find the up-to-date artist from `artistsData`.
+              
+              const freshArtist = artistsData?.find(a => a.id === task.artist.id) || task.artist;
+              const currentBenchmarks = freshArtist.benchmarks ? [...freshArtist.benchmarks] : (freshArtist.previewUrl ? [freshArtist.previewUrl] : []);
+              
+              // Pad array
+              while(currentBenchmarks.length <= task.slot) currentBenchmarks.push("");
+              currentBenchmarks[task.slot] = base64Img;
+
+              await api.post('/artists', {
+                  id: task.artist.id,
+                  name: task.artist.name,
+                  imageUrl: task.artist.imageUrl,
+                  benchmarks: currentBenchmarks
+              });
+
+              // Refresh UI
+              await onRefresh();
+
+          } catch (err: any) {
+              console.error(err);
+              notify(`生成失败 [${task.artist.name}]: ${err.message}`, 'error');
+          } finally {
+              // Remove done task and loop
+              setTaskQueue(prev => prev.slice(1));
+              setCurrentTask(null);
+              setIsProcessing(false);
+          }
+      };
+
+      processNext();
+  }, [taskQueue, isProcessing, apiKey, config, artistsData, onRefresh, notify]);
+
+
+  // Add tasks to queue
+  const queueGeneration = (artist: Artist, slots: number[], e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!apiKey) {
+          notify('请先在设置中配置 API Key', 'error');
+          setShowConfig(true);
+          return;
+      }
+
+      const newTasks = slots.map(s => ({
+          uniqueId: crypto.randomUUID(),
+          artist,
+          slot: s
+      }));
+
+      setTaskQueue(prev => [...prev, ...newTasks]);
+      notify(`已添加 ${newTasks.length} 个任务到队列`);
   };
 
   return (
@@ -322,8 +419,39 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                 </button>
             </div>
 
+            {/* Benchmark Sub-Toggles (Only show in benchmark mode) */}
+            {viewMode === 'benchmark' && (
+                <div className="flex bg-gray-100 dark:bg-gray-900 rounded-lg p-1 border border-gray-200 dark:border-gray-700 overflow-x-auto">
+                    {[
+                        { id: 0, label: '1. 面部' },
+                        { id: 1, label: '2. 体态' },
+                        { id: 2, label: '3. 场景' },
+                    ].map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveSlot(tab.id)}
+                            className={`px-3 py-1 rounded text-xs font-medium transition-all whitespace-nowrap ${activeSlot === tab.id ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300' : 'text-gray-500 dark:text-gray-400'}`}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                    <button 
+                        onClick={() => setShowConfig(true)}
+                        className="px-2 py-1 ml-1 rounded text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                        title="实装设置"
+                    >
+                        ⚙️
+                    </button>
+                </div>
+            )}
+
             {/* Settings Group */}
-            <div className="flex gap-2 items-center">
+            <div className="flex gap-2 items-center ml-auto">
+                {taskQueue.length > 0 && (
+                    <div className="text-xs font-mono text-indigo-500 animate-pulse bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded">
+                        Queue: {taskQueue.length}
+                    </div>
+                )}
                 <button 
                     onClick={() => setShowImport(true)} 
                     title="批量导入"
@@ -350,23 +478,6 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                     }`}
                 >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"></path></svg>
-                </button>
-            </div>
-
-            {/* Gacha Box */}
-            <div className="flex items-center gap-2 pl-4 border-l border-gray-300 dark:border-gray-600 ml-auto">
-                <input 
-                    type="number" 
-                    value={gachaCount} 
-                    onChange={e => setGachaCount(parseInt(e.target.value))} 
-                    min="1" max="50"
-                    className="w-10 h-8 text-center rounded border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-xs focus:outline-none focus:border-indigo-500"
-                />
-                <button 
-                    onClick={gacha}
-                    className="h-8 px-3 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md transition-transform active:scale-95 flex items-center gap-1"
-                >
-                    🎲 选
                 </button>
             </div>
         </div>
@@ -404,9 +515,28 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                  const currChar = getGroupChar(artist.name);
                  const isAnchor = currChar !== prevChar;
                  
-                 // Display Image Selection
-                 const displayImg = (viewMode === 'benchmark' && artist.previewUrl) ? artist.previewUrl : artist.imageUrl;
-                 const isBenchmarkMissing = viewMode === 'benchmark' && !artist.previewUrl;
+                 // Display Image Selection Logic
+                 let displayImg = artist.imageUrl;
+                 let isBenchmarkMissing = false;
+
+                 if (viewMode === 'benchmark') {
+                     // Check new benchmarks array first
+                     if (artist.benchmarks && artist.benchmarks[activeSlot]) {
+                         // Add random query param to bust cache if regenerating
+                         displayImg = artist.benchmarks[activeSlot] + `?t=${Date.now()}`;
+                     } 
+                     // Fallback to legacy previewUrl for Slot 0 ONLY
+                     else if (activeSlot === 0 && artist.previewUrl) {
+                         displayImg = artist.previewUrl + `?t=${Date.now()}`;
+                     } 
+                     else {
+                         isBenchmarkMissing = true;
+                     }
+                 }
+
+                 // Task status
+                 const isTaskPending = taskQueue.some(t => t.artist.id === artist.id);
+                 const isTaskRunning = currentTask?.artist.id === artist.id;
                  
                  return (
                      <div 
@@ -422,10 +552,21 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                              ) : (
                                 <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400">
                                     <span className="text-2xl mb-1">🤖</span>
-                                    <span className="text-[10px]">未实装</span>
+                                    <span className="text-[10px]">Slot {activeSlot + 1} Empty</span>
                                 </div>
                              )}
                              
+                             {/* Task Status Overlay */}
+                             {(isTaskPending || isTaskRunning) && (
+                                 <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center z-10">
+                                     {isTaskRunning ? (
+                                         <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-white"></div>
+                                     ) : (
+                                         <div className="text-white text-xs font-bold bg-indigo-500 px-2 py-1 rounded">Queue</div>
+                                     )}
+                                 </div>
+                             )}
+
                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors pointer-events-none" />
                              
                              {/* Actions Overlay */}
@@ -440,16 +581,26 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" /></svg>
                                  </button>
 
-                                 {/* Admin Benchmark Generation Button */}
+                                 {/* Admin Benchmark Generation Buttons */}
                                  {viewMode === 'benchmark' && apiKey && (
-                                     <button 
-                                        onClick={(e) => handleGeneratePreview(artist, e)}
-                                        disabled={generatingId === artist.id}
-                                        className={`p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm pointer-events-auto ${generatingId === artist.id ? 'animate-spin text-gray-400' : 'text-purple-600 hover:text-purple-500'}`}
-                                        title="生成实装图"
-                                     >
-                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                                     </button>
+                                     <>
+                                        {/* Generate Current Slot */}
+                                        <button 
+                                            onClick={(e) => queueGeneration(artist, [activeSlot], e)}
+                                            className="p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm pointer-events-auto text-purple-600 hover:text-purple-500"
+                                            title={`生成当前组 (Slot ${activeSlot + 1})`}
+                                        >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                                        </button>
+                                        {/* Generate ALL 3 Slots */}
+                                        <button 
+                                            onClick={(e) => queueGeneration(artist, [0, 1, 2], e)}
+                                            className="p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm pointer-events-auto text-green-600 hover:text-green-500"
+                                            title="一键生成 3 组实装图"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.933 12.8a1 1 0 000-1.6L6.6 7.2A1 1 0 005 8v8a1 1 0 001.6.8l5.333-4zM19.933 12.8a1 1 0 000-1.6l-5.333-4A1 1 0 0013 8v8a1 1 0 001.6.8l5.333-4z" /></svg>
+                                        </button>
+                                     </>
                                  )}
                              </div>
 
@@ -536,6 +687,97 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                   <div className="flex justify-end gap-3 mt-4">
                       <button onClick={() => setShowImport(false)} className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">取消</button>
                       <button onClick={handleImport} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold shadow-lg transition-colors">导入</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* --- Benchmark Config Modal --- */}
+      {showConfig && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+              <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-2xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[90vh]">
+                  <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+                      <h3 className="text-xl font-bold text-gray-900 dark:text-white">⚙️ 实装测试配置</h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">配置生成实装图时的参数。系统会自动添加 <code>artist:NAME</code>。</p>
+                  </div>
+                  
+                  <div className="p-6 overflow-y-auto space-y-6">
+                      {/* API Key Input */}
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1">NovelAI API Key (Bearer Token)</label>
+                          <input 
+                              type="password" 
+                              className="w-full p-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded text-sm dark:text-white font-mono"
+                              placeholder="pst-..."
+                              value={apiKey}
+                              onChange={e => handleApiKeyChange(e.target.value)}
+                          />
+                          <p className="text-[10px] text-gray-400 mt-1">Key 仅保存在浏览器本地，用于直接调用生成接口。</p>
+                      </div>
+
+                      <div className="space-y-4">
+                          {[
+                              { i: 0, label: "测试组 1: 面部 (Face, Hands)" },
+                              { i: 1, label: "测试组 2: 体态 (Torso, Skin)" },
+                              { i: 2, label: "测试组 3: 场景 (Scene, Full Body)" }
+                          ].map(g => (
+                              <div key={g.i}>
+                                  <label className="block text-xs font-bold text-indigo-600 dark:text-indigo-400 mb-1 uppercase">{g.label}</label>
+                                  <textarea 
+                                      className="w-full h-20 p-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded text-xs dark:text-white font-mono resize-none focus:ring-1 focus:ring-indigo-500 outline-none"
+                                      value={config.prompts[g.i]}
+                                      onChange={e => {
+                                          const newPrompts = [...config.prompts];
+                                          newPrompts[g.i] = e.target.value;
+                                          setConfig({...config, prompts: newPrompts});
+                                      }}
+                                  />
+                              </div>
+                          ))}
+                      </div>
+
+                      <div>
+                          <label className="block text-xs font-bold text-red-500 dark:text-red-400 mb-1 uppercase">通用负面 (Negative Prompt)</label>
+                          <textarea 
+                              className="w-full h-16 p-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded text-xs dark:text-white font-mono resize-none focus:ring-1 focus:ring-red-500 outline-none"
+                              value={config.negative}
+                              onChange={e => setConfig({...config, negative: e.target.value})}
+                          />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1">Seed (-1 = Random)</label>
+                              <input 
+                                  type="number" 
+                                  className="w-full p-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded text-sm dark:text-white"
+                                  value={config.seed}
+                                  onChange={e => setConfig({...config, seed: parseInt(e.target.value)})}
+                              />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1">Steps / Scale</label>
+                              <div className="flex gap-2">
+                                  <input 
+                                      type="number" placeholder="Steps"
+                                      className="w-1/2 p-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded text-sm dark:text-white"
+                                      value={config.steps}
+                                      onChange={e => setConfig({...config, steps: parseInt(e.target.value)})}
+                                  />
+                                  <input 
+                                      type="number" placeholder="Scale"
+                                      className="w-1/2 p-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded text-sm dark:text-white"
+                                      value={config.scale}
+                                      onChange={e => setConfig({...config, scale: parseFloat(e.target.value)})}
+                                  />
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+
+                  <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3 bg-gray-50 dark:bg-gray-900 rounded-b-xl">
+                      <button onClick={() => setShowConfig(false)} className="px-4 py-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white">取消</button>
+                      <button onClick={saveConfig} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded font-bold shadow-lg">保存配置</button>
                   </div>
               </div>
           </div>

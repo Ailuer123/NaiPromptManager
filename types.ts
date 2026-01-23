@@ -67,7 +67,8 @@ export interface Artist {
   id: string;
   name: string;
   imageUrl: string; // Original (Danbooru) image
-  previewUrl?: string; // New: AI Generated Benchmark image
+  previewUrl?: string; // Legacy: Single benchmark
+  benchmarks?: string[]; // New: Array of 3 benchmark images [Face, Body, Scene]
 }
 
 // Inspiration Gallery Types

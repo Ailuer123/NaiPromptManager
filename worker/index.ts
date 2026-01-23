@@ -246,6 +246,8 @@ export default {
 
       // NEW: Migration for Artist Benchmark Preview
       try { await db.prepare("ALTER TABLE artists ADD COLUMN preview_url TEXT").run(); } catch (e) {}
+      // NEW: Migration for Multi-Benchmarks (JSON Array)
+      try { await db.prepare("ALTER TABLE artists ADD COLUMN benchmarks TEXT DEFAULT '[]'").run(); } catch (e) {}
 
       // Create Default Admin if not exists
       try {
@@ -654,7 +656,8 @@ export default {
              id: a.id,
              name: a.name,
              imageUrl: a.image_url,
-             previewUrl: a.preview_url // Return benchmark image
+             previewUrl: a.preview_url, // Legacy
+             benchmarks: a.benchmarks ? JSON.parse(a.benchmarks) : [] // New
          })));
       }
       if (path === '/api/artists' && method === 'POST') {
@@ -662,38 +665,34 @@ export default {
         const body = await request.json() as any;
         const id = body.id || crypto.randomUUID();
 
-        // Handle Image Uploads
+        // Handle Image Uploads (Legacy cover)
         let imageUrl = body.imageUrl;
-        let previewUrl = body.previewUrl;
-
         if (imageUrl && imageUrl.startsWith('data:')) {
              imageUrl = await processImageUpload(env, imageUrl, 'artists', id);
         }
-        if (previewUrl && previewUrl.startsWith('data:')) {
-             previewUrl = await processImageUpload(env, previewUrl, 'artists/benchmarks', id);
+
+        // Handle Benchmarks Upload (Expects body.benchmarks as array of strings/dataURIs)
+        // If the client sends an update for a specific slot, they should send the full array with new data
+        // Or we handle specific update logic. Simpler to handle full array.
+        let benchmarks = body.benchmarks || [];
+        if (Array.isArray(benchmarks)) {
+            for (let i = 0; i < benchmarks.length; i++) {
+                if (benchmarks[i] && benchmarks[i].startsWith('data:')) {
+                    benchmarks[i] = await processImageUpload(env, benchmarks[i], `artists/benchmarks_${i}`, id);
+                }
+            }
         }
 
-        // Updated Query to support preview_url
-        // Using INSERT OR REPLACE allows partial updates to overwrite logic which is tricky if we want to update ONLY preview_url
-        // So we check if body has all fields, or assume it's a full update/insert.
-        // For partial updates, strictly speaking we should use UPDATE or COALESCE in SQL.
-        // Since the UI usually sends full object, we use COALESCE for optional fields if they are missing in payload but exist in DB?
-        // Simpler approach: INSERT OR REPLACE requires all columns.
-        
-        // We fetch existing to preserve values if not provided? 
-        // Or we rely on the frontend sending the complete Artist object.
-        // Let's assume frontend sends full object or we use COALESCE in SQL.
-        
         await db.prepare(`
-            INSERT INTO artists (id, name, image_url, preview_url) 
-            VALUES (?, ?, ?, ?)
+            INSERT INTO artists (id, name, image_url, benchmarks, preview_url) 
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 image_url = excluded.image_url,
-                preview_url = excluded.preview_url
-        `).bind(id, body.name, imageUrl, previewUrl).run();
+                benchmarks = excluded.benchmarks
+        `).bind(id, body.name, imageUrl, JSON.stringify(benchmarks), body.previewUrl).run();
 
-        return json({ success: true, previewUrl });
+        return json({ success: true, benchmarks });
       }
       if (path.startsWith('/api/artists/') && method === 'DELETE') {
         if (currentUser.role !== 'admin') return error('Forbidden', 403);
