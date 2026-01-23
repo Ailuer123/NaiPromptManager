@@ -154,7 +154,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
 
   const addToHistory = (text: string) => {
     const newEntry = { text, time: new Date().toLocaleTimeString() };
-    const newHistory = [newEntry, ...history.filter(h => h.text !== text)].slice(0, 30);
+    const newHistory = [newEntry, ...history.filter(h => h.text !== text)].slice(30);
     setHistory(newHistory);
     localStorage.setItem('nai_copy_history', JSON.stringify(newHistory));
   };
@@ -541,7 +541,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                         className={`group relative bg-white dark:bg-gray-800 rounded-xl overflow-hidden border transition-all cursor-pointer shadow-sm hover:shadow-lg ${isSelected ? 'border-red-500 dark:border-red-500 ring-1 ring-red-500' : 'border-gray-200 dark:border-gray-700 hover:border-indigo-500 dark:hover:border-indigo-500'}`}
                         onClick={() => toggleCart(artist.name)}
                      >
-                         <div className="aspect-square relative overflow-hidden bg-gray-200 dark:bg-gray-900">
+                         <div className="aspect-[2/3] relative overflow-hidden bg-gray-200 dark:bg-gray-900">
                              {/* Use Custom Lazy Image */}
                              {!isBenchmarkMissing ? (
                                 <LazyImage src={displayImg} alt={artist.name} />
