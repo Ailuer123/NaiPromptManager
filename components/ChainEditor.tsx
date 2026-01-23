@@ -1,11 +1,13 @@
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { PromptChain, PromptModule, User, CharacterParams } from '../types';
 import { compilePrompt } from '../services/promptUtils';
 import { generateImage } from '../services/naiService';
 import { localHistory } from '../services/localHistory';
 import { api } from '../services/api';
 import { extractMetadata } from '../services/metadataService';
+import { ChainEditorParams } from './ChainEditorParams';
+import { ChainEditorPreview } from './ChainEditorPreview';
 
 interface ChainEditorProps {
   chain: PromptChain;
@@ -16,12 +18,6 @@ interface ChainEditorProps {
   setIsDirty: (isDirty: boolean) => void;
   notify: (msg: string, type?: 'success' | 'error') => void;
 }
-
-const RESOLUTIONS = {
-  Portrait: { width: 832, height: 1216, label: "竖屏 (832x1216)" },
-  Landscape: { width: 1216, height: 832, label: "横屏 (1216x832)" },
-  Square: { width: 1024, height: 1024, label: "方形 (1024x1024)" },
-};
 
 export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, onUpdateChain, onBack, onFork, setIsDirty, notify }) => {
   // Permission Check
@@ -64,7 +60,6 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
   const [isUploading, setIsUploading] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   
   // --- Initialization ---
@@ -163,25 +158,6 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
     markChange();
   };
 
-  const handleResolutionChange = (mode: string) => {
-    if (!canEdit && mode !== 'Custom') return;
-    if (canEdit) {
-        if (mode === 'Custom') return;
-        const res = RESOLUTIONS[mode as keyof typeof RESOLUTIONS];
-        setParams({ ...params, width: res.width, height: res.height });
-        markChange();
-    }
-  };
-
-  const getCurrentResolutionMode = () => {
-    const w = params.width;
-    const h = params.height;
-    if (w === 832 && h === 1216) return 'Portrait';
-    if (w === 1216 && h === 832) return 'Landscape';
-    if (w === 1024 && h === 1024) return 'Square';
-    return '';
-  };
-
   // --- Character Handlers ---
   const addCharacter = () => {
       if (!canEdit) return;
@@ -221,38 +197,29 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
       if (!confirm('是否用该图片的参数覆盖当前 Base Prompt、Negative Prompt 和参数设置？\n(Subject 和 模块不会被修改)')) return;
 
       try {
-          // Attempt to parse standard NAI text format first
           let prompt = rawMeta;
           let negative = '';
           let newParams: any = { ...params };
 
-          // 1. Try JSON parse (metadata is JSON in the provided format)
           if (rawMeta.trim().startsWith('{')) {
               try {
                   const json = JSON.parse(rawMeta);
-                  
-                  // Basic Mapping
                   if (json.prompt) prompt = json.prompt;
                   if (json.uc) negative = json.uc; 
                   if (json.steps) newParams.steps = json.steps;
                   if (json.scale) newParams.scale = json.scale;
                   if (json.seed) newParams.seed = json.seed;
                   if (json.sampler) newParams.sampler = json.sampler;
-                  
                   if (json.width) newParams.width = json.width;
                   if (json.height) newParams.height = json.height;
-
-                  // V4.5 Fields Mapping
                   if (json.qualityToggle !== undefined) newParams.qualityToggle = json.qualityToggle;
                   if (json.ucPreset !== undefined) newParams.ucPreset = json.ucPreset;
                   
-                  // V4 Prompt (Characters)
                   if (json.v4_prompt) {
                       const v4 = json.v4_prompt;
                       if (v4.caption?.base_caption) {
                           prompt = v4.caption.base_caption;
                       }
-                      // Reset characters and map from V4
                       newParams.characters = [];
                       if (v4.caption?.char_captions && Array.isArray(v4.caption.char_captions)) {
                           newParams.characters = v4.caption.char_captions.map((cc: any) => ({
@@ -263,20 +230,12 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                           }));
                       }
                   } else {
-                      // If it's a JSON import but no v4_prompt, it's likely V3/Legacy.
-                      // We should reset characters to avoid mixing styles.
                       newParams.characters = [];
                   }
-
-              } catch(e) {
-                  console.error("JSON parse error despite starting with {", e);
-                  // Fallback to text parsing if JSON parse fails
-              }
+              } catch(e) { console.error(e); }
           } else {
-              // Not JSON, fall back to legacy text parsing
               const negIndex = rawMeta.indexOf('Negative prompt:');
               const stepsIndex = rawMeta.indexOf('Steps:');
-
               if (stepsIndex !== -1) {
                   const paramStr = rawMeta.substring(stepsIndex);
                   const getVal = (key: string) => {
@@ -284,13 +243,11 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                       const match = paramStr.match(regex);
                       return match ? match[1].trim() : null;
                   };
-
                   const steps = getVal('Steps');
                   const sampler = getVal('Sampler');
                   const scale = getVal('CFG scale');
                   const seed = getVal('Seed');
                   const size = getVal('Size');
-
                   if (steps) newParams.steps = parseInt(steps);
                   if (sampler) newParams.sampler = sampler.toLowerCase().replace(/ /g, '_');
                   if (scale) newParams.scale = parseFloat(scale);
@@ -300,8 +257,6 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                       newParams.width = w;
                       newParams.height = h;
                   }
-                  
-                  const endOfPrompts = stepsIndex;
                   if (negIndex !== -1 && negIndex < stepsIndex) {
                       prompt = rawMeta.substring(0, negIndex).trim();
                       negative = rawMeta.substring(negIndex + 16, stepsIndex).trim();
@@ -309,7 +264,6 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                       prompt = rawMeta.substring(0, stepsIndex).trim();
                   }
               }
-              // Text import implies legacy format, clear characters
               newParams.characters = [];
           }
 
@@ -321,22 +275,17 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
       } catch (e: any) {
           notify('解析失败: ' + e.message, 'error');
       }
-      
-      // Reset input
       if (importInputRef.current) importInputRef.current.value = '';
   };
 
 
   const handleSaveAll = () => {
       if (!isOwner) return;
-      
       const updatedModules = modules.map(m => ({
           ...m,
           isActive: activeModules[m.id] ?? true
       }));
-
       const varValues = { 'subject': subjectPrompt };
-
       onUpdateChain(chain.id, {
           name: chainName,
           description: chainDesc,
@@ -356,7 +305,6 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
           ...m,
           isActive: activeModules[m.id] ?? true
       }));
-
       onFork({
           ...chain,
           basePrompt,
@@ -384,13 +332,9 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
     setErrorMsg(null);
     try {
         const activeParams = { ...params };
-        // 0 means random, but for generateImage we pass it as is (logic handled in service)
-        
         const img = await generateImage(apiKey, finalPrompt, negativePrompt, activeParams);
         setGeneratedImage(img);
-        
         await localHistory.add(img, finalPrompt, activeParams);
-        
     } catch (e: any) {
         setErrorMsg(e.message);
         notify(e.message, 'error');
@@ -407,7 +351,6 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
             const res = await fetch(generatedImage);
             const blob = await res.blob();
             const file = new File([blob], getDownloadFilename(), { type: 'image/png' });
-
             const uploadRes = await api.uploadFile(file, 'covers');
             await onUpdateChain(chain.id, { previewImage: uploadRes.url });
             notify('封面已更新 (刷新列表查看效果)');
@@ -423,7 +366,6 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
       if (!isOwner) return;
       const file = e.target.files?.[0];
       if (!file) return;
-
       if(confirm('您确定要上传新封面吗？\n\n警告：此操作将永久删除旧的封面图文件。')) {
           setIsUploading(true);
           try {
@@ -435,8 +377,6 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
           } finally {
               setIsUploading(false);
           }
-      } else {
-          if (fileInputRef.current) fileInputRef.current.value = '';
       }
   };
 
@@ -697,97 +637,13 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                     />
                   </section>
 
-                  {/* Params */}
-                  <section className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                     <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">参数设置</h3>
-                     
-                     {/* V4.5 Quality & Preset */}
-                     <div className="grid grid-cols-2 gap-4 mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
-                         <div className="flex items-center gap-2">
-                             <input 
-                                type="checkbox" 
-                                id="qualityToggle"
-                                disabled={!canEdit}
-                                checked={params.qualityToggle ?? true}
-                                onChange={(e) => {
-                                    setParams({ ...params, qualityToggle: e.target.checked });
-                                    markChange();
-                                }}
-                                className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
-                             />
-                             <label htmlFor="qualityToggle" className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer select-none">
-                                 Quality Tags (Auto)
-                             </label>
-                         </div>
-                         <div>
-                             <label className="text-xs text-gray-500 dark:text-gray-500 block mb-1">负面预设 (UC Preset)</label>
-                             <select 
-                                disabled={!canEdit}
-                                className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm"
-                                value={params.ucPreset ?? 0}
-                                onChange={(e) => {
-                                    setParams({ ...params, ucPreset: parseInt(e.target.value) });
-                                    markChange();
-                                }}
-                             >
-                                 <option value={0}>Heavy (Default)</option>
-                                 <option value={1}>Light</option>
-                                 <option value={2}>None</option>
-                             </select>
-                         </div>
-                     </div>
-
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                         <div>
-                             <label className="text-xs text-gray-500 dark:text-gray-500 block mb-1">图片尺寸</label>
-                             <select 
-                                  disabled={!canEdit}
-                                  className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm"
-                                  value={getCurrentResolutionMode()}
-                                  onChange={(e) => handleResolutionChange(e.target.value)}
-                               >
-                                  {Object.entries(RESOLUTIONS).map(([key, val]) => (
-                                      <option key={key} value={key}>{val.label}</option>
-                                  ))}
-                               </select>
-                         </div>
-                         <div className="flex gap-2">
-                             <div className="flex-1">
-                                 <label className="text-xs text-gray-500 dark:text-gray-500 block mb-1">Steps (Max 28)</label>
-                                 <input type="number" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm" 
-                                    value={params.steps} 
-                                    max={28}
-                                    onChange={(e) => {
-                                        const val = Math.min(28, parseInt(e.target.value) || 0);
-                                        setParams({...params, steps: val}); 
-                                        markChange();
-                                    }}
-                                 />
-                             </div>
-                             <div className="flex-1">
-                                 <label className="text-xs text-gray-500 dark:text-gray-500 block mb-1">Scale</label>
-                                 <input type="number" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm" 
-                                    value={params.scale} 
-                                    onChange={(e) => {setParams({...params, scale: parseFloat(e.target.value)}); markChange();}}
-                                 />
-                             </div>
-                             {/* Seed Input */}
-                             <div className="flex-1">
-                                 <label className="text-xs text-gray-500 dark:text-gray-500 block mb-1">Seed (0随机)</label>
-                                 <input 
-                                    type="text" 
-                                    className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm" 
-                                    value={params.seed ?? 0} 
-                                    onChange={(e) => {
-                                        const val = parseInt(e.target.value);
-                                        setParams({...params, seed: isNaN(val) ? 0 : val}); 
-                                        markChange();
-                                    }}
-                                 />
-                             </div>
-                         </div>
-                     </div>
-                  </section>
+                  {/* Params Component */}
+                  <ChainEditorParams 
+                      params={params}
+                      setParams={setParams}
+                      canEdit={canEdit}
+                      markChange={markChange}
+                  />
               </div>
 
               {/* Sticky Footer for Save Actions - ONLY FOR OWNER */}
@@ -811,87 +667,22 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
               )}
           </div>
 
-          {/* Right Panel - Preview (Testing) - Order 1 on mobile (top) */}
-          <div className="w-full lg:w-1/2 flex flex-col bg-gray-100 dark:bg-black/20 order-1 lg:order-2 border-b lg:border-b-0 border-gray-200 dark:border-gray-800 shrink-0">
-              <div className="flex-1 flex flex-col p-4 md:p-6 overflow-hidden min-h-[400px]">
-                  {/* Subject / Variable Input */}
-                  <div className="mb-4 bg-white dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-800">
-                      <h3 className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-2">3. 主体 / 变量提示词 (Subject)</h3>
-                      <p className="text-[10px] text-gray-400 mb-2">此处内容将作为整体描述插入，或作为 Base Caption 的补充。</p>
-                      <textarea
-                          className="w-full h-24 md:h-32 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-3 text-sm outline-none focus:border-indigo-500 font-mono resize-none"
-                          placeholder="例如：1girl, solo, white dress, sitting..."
-                          value={subjectPrompt}
-                          onChange={(e) => {
-                             setSubjectPrompt(e.target.value);
-                             markChange();
-                          }}
-                      />
-                  </div>
-
-                  {/* Generated Image */}
-                  <button
-                      onClick={handleGenerate}
-                      disabled={isGenerating}
-                      className={`w-full py-3 rounded-lg font-bold text-white shadow-lg transition-all mb-4 flex-shrink-0 ${
-                          isGenerating ? 'bg-gray-400 cursor-wait' : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500'
-                      }`}
-                      >
-                      {isGenerating ? '生成中...' : '生成预览 (自动保存历史)'}
-                  </button>
-                  {errorMsg && <div className="text-red-500 text-xs mb-2 text-center">{errorMsg}</div>}
-                  
-                  <div 
-                      className="flex-1 min-h-[300px] lg:min-h-0 bg-white dark:bg-gray-950/50 rounded-xl border border-gray-200 dark:border-gray-800 flex items-center justify-center relative group overflow-hidden cursor-zoom-in"
-                      onClick={() => {
-                        const img = generatedImage || chain.previewImage;
-                        if(img) setLightboxImg(img);
-                      }}
-                   >
-                      {generatedImage ? (
-                          <>
-                            <img src={generatedImage} alt="Generated" className="max-w-full max-h-full object-contain shadow-2xl" />
-                            <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                                <a href={generatedImage} download={getDownloadFilename()} className="bg-black/70 text-white px-3 py-1.5 rounded text-xs">下载</a>
-                                {isOwner && <button onClick={(e) => { e.stopPropagation(); handleSavePreview(); }} disabled={isUploading} className="bg-indigo-600/90 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1">{isUploading ? '上传中...' : '设为封面'}</button>}
-                            </div>
-                          </>
-                      ) : (
-                          chain.previewImage ? (
-                                <>
-                                    <img src={chain.previewImage} alt="Cover" className="max-w-full max-h-full object-contain shadow-2xl opacity-50 grayscale hover:grayscale-0 transition-all duration-500" />
-                                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                        <span className="bg-black/50 text-white px-3 py-1 rounded text-xs">当前封面</span>
-                                    </div>
-                                    <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                                         <a href={chain.previewImage} download={getDownloadFilename()} className="bg-black/70 text-white px-3 py-1.5 rounded text-xs text-center cursor-pointer pointer-events-auto">下载封面</a>
-                                    </div>
-                                </>
-                          ) : <div className="text-gray-400 text-xs">预览区</div>
-                      )}
-                      
-                      {/* Manual Upload Cover Button */}
-                      {isOwner && (
-                         <div className="absolute bottom-4 right-4 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                             <input 
-                                type="file" 
-                                ref={fileInputRef}
-                                className="hidden" 
-                                accept="image/*" 
-                                onChange={handleUploadCover}
-                             />
-                             <button 
-                                onClick={() => fileInputRef.current?.click()}
-                                disabled={isUploading}
-                                className="bg-gray-800/80 hover:bg-gray-700 text-white px-3 py-1.5 rounded text-xs shadow-lg backdrop-blur"
-                             >
-                                 {isUploading ? '上传中...' : '手动上传'}
-                             </button>
-                         </div>
-                      )}
-                  </div>
-              </div>
-          </div>
+          {/* Right Panel - Preview (Testing) - Extracted Component */}
+          <ChainEditorPreview
+              subjectPrompt={subjectPrompt}
+              setSubjectPrompt={(s) => { setSubjectPrompt(s); markChange(); }}
+              isGenerating={isGenerating}
+              handleGenerate={handleGenerate}
+              errorMsg={errorMsg}
+              generatedImage={generatedImage}
+              previewImage={chain.previewImage}
+              setLightboxImg={setLightboxImg}
+              isOwner={isOwner}
+              isUploading={isUploading}
+              handleSavePreview={handleSavePreview}
+              handleUploadCover={handleUploadCover}
+              getDownloadFilename={getDownloadFilename}
+          />
       </div>
 
       {/* Lightbox Modal */}

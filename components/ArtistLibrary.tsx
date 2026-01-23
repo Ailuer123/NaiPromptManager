@@ -4,6 +4,8 @@ import { Artist } from '../types';
 import { generateImage } from '../services/naiService'; // Import generation service
 import { api } from '../services/api'; // Import api for updating
 import { db } from '../services/dbService'; // Import DB to fetch config
+import { ArtistLibraryConfig } from './ArtistLibraryConfig';
+import { ArtistLibraryCart } from './ArtistLibraryCart';
 
 interface CartItem {
   name: string;
@@ -132,8 +134,12 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
   
   // Layout State
   const [layoutMode, setLayoutMode] = useState<'grid' | 'list'>('grid');
-  // Grid Size Slider (px) - Default to ~160px (mobile friendly min)
-  const [minGridSize, setMinGridSize] = useState(160);
+  
+  // View Settings
+  // Grid: Columns (3-15)
+  const [gridCols, setGridCols] = useState(6);
+  // List: Image Width (px)
+  const [listImgWidth, setListImgWidth] = useState(128);
 
   // Benchmark / Preview Mode State
   const [viewMode, setViewMode] = useState<'original' | 'benchmark'>('original');
@@ -143,10 +149,6 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
   const [showConfig, setShowConfig] = useState(false);
   const [config, setConfig] = useState<BenchmarkConfig>(DEFAULT_BENCHMARK_CONFIG);
   
-  // -- Config Editor State (Draft Mode) --
-  const [draftConfig, setDraftConfig] = useState<BenchmarkConfig>(DEFAULT_BENCHMARK_CONFIG);
-  const [slotToDelete, setSlotToDelete] = useState<number | null>(null); // For deletion confirmation
-
   const [apiKey, setApiKey] = useState('');
 
   // Queue System
@@ -337,64 +339,31 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
     }
   };
 
-  // --- Config Modal Logic (Refactored to Draft Mode) ---
-  
-  const openConfig = () => {
-      setDraftConfig(JSON.parse(JSON.stringify(config))); // Deep copy active config to draft
-      setShowConfig(true);
-  };
-
-  const saveConfig = async () => {
+  // --- Config Modal Logic (Refactored to separate component) ---
+  const saveConfig = async (newConfig: BenchmarkConfig) => {
       // Basic validation
-      if (draftConfig.slots.length === 0) {
+      if (newConfig.slots.length === 0) {
           notify('至少需要一个测试分组', 'error');
           return;
       }
       // Apply Draft to Real Config & Save to Server
-      setConfig(draftConfig);
+      setConfig(newConfig);
       
       try {
-          await db.saveBenchmarkConfig(draftConfig);
+          await db.saveBenchmarkConfig(newConfig);
           notify('配置已保存 (同步至云端)');
       } catch (e) {
           console.error(e);
           notify('保存失败，仅本地生效', 'error');
-          localStorage.setItem('nai_benchmark_config', JSON.stringify(draftConfig)); // Fallback
+          localStorage.setItem('nai_benchmark_config', JSON.stringify(newConfig)); // Fallback
       }
       
       // Safety: if active slot was deleted, reset to 0
-      if (activeSlot >= draftConfig.slots.length) {
+      if (activeSlot >= newConfig.slots.length) {
           setActiveSlot(0);
       }
       
       setShowConfig(false);
-  };
-
-  // Helper Functions operate on DRAFT config now
-  const updateSlot = (index: number, field: keyof BenchmarkSlot, value: string) => {
-      const newSlots = [...draftConfig.slots];
-      newSlots[index] = { ...newSlots[index], [field]: value };
-      setDraftConfig({ ...draftConfig, slots: newSlots });
-  };
-
-  const addSlot = () => {
-      setDraftConfig({
-          ...draftConfig,
-          slots: [...draftConfig.slots, { label: `分组 ${draftConfig.slots.length + 1}`, prompt: "" }]
-      });
-  };
-
-  // Trigger Confirmation instead of direct delete
-  const handleDeleteClick = (index: number) => {
-      setSlotToDelete(index);
-  };
-
-  // Actual Delete Logic
-  const confirmDeleteSlot = () => {
-      if (slotToDelete === null) return;
-      const newSlots = draftConfig.slots.filter((_, i) => i !== slotToDelete);
-      setDraftConfig({ ...draftConfig, slots: newSlots });
-      setSlotToDelete(null); // Close confirmation
   };
 
   // Helper Log
@@ -496,7 +465,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
       e.stopPropagation();
       if (!apiKey) {
           notify('请先在设置中配置 API Key', 'error');
-          openConfig(); // Use new opener
+          setShowConfig(true); // Open config modal
           return;
       }
 
@@ -540,7 +509,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                     className={`p-1.5 rounded transition-all ${layoutMode === 'grid' ? 'bg-white dark:bg-gray-700 shadow text-indigo-600 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
                     title="网格视图"
                 >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
                 </button>
                 <button
                     onClick={() => setLayoutMode('list')}
@@ -551,20 +520,31 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                 </button>
             </div>
 
-            {/* Slider for Grid Size */}
-            {layoutMode === 'grid' && (
-                <div className="flex items-center gap-2 flex-1 md:flex-none md:w-32 px-2">
-                    <span className="text-xs text-gray-400">🔍</span>
+            {/* Slider for Grid/List */}
+            <div className="flex items-center gap-2 flex-1 md:flex-none md:w-36 px-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800">
+                <span className="text-xs text-gray-400 font-mono">
+                    {layoutMode === 'grid' ? `列:${gridCols}` : `宽:${listImgWidth}`}
+                </span>
+                {layoutMode === 'grid' ? (
                     <input 
                         type="range" 
-                        min="100" max="300" step="10"
-                        value={minGridSize} 
-                        onChange={(e) => setMinGridSize(parseInt(e.target.value))}
-                        className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-                        title="调整图片大小"
+                        min="3" max="15" step="1"
+                        value={gridCols} 
+                        onChange={(e) => setGridCols(parseInt(e.target.value))}
+                        className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-indigo-500"
+                        title="调整每行显示的列数 (3-15)"
                     />
-                </div>
-            )}
+                ) : (
+                    <input 
+                        type="range" 
+                        min="80" max="300" step="10"
+                        value={listImgWidth} 
+                        onChange={(e) => setListImgWidth(parseInt(e.target.value))}
+                        className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-indigo-500"
+                        title="调整实装图宽度 (80-300px)"
+                    />
+                )}
+            </div>
 
             {/* Search */}
             <div className="flex-1 relative">
@@ -601,7 +581,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
             {/* Config & Slots (Show Config button always, Slots only in Grid-Benchmark mode) */}
             <div className="flex items-center gap-2 overflow-x-auto max-w-full">
                 <button 
-                    onClick={openConfig} 
+                    onClick={() => setShowConfig(true)} 
                     className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex-shrink-0"
                     title="配置分组"
                 >
@@ -708,10 +688,10 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
          )}
          
          {layoutMode === 'grid' ? (
-             /* --- GRID LAYOUT (Dynamic Columns using minmax) --- */
+             /* --- GRID LAYOUT (Dynamic Columns using gridCols) --- */
              <div 
                 className="grid gap-2 md:gap-4 md:pr-6 transition-all" 
-                style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${minGridSize}px, 1fr))` }}
+                style={{ gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}
              > 
                  {filteredArtists.map((artist, idx) => {
                      const isSelected = !!cart.find(c => c.name === artist.name);
@@ -868,7 +848,10 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                              {/* Horizontal Scroll/Shrink Container */}
                              <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar flex-nowrap items-stretch">
                                  {/* 1. Original Image */}
-                                 <div className="flex flex-col gap-1 flex-shrink-0 min-w-[100px] w-32 lg:w-40 group relative">
+                                 <div 
+                                    className="flex flex-col gap-1 flex-shrink-0 group relative transition-all"
+                                    style={{ width: `${listImgWidth}px` }}
+                                 >
                                      <div className="aspect-[2/3] rounded-lg overflow-hidden relative cursor-zoom-in" onClick={() => setLightboxImg({src: artist.imageUrl, name: artist.name})}>
                                          <LazyImage src={artist.imageUrl} alt="原图" />
                                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
@@ -887,7 +870,11 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                                      const displayImg = img || (i === 0 ? artist.previewUrl : null);
 
                                      return (
-                                         <div key={i} className="flex flex-col gap-1 flex-shrink-0 min-w-[100px] w-32 lg:w-40 group relative">
+                                         <div 
+                                            key={i} 
+                                            className="flex flex-col gap-1 flex-shrink-0 group relative transition-all"
+                                            style={{ width: `${listImgWidth}px` }}
+                                         >
                                              <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-900 rounded-lg overflow-hidden relative border border-gray-200 dark:border-gray-700">
                                                  {displayImg ? (
                                                      <div className="w-full h-full cursor-zoom-in" onClick={() => setLightboxImg({src: displayImg, name: `${artist.name} - ${slot.label}`})}>
@@ -937,30 +924,15 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
          )}
       </div>
 
-      {/* ... (Rest of the component remains unchanged) ... */}
-      
-      {/* --- Cart Bar --- */}
-      <div className={`absolute bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-950/95 backdrop-blur border-t border-gray-200 dark:border-gray-800 transition-transform duration-300 transform shadow-[0_-5px_20px_rgba(0,0,0,0.1)] z-30 ${cart.length > 0 ? 'translate-y-0' : 'translate-y-full'}`}>
-          <div className="p-4 max-w-6xl mx-auto flex flex-col md:flex-row gap-4 items-center">
-              <div className="flex-1 overflow-x-auto flex gap-2 pb-2 md:pb-0 w-full no-scrollbar">
-                  {cart.map((item, idx) => (
-                      <div key={item.name} className="flex items-center bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 flex-shrink-0 text-sm shadow-sm select-none">
-                          <button onClick={() => updateWeight(idx, -1)} className="text-gray-500 hover:text-gray-900 dark:hover:text-white px-1 font-mono font-bold">-</button>
-                          <span className="mx-1 font-mono text-indigo-600 dark:text-indigo-300 font-medium">{formatTag(item)}</span>
-                          <button onClick={() => updateWeight(idx, 1)} className="text-gray-500 hover:text-gray-900 dark:hover:text-white px-1 font-mono font-bold">+</button>
-                          <button onClick={() => toggleCart(item.name)} className="ml-2 text-red-500 hover:text-red-700 border-l border-gray-300 dark:border-gray-600 pl-2">×</button>
-                      </div>
-                  ))}
-              </div>
-              <div className="flex gap-2 flex-shrink-0 items-center w-full md:w-auto justify-between md:justify-end">
-                  <div className="text-sm text-gray-500 dark:text-gray-400 mr-2">已选 <span className="font-bold text-gray-900 dark:text-white">{cart.length}</span></div>
-                  <div className="flex gap-2">
-                    <button onClick={() => setCart([])} className="px-4 py-2 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm font-bold transition-colors">清空</button>
-                    <button onClick={copyCart} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-sm font-bold shadow-lg shadow-indigo-500/20 transition-colors">复制</button>
-                  </div>
-              </div>
-          </div>
-      </div>
+      {/* --- Cart Bar (Refactored) --- */}
+      <ArtistLibraryCart 
+          cart={cart}
+          setCart={setCart}
+          updateWeight={updateWeight}
+          toggleCart={toggleCart}
+          copyCart={copyCart}
+          formatTag={formatTag}
+      />
 
       {/* --- Lightbox --- */}
       {lightboxImg && (
@@ -1049,143 +1021,16 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
           </div>
       )}
 
-      {/* --- Benchmark Config Modal --- */}
-      {showConfig && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-              <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-2xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[90vh] relative">
-                  
-                  {/* Delete Confirmation Overlay */}
-                  {slotToDelete !== null && (
-                      <div className="absolute inset-0 z-50 bg-white/80 dark:bg-black/80 backdrop-blur flex items-center justify-center rounded-xl p-4">
-                          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 max-w-sm text-center">
-                              <h4 className="text-lg font-bold text-red-600 dark:text-red-400 mb-2">确认删除此分组？</h4>
-                              <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-                                  删除第 {slotToDelete + 1} 组 ({draftConfig.slots[slotToDelete]?.label}) 会导致后续分组序号前移，可能会使已生成的实装图错位。
-                              </p>
-                              <div className="flex gap-3 justify-center">
-                                  <button onClick={() => setSlotToDelete(null)} className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors">取消</button>
-                                  <button onClick={confirmDeleteSlot} className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded font-bold shadow-lg transition-colors">确认删除</button>
-                              </div>
-                          </div>
-                      </div>
-                  )}
-
-                  <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                      <div className="flex justify-between items-center">
-                        <h3 className="text-xl font-bold text-gray-900 dark:text-white">⚙️ 实装测试配置</h3>
-                        <span className="text-xs bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 px-2 py-0.5 rounded">编辑模式</span>
-                      </div>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">配置生成实装图时的参数。系统会自动添加 <code>artist:NAME</code>。</p>
-                  </div>
-                  
-                  <div className="p-6 overflow-y-auto space-y-6">
-                      {/* API Key Input */}
-                      <div>
-                          <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1">NovelAI API Key (Bearer Token)</label>
-                          <input 
-                              type="password" 
-                              className="w-full p-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded text-sm dark:text-white font-mono"
-                              placeholder="pst-..."
-                              value={apiKey}
-                              onChange={e => handleApiKeyChange(e.target.value)}
-                          />
-                          <p className="text-[10px] text-gray-400 mt-1">Key 仅保存在浏览器本地，用于直接调用生成接口。</p>
-                      </div>
-
-                      <div className="space-y-4">
-                          <div className="flex justify-between items-center">
-                              <label className="block text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase">测试分组 (Slots)</label>
-                              <button onClick={addSlot} className="text-xs bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 px-2 py-1 rounded hover:bg-indigo-200 dark:hover:bg-indigo-800">
-                                  + 添加分组
-                              </button>
-                          </div>
-                          
-                          {draftConfig.slots.map((slot, i) => (
-                              <div key={i} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-900/50 relative group/slot">
-                                  <div className="flex justify-between mb-2 gap-2">
-                                      <div className="flex items-center gap-2 flex-1">
-                                          <span className="text-xs font-mono text-gray-400 w-4">{i + 1}.</span>
-                                          <input 
-                                              type="text"
-                                              className="text-xs font-bold bg-transparent border-b border-transparent hover:border-gray-300 focus:border-indigo-500 outline-none dark:text-white transition-colors w-full"
-                                              value={slot.label}
-                                              onChange={e => updateSlot(i, 'label', e.target.value)}
-                                              placeholder="分组名称"
-                                          />
-                                      </div>
-                                      <button 
-                                          onClick={() => handleDeleteClick(i)} // Trigger confirm modal
-                                          className="text-gray-400 hover:text-red-500 text-xs px-2"
-                                          title="删除此分组"
-                                      >
-                                          删除
-                                      </button>
-                                  </div>
-                                  <textarea 
-                                      className="w-full h-16 p-2 bg-white dark:bg-gray-950 border border-gray-300 dark:border-gray-600 rounded text-xs dark:text-white font-mono resize-none focus:ring-1 focus:ring-indigo-500 outline-none"
-                                      value={slot.prompt}
-                                      onChange={e => updateSlot(i, 'prompt', e.target.value)}
-                                      placeholder="输入测试 Prompt..."
-                                  />
-                              </div>
-                          ))}
-                      </div>
-
-                      <div>
-                          <label className="block text-xs font-bold text-red-500 dark:text-red-400 mb-1 uppercase">通用负面 (Negative Prompt)</label>
-                          <textarea 
-                              className="w-full h-16 p-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded text-xs dark:text-white font-mono resize-none focus:ring-1 focus:ring-red-500 outline-none"
-                              value={draftConfig.negative}
-                              onChange={e => setDraftConfig({...draftConfig, negative: e.target.value})}
-                          />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1">Seed (-1 = Random)</label>
-                              <div className="flex gap-2">
-                                <input 
-                                    type="number" 
-                                    className="w-full p-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded text-sm dark:text-white"
-                                    value={draftConfig.seed}
-                                    onChange={e => setDraftConfig({...draftConfig, seed: parseInt(e.target.value)})}
-                                />
-                                <button
-                                    onClick={() => setDraftConfig({...draftConfig, seed: Math.floor(Math.random() * 4294967295)})}
-                                    className="px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 flex items-center justify-center"
-                                    title="随机生成一个固定 Seed"
-                                >
-                                    🎲
-                                </button>
-                              </div>
-                          </div>
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1">Steps / Scale</label>
-                              <div className="flex gap-2">
-                                  <input 
-                                      type="number" placeholder="Steps"
-                                      className="w-1/2 p-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded text-sm dark:text-white"
-                                      value={draftConfig.steps}
-                                      onChange={e => setDraftConfig({...draftConfig, steps: parseInt(e.target.value)})}
-                                  />
-                                  <input 
-                                      type="number" placeholder="Scale"
-                                      className="w-1/2 p-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded text-sm dark:text-white"
-                                      value={draftConfig.scale}
-                                      onChange={e => setDraftConfig({...draftConfig, scale: parseFloat(e.target.value)})}
-                                  />
-                              </div>
-                          </div>
-                      </div>
-                  </div>
-
-                  <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3 bg-gray-50 dark:bg-gray-900 rounded-b-xl">
-                      <button onClick={() => setShowConfig(false)} className="px-4 py-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white">取消</button>
-                      <button onClick={saveConfig} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded font-bold shadow-lg">保存配置</button>
-                  </div>
-              </div>
-          </div>
-      )}
+      {/* --- Benchmark Config Modal (Refactored) --- */}
+      <ArtistLibraryConfig
+          show={showConfig}
+          onClose={() => setShowConfig(false)}
+          onSave={saveConfig}
+          initialConfig={config}
+          apiKey={apiKey}
+          onApiKeyChange={handleApiKeyChange}
+          notify={notify}
+      />
 
     </div>
   );
