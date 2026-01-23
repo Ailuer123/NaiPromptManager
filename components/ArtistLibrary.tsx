@@ -27,7 +27,7 @@ const getGroupChar = (name: string) => {
 const ALPHABET = '#ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
 // Lazy Loading Component
-const LazyImage: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
+const LazyImage: React.FC<{ src: string; alt: string; className?: string }> = ({ src, alt, className }) => {
     const [isLoaded, setIsLoaded] = useState(false);
     const [isInView, setIsInView] = useState(false);
     const imgRef = useRef<HTMLDivElement>(null);
@@ -46,7 +46,7 @@ const LazyImage: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
     }, [src]);
 
     return (
-        <div ref={imgRef} className="w-full h-full relative bg-gray-200 dark:bg-gray-900 overflow-hidden">
+        <div ref={imgRef} className={`relative bg-gray-200 dark:bg-gray-900 overflow-hidden ${className || 'w-full h-full'}`}>
             {isInView && (
                 <img 
                     src={src} 
@@ -129,6 +129,9 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
   const [importText, setImportText] = useState('');
   const [gachaCount, setGachaCount] = useState(3);
   
+  // Layout State
+  const [layoutMode, setLayoutMode] = useState<'grid' | 'list'>('grid');
+
   // Benchmark / Preview Mode State
   const [viewMode, setViewMode] = useState<'original' | 'benchmark'>('original');
   const [activeSlot, setActiveSlot] = useState<number>(0); // Index of config.slots
@@ -406,7 +409,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
           
           // Delay to prevent 429 (Throttle)
           setIsProcessing(true);
-          await new Promise(res => setTimeout(res, 2500)); // 2.5s safe delay
+          await new Promise(res => setTimeout(res, 5000)); // 5s safe delay
 
           const task = taskQueue[0];
           setCurrentTask(task);
@@ -523,6 +526,24 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                 <svg className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
             </button>
 
+            {/* Layout Toggle */}
+            <div className="flex bg-gray-100 dark:bg-gray-900 rounded-lg p-1 border border-gray-200 dark:border-gray-700 flex-shrink-0">
+                <button
+                    onClick={() => setLayoutMode('grid')}
+                    className={`p-1.5 rounded transition-all ${layoutMode === 'grid' ? 'bg-white dark:bg-gray-700 shadow text-indigo-600 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+                    title="网格视图"
+                >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
+                </button>
+                <button
+                    onClick={() => setLayoutMode('list')}
+                    className={`p-1.5 rounded transition-all ${layoutMode === 'list' ? 'bg-white dark:bg-gray-700 shadow text-indigo-600 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+                    title="展开视图 (实装一览)"
+                >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
+                </button>
+            </div>
+
             {/* Search */}
             <div className="flex-1 relative">
                 <input 
@@ -537,33 +558,35 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
         </div>
 
         <div className="flex justify-between items-center flex-wrap gap-2">
-            {/* View Toggle */}
-            <div className="flex bg-gray-100 dark:bg-gray-900 rounded-lg p-1 border border-gray-200 dark:border-gray-700">
-                <button
-                    onClick={() => setViewMode('original')}
-                    className={`px-3 py-1 rounded text-xs font-medium transition-all ${viewMode === 'original' ? 'bg-white dark:bg-gray-700 shadow text-indigo-600 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-                >
-                    原图
-                </button>
-                <button
-                    onClick={() => setViewMode('benchmark')}
-                    className={`px-3 py-1 rounded text-xs font-medium transition-all flex items-center gap-1 ${viewMode === 'benchmark' ? 'bg-white dark:bg-gray-700 shadow text-indigo-600 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-                >
-                    实装 <span className="text-[10px] opacity-60">Beta</span>
-                </button>
-            </div>
-
-            {/* Benchmark Sub-Toggles (Dynamic based on slots) */}
-            {viewMode === 'benchmark' && (
-                <>
-                    <button 
-                        onClick={openConfig} // Changed to openConfig
-                        className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex-shrink-0"
-                        title="配置分组"
+            {/* View Toggle (Only show in Grid mode, or keep for general settings) */}
+            {layoutMode === 'grid' && (
+                <div className="flex bg-gray-100 dark:bg-gray-900 rounded-lg p-1 border border-gray-200 dark:border-gray-700">
+                    <button
+                        onClick={() => setViewMode('original')}
+                        className={`px-3 py-1 rounded text-xs font-medium transition-all ${viewMode === 'original' ? 'bg-white dark:bg-gray-700 shadow text-indigo-600 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
                     >
-                        ⚙️
+                        原图
                     </button>
-                    {/* Changed: Flexible width container for slots with gap-1 and items-center */}
+                    <button
+                        onClick={() => setViewMode('benchmark')}
+                        className={`px-3 py-1 rounded text-xs font-medium transition-all flex items-center gap-1 ${viewMode === 'benchmark' ? 'bg-white dark:bg-gray-700 shadow text-indigo-600 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+                    >
+                        实装
+                    </button>
+                </div>
+            )}
+
+            {/* Config & Slots (Show Config button always, Slots only in Grid-Benchmark mode) */}
+            <div className="flex items-center gap-2 overflow-x-auto max-w-full">
+                <button 
+                    onClick={openConfig} 
+                    className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex-shrink-0"
+                    title="配置分组"
+                >
+                    ⚙️
+                </button>
+                
+                {layoutMode === 'grid' && viewMode === 'benchmark' && (
                     <div className="flex bg-gray-100 dark:bg-gray-900 rounded-lg p-1 border border-gray-200 dark:border-gray-700 overflow-x-auto max-w-[200px] md:max-w-none md:flex-wrap md:overflow-visible gap-1 items-center">
                         {config.slots.map((slot, index) => (
                             <button
@@ -576,8 +599,8 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                             </button>
                         ))}
                     </div>
-                </>
-            )}
+                )}
+            </div>
 
             {/* Settings Group */}
             <div className="flex gap-2 items-center ml-auto">
@@ -654,7 +677,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
           ))}
       </div>
 
-      {/* --- Grid Content --- */}
+      {/* --- Main Content Area --- */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 md:p-6 md:pl-14 pb-40 bg-gray-50 dark:bg-gray-900 scroll-smooth relative">
          {isLoading && (
              <div className="absolute inset-0 flex items-center justify-center bg-gray-50/80 dark:bg-gray-900/80 z-20">
@@ -662,124 +685,231 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
              </div>
          )}
          
-         {/* Updated Grid Columns for Mobile: grid-cols-2 */}
-         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 md:gap-4 md:pr-6"> 
-             {filteredArtists.map((artist, idx) => {
-                 const isSelected = !!cart.find(c => c.name === artist.name);
-                 const isFav = favorites.has(artist.name);
-                 
-                 // Determine Group Header / Anchor
-                 const prevChar = idx > 0 ? getGroupChar(filteredArtists[idx-1].name) : '';
-                 const currChar = getGroupChar(artist.name);
-                 const isAnchor = currChar !== prevChar;
-                 
-                 // Display Image Selection Logic
-                 let displayImg = artist.imageUrl;
-                 let isBenchmarkMissing = false;
+         {layoutMode === 'grid' ? (
+             /* --- GRID LAYOUT --- */
+             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 md:gap-4 md:pr-6"> 
+                 {filteredArtists.map((artist, idx) => {
+                     const isSelected = !!cart.find(c => c.name === artist.name);
+                     const isFav = favorites.has(artist.name);
+                     
+                     // Determine Group Header / Anchor
+                     const prevChar = idx > 0 ? getGroupChar(filteredArtists[idx-1].name) : '';
+                     const currChar = getGroupChar(artist.name);
+                     const isAnchor = currChar !== prevChar;
+                     
+                     // Display Image Selection Logic
+                     let displayImg = artist.imageUrl;
+                     let isBenchmarkMissing = false;
 
-                 if (viewMode === 'benchmark') {
-                     // Check new benchmarks array first
-                     if (artist.benchmarks && artist.benchmarks[activeSlot]) {
-                         // Removed random query param to prevent flickering
-                         displayImg = artist.benchmarks[activeSlot];
-                     } 
-                     // Fallback to legacy previewUrl for Slot 0 ONLY
-                     else if (activeSlot === 0 && artist.previewUrl) {
-                         displayImg = artist.previewUrl;
-                     } 
-                     else {
-                         isBenchmarkMissing = true;
+                     if (viewMode === 'benchmark') {
+                         if (artist.benchmarks && artist.benchmarks[activeSlot]) {
+                             displayImg = artist.benchmarks[activeSlot];
+                         } else if (activeSlot === 0 && artist.previewUrl) {
+                             displayImg = artist.previewUrl;
+                         } else {
+                             isBenchmarkMissing = true;
+                         }
                      }
-                 }
 
-                 // Task status
-                 const isTaskPending = taskQueue.some(t => t.artistId === artist.id);
-                 const isTaskRunning = currentTask?.artistId === artist.id;
-                 const isTaskFailed = failedTasks.some(t => t.artistId === artist.id);
-                 
-                 return (
-                     <div 
-                        key={artist.id} 
-                        id={isAnchor ? `anchor-${currChar}` : undefined}
-                        className={`group relative bg-white dark:bg-gray-800 rounded-xl overflow-hidden border transition-all cursor-pointer shadow-sm hover:shadow-lg ${isSelected ? 'border-red-500 dark:border-red-500 ring-1 ring-red-500' : 'border-gray-200 dark:border-gray-700 hover:border-indigo-500 dark:hover:border-indigo-500'}`}
-                        onClick={() => toggleCart(artist.name)}
-                     >
-                         <div className="aspect-[2/3] relative overflow-hidden bg-gray-200 dark:bg-gray-900">
-                             {/* Use Custom Lazy Image */}
-                             {!isBenchmarkMissing ? (
-                                <LazyImage src={displayImg} alt={artist.name} />
-                             ) : (
-                                <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400">
-                                    <span className="text-2xl mb-1">🤖</span>
-                                    <span className="text-[10px]">No Data</span>
-                                </div>
-                             )}
-                             
-                             {/* Task Status Overlay */}
-                             {(isTaskPending || isTaskRunning || isTaskFailed) && (
-                                 <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center z-10">
-                                     {isTaskRunning ? (
-                                         <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-white"></div>
-                                     ) : isTaskFailed ? (
-                                          <div className="text-white text-xs font-bold bg-red-500 px-2 py-1 rounded">Failed</div>
-                                     ) : (
-                                         <div className="text-white text-xs font-bold bg-indigo-500 px-2 py-1 rounded">Queue</div>
+                     // Task status
+                     const isTaskPending = taskQueue.some(t => t.artistId === artist.id);
+                     const isTaskRunning = currentTask?.artistId === artist.id;
+                     const isTaskFailed = failedTasks.some(t => t.artistId === artist.id);
+                     
+                     return (
+                         <div 
+                            key={artist.id} 
+                            id={isAnchor ? `anchor-${currChar}` : undefined}
+                            className={`group relative bg-white dark:bg-gray-800 rounded-xl overflow-hidden border transition-all cursor-pointer shadow-sm hover:shadow-lg ${isSelected ? 'border-red-500 dark:border-red-500 ring-1 ring-red-500' : 'border-gray-200 dark:border-gray-700 hover:border-indigo-500 dark:hover:border-indigo-500'}`}
+                            onClick={() => toggleCart(artist.name)}
+                         >
+                             <div className="aspect-[2/3] relative overflow-hidden bg-gray-200 dark:bg-gray-900">
+                                 {!isBenchmarkMissing ? (
+                                    <LazyImage src={displayImg} alt={artist.name} />
+                                 ) : (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400">
+                                        <span className="text-2xl mb-1">🤖</span>
+                                        <span className="text-[10px]">No Data</span>
+                                    </div>
+                                 )}
+                                 
+                                 {/* Task Status Overlay */}
+                                 {(isTaskPending || isTaskRunning || isTaskFailed) && (
+                                     <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center z-10">
+                                         {isTaskRunning ? (
+                                             <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-white"></div>
+                                         ) : isTaskFailed ? (
+                                              <div className="text-white text-xs font-bold bg-red-500 px-2 py-1 rounded">Failed</div>
+                                         ) : (
+                                             <div className="text-white text-xs font-bold bg-indigo-500 px-2 py-1 rounded">Queue</div>
+                                         )}
+                                     </div>
+                                 )}
+
+                                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors pointer-events-none" />
+                                 
+                                 {/* Actions Overlay */}
+                                 <div className="absolute top-2 right-2 flex flex-col gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                                     <button onClick={(e) => toggleFav(artist.name, e)} className={`p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm ${isFav ? 'text-yellow-500' : 'text-gray-600 dark:text-white'}`}>
+                                         <svg className="w-4 h-4" fill={isFav ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l1.518-4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
+                                     </button>
+                                     <a href={`https://danbooru.donmai.us/posts?tags=${artist.name}`} target="_blank" rel="noreferrer" className="hidden md:block p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm text-blue-500 dark:text-blue-300 hover:text-blue-600 pointer-events-auto">
+                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                     </a>
+                                     <button onClick={(e) => {e.stopPropagation(); setLightboxImg({src: displayImg, name: artist.name})}} className="p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm text-gray-700 dark:text-white pointer-events-auto">
+                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" /></svg>
+                                     </button>
+
+                                     {viewMode === 'benchmark' && apiKey && (
+                                         <>
+                                            <button 
+                                                onClick={(e) => queueGeneration(artist, [activeSlot], e)}
+                                                className="p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm pointer-events-auto text-purple-600 hover:text-purple-500"
+                                                title={`生成当前组 (Slot ${activeSlot + 1})`}
+                                            >
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                                            </button>
+                                            <button 
+                                                onClick={(e) => queueGeneration(artist, config.slots.map((_, i) => i), e)}
+                                                className="p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm pointer-events-auto text-green-600 hover:text-green-500"
+                                                title={`一键生成全部 ${config.slots.length} 组`}
+                                            >
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.933 12.8a1 1 0 000-1.6L6.6 7.2A1 1 0 005 8v8a1 1 0 001.6.8l5.333-4zM19.933 12.8a1 1 0 000-1.6l-5.333-4A1 1 0 0013 8v8a1 1 0 001.6.8l5.333-4z" /></svg>
+                                            </button>
+                                         </>
                                      )}
                                  </div>
-                             )}
 
-                             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors pointer-events-none" />
-                             
-                             {/* Actions Overlay */}
-                             <div className="absolute top-2 right-2 flex flex-col gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                                 <button onClick={(e) => toggleFav(artist.name, e)} className={`p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm ${isFav ? 'text-yellow-500' : 'text-gray-600 dark:text-white'}`}>
-                                     <svg className="w-4 h-4" fill={isFav ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l1.518-4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
-                                 </button>
-                                 <a href={`https://danbooru.donmai.us/posts?tags=${artist.name}`} target="_blank" rel="noreferrer" className="hidden md:block p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm text-blue-500 dark:text-blue-300 hover:text-blue-600 pointer-events-auto">
-                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                                 </a>
-                                 <button onClick={(e) => {e.stopPropagation(); setLightboxImg({src: displayImg, name: artist.name})}} className="p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm text-gray-700 dark:text-white pointer-events-auto">
-                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" /></svg>
-                                 </button>
+                                 {isSelected && (
+                                     <div className="absolute inset-0 border-4 border-red-500/80 pointer-events-none">
+                                         <div className="absolute top-2 left-2 bg-red-500 text-white p-1 rounded-full shadow-lg">
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M5 13l4 4L19 7" /></svg>
+                                         </div>
+                                     </div>
+                                 )}
+                             </div>
+                             <div className="p-2 md:p-3 bg-white dark:bg-gray-800 text-center border-t border-gray-100 dark:border-gray-700">
+                                 <div className={`text-xs md:text-sm font-bold truncate ${isSelected ? 'text-red-500' : 'text-gray-700 dark:text-gray-300'}`}>{artist.name}</div>
+                             </div>
+                         </div>
+                     )
+                 })}
+             </div>
+         ) : (
+             /* --- EXPANDED LIST LAYOUT --- */
+             <div className="flex flex-col gap-4 md:pr-6">
+                 {filteredArtists.map((artist, idx) => {
+                     const isSelected = !!cart.find(c => c.name === artist.name);
+                     const isFav = favorites.has(artist.name);
+                     // Anchors
+                     const prevChar = idx > 0 ? getGroupChar(filteredArtists[idx-1].name) : '';
+                     const currChar = getGroupChar(artist.name);
+                     const isAnchor = currChar !== prevChar;
 
-                                 {/* Admin Benchmark Generation Buttons */}
-                                 {viewMode === 'benchmark' && apiKey && (
-                                     <>
-                                        {/* Generate Current Slot */}
-                                        <button 
-                                            onClick={(e) => queueGeneration(artist, [activeSlot], e)}
-                                            className="p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm pointer-events-auto text-purple-600 hover:text-purple-500"
-                                            title={`生成当前组 (Slot ${activeSlot + 1})`}
-                                        >
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                                        </button>
-                                        {/* Generate ALL Slots */}
-                                        <button 
-                                            onClick={(e) => queueGeneration(artist, config.slots.map((_, i) => i), e)}
-                                            className="p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm pointer-events-auto text-green-600 hover:text-green-500"
-                                            title={`一键生成全部 ${config.slots.length} 组`}
-                                        >
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.933 12.8a1 1 0 000-1.6L6.6 7.2A1 1 0 005 8v8a1 1 0 001.6.8l5.333-4zM19.933 12.8a1 1 0 000-1.6l-5.333-4A1 1 0 0013 8v8a1 1 0 001.6.8l5.333-4z" /></svg>
-                                        </button>
-                                     </>
+                     return (
+                         <div 
+                            key={artist.id}
+                            id={isAnchor ? `anchor-${currChar}` : undefined}
+                            className={`bg-white dark:bg-gray-800 rounded-xl border p-4 shadow-sm ${isSelected ? 'border-red-500 dark:border-red-500 ring-1 ring-red-500' : 'border-gray-200 dark:border-gray-700'}`}
+                         >
+                             {/* Row Header */}
+                             <div className="flex justify-between items-center mb-3">
+                                 <div className="flex items-center gap-3">
+                                     <h3 
+                                        className={`font-bold text-lg cursor-pointer hover:underline ${isSelected ? 'text-red-500' : 'text-gray-900 dark:text-white'}`}
+                                        onClick={() => toggleCart(artist.name)}
+                                     >
+                                         {artist.name}
+                                     </h3>
+                                     <button onClick={(e) => toggleFav(artist.name, e)} className={`${isFav ? 'text-yellow-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}>
+                                         <svg className="w-5 h-5" fill={isFav ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l1.518-4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
+                                     </button>
+                                     <a href={`https://danbooru.donmai.us/posts?tags=${artist.name}`} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-600 dark:text-blue-400">
+                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                     </a>
+                                 </div>
+                                 {apiKey && (
+                                     <button 
+                                        onClick={(e) => queueGeneration(artist, config.slots.map((_, i) => i), e)}
+                                        className="text-xs bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-3 py-1 rounded hover:bg-green-100 dark:hover:bg-green-900/50 flex items-center gap-1 border border-green-200 dark:border-green-800"
+                                        title="生成所有实装"
+                                     >
+                                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                         Generate All
+                                     </button>
                                  )}
                              </div>
 
-                             {isSelected && (
-                                 <div className="absolute inset-0 border-4 border-red-500/80 pointer-events-none">
-                                     <div className="absolute top-2 left-2 bg-red-500 text-white p-1 rounded-full shadow-lg">
-                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M5 13l4 4L19 7" /></svg>
+                             {/* Horizontal Scroll/Shrink Container */}
+                             <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar flex-nowrap items-stretch">
+                                 {/* 1. Original Image */}
+                                 <div className="flex flex-col gap-1 flex-shrink-0 min-w-[100px] w-32 lg:w-40 group relative">
+                                     <div className="aspect-[2/3] rounded-lg overflow-hidden relative cursor-zoom-in" onClick={() => setLightboxImg({src: artist.imageUrl, name: artist.name})}>
+                                         <LazyImage src={artist.imageUrl} alt="原图" />
+                                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
                                      </div>
+                                     <span className="text-[10px] text-center font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">原图</span>
                                  </div>
-                             )}
+
+                                 {/* 2. Benchmark Slots */}
+                                 {config.slots.map((slot, i) => {
+                                     const img = artist.benchmarks?.[i];
+                                     const taskRunning = currentTask?.artistId === artist.id && currentTask?.slot === i;
+                                     const taskPending = taskQueue.some(t => t.artistId === artist.id && t.slot === i);
+                                     const taskFailed = failedTasks.some(t => t.artistId === artist.id && t.slot === i);
+
+                                     // Fallback for slot 0 (Legacy previewUrl)
+                                     const displayImg = img || (i === 0 ? artist.previewUrl : null);
+
+                                     return (
+                                         <div key={i} className="flex flex-col gap-1 flex-shrink-0 min-w-[100px] w-32 lg:w-40 group relative">
+                                             <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-900 rounded-lg overflow-hidden relative border border-gray-200 dark:border-gray-700">
+                                                 {displayImg ? (
+                                                     <div className="w-full h-full cursor-zoom-in" onClick={() => setLightboxImg({src: displayImg, name: `${artist.name} - ${slot.label}`})}>
+                                                         <LazyImage src={displayImg} alt={slot.label} />
+                                                     </div>
+                                                 ) : (
+                                                     <div className="absolute inset-0 flex items-center justify-center text-gray-300 dark:text-gray-600">
+                                                         <span className="text-xl">?</span>
+                                                     </div>
+                                                 )}
+
+                                                 {/* Status Overlay */}
+                                                 {(taskPending || taskRunning || taskFailed) && (
+                                                     <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center z-10 pointer-events-none">
+                                                         {taskRunning ? (
+                                                             <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-white"></div>
+                                                         ) : taskFailed ? (
+                                                              <span className="text-[10px] bg-red-500 text-white px-1 rounded">Failed</span>
+                                                         ) : (
+                                                             <span className="text-[10px] bg-indigo-500 text-white px-1 rounded">Queue</span>
+                                                         )}
+                                                     </div>
+                                                 )}
+
+                                                 {/* Hover Generate Button */}
+                                                 {apiKey && !taskRunning && !taskPending && (
+                                                     <div className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity ${displayImg ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'}`}>
+                                                         <button 
+                                                            onClick={(e) => queueGeneration(artist, [i], e)}
+                                                            className="p-1.5 bg-white/20 hover:bg-white/40 backdrop-blur rounded-full text-white transition-colors"
+                                                            title={`生成 ${slot.label}`}
+                                                         >
+                                                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                         </button>
+                                                     </div>
+                                                 )}
+                                             </div>
+                                             <span className="text-[10px] text-center text-gray-500 dark:text-gray-400 truncate px-1" title={slot.label}>{slot.label}</span>
+                                         </div>
+                                     );
+                                 })}
+                             </div>
                          </div>
-                         <div className="p-2 md:p-3 bg-white dark:bg-gray-800 text-center border-t border-gray-100 dark:border-gray-700">
-                             <div className={`text-xs md:text-sm font-bold truncate ${isSelected ? 'text-red-500' : 'text-gray-700 dark:text-gray-300'}`}>{artist.name}</div>
-                         </div>
-                     </div>
-                 )
-             })}
-         </div>
+                     );
+                 })}
+             </div>
+         )}
       </div>
 
       {/* --- Cart Bar --- */}
