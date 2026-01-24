@@ -11,6 +11,7 @@ import { ChainEditorPreview } from './ChainEditorPreview';
 
 interface ChainEditorProps {
   chain: PromptChain;
+  allChains: PromptChain[]; // Need access to other chains for importing
   currentUser: User;
   onUpdateChain: (id: string, updates: Partial<PromptChain>) => void;
   onBack: () => void;
@@ -19,12 +20,15 @@ interface ChainEditorProps {
   notify: (msg: string, type?: 'success' | 'error') => void;
 }
 
-export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, onUpdateChain, onBack, onFork, setIsDirty, notify }) => {
+export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, currentUser, onUpdateChain, onBack, onFork, setIsDirty, notify }) => {
   // Permission Check
   // Guests are allowed to EDIT (in memory) for testing, but NOT SAVE.
   const isGuest = currentUser.role === 'guest';
   const isOwner = !isGuest && (chain.userId === currentUser.id || currentUser.role === 'admin');
   const canEdit = isOwner || isGuest; // Both can interact with inputs now
+  
+  // Distinguish Editor Mode
+  const isCharacterMode = chain.type === 'character';
 
   // --- Chain Info State ---
   const [chainName, setChainName] = useState(chain.name);
@@ -42,6 +46,9 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
   
   const [hasChanges, setHasChanges] = useState(false);
   const [lightboxImg, setLightboxImg] = useState<string | null>(null);
+
+  // --- Import Preset Modal State ---
+  const [showImportPreset, setShowImportPreset] = useState(false);
 
   // Sync dirty state with parent (ONLY IF NOT GUEST)
   useEffect(() => {
@@ -182,6 +189,50 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
       markChange();
   };
 
+  // --- Import Preset Logic (Cross Loading) ---
+  const handleImportPreset = (targetChain: PromptChain, action: 'apply_base' | 'apply_subject' | 'add_char') => {
+      if (!canEdit) return;
+      
+      if (action === 'apply_base') {
+          // Load Style into Character (or Style to Style)
+          setBasePrompt(targetChain.basePrompt);
+          setNegativePrompt(targetChain.negativePrompt);
+          setModules(targetChain.modules || []);
+          // Also copy relevant params but keep existing char definitions if any
+          setParams(prev => ({
+              ...prev,
+              steps: targetChain.params.steps,
+              scale: targetChain.params.scale,
+              sampler: targetChain.params.sampler,
+              width: targetChain.params.width,
+              height: targetChain.params.height,
+              qualityToggle: targetChain.params.qualityToggle,
+              ucPreset: targetChain.params.ucPreset,
+          }));
+          notify(`已加载画师预设：${targetChain.name}`);
+      } else if (action === 'apply_subject') {
+          // Load Character into Subject Field
+          setSubjectPrompt(targetChain.basePrompt); // Character chains usually put tags in basePrompt
+          notify(`已加载角色到 Subject：${targetChain.name}`);
+      } else if (action === 'add_char') {
+          // Add Character as V4.5 Character
+          const newChar: CharacterParams = {
+              id: crypto.randomUUID(),
+              prompt: targetChain.basePrompt,
+              x: 0.5,
+              y: 0.5
+          };
+          setParams(prev => ({
+              ...prev,
+              characters: [...(prev.characters || []), newChar]
+          }));
+          notify(`已添加角色到 V4.5 列表：${targetChain.name}`);
+      }
+      
+      markChange();
+      setShowImportPreset(false);
+  };
+
   // --- Import Logic ---
   const handleImportImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
       if (!canEdit) return;
@@ -297,7 +348,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
       });
       setHasChanges(false);
       setIsEditingInfo(false);
-      notify('画师串已保存');
+      notify(`${isCharacterMode ? '角色' : '画师'}串已保存`);
   };
 
   const handleFork = () => {
@@ -345,7 +396,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
 
   const handleSavePreview = async () => {
     if (!generatedImage || !isOwner) return;
-    if(confirm('将当前生成的图片设为该画师串的封面图？\n\n警告：此操作将永久删除旧的封面图（如果是上传的图片）。')) {
+    if(confirm('将当前生成的图片设为该串的封面图？\n\n警告：此操作将永久删除旧的封面图（如果是上传的图片）。')) {
         setIsUploading(true);
         try {
             const res = await fetch(generatedImage);
@@ -415,6 +466,9 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
           ) : (
              <div className="flex items-center gap-2 group cursor-pointer min-w-0 flex-1" onClick={() => isOwner && setIsEditingInfo(true)}>
                 <div className="flex flex-col md:flex-row md:items-baseline gap-0.5 md:gap-2 overflow-hidden min-w-0">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border flex-shrink-0 ${isCharacterMode ? 'bg-pink-100 text-pink-700 border-pink-200' : 'bg-blue-100 text-blue-700 border-blue-200'}`}>
+                        {isCharacterMode ? 'Char' : 'Style'}
+                    </span>
                     <h1 className="text-base md:text-lg font-bold text-gray-900 dark:text-white truncate min-w-0">{chainName}</h1>
                     <span className="text-xs text-gray-500 dark:text-gray-500 truncate block max-w-full md:max-w-xs min-w-0">{chainDesc}</span>
                 </div>
@@ -472,7 +526,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                       <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 p-3 rounded mb-4 text-sm text-yellow-700 dark:text-yellow-400">
                           {isGuest 
                             ? '您正在以游客身份浏览。您可以自由修改 Prompt 进行测试，但无法保存更改。'
-                            : '您正在查看他人的画师串，无法直接修改。您可以调整参数进行测试，或点击右上角“Fork”保存到您的列表。'
+                            : '您正在查看他人的串，无法直接修改。您可以调整参数进行测试，或点击右上角“Fork”保存到您的列表。'
                           }
                       </div>
                   )}
@@ -480,10 +534,20 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                   {/* Base Prompt */}
                   <section>
                     <div className="flex justify-between items-end mb-2">
-                        <label className="block text-sm font-semibold text-indigo-500 dark:text-indigo-400">1. 基础场景/背景 (Base)</label>
-                        {/* Import Button */}
+                        <label className="block text-sm font-semibold text-indigo-500 dark:text-indigo-400">
+                            {isCharacterMode ? "1. 角色核心特征 (Base)" : "1. 基础场景/背景 (Base)"}
+                        </label>
+                        {/* Import & Load Preset Buttons */}
                         {canEdit && (
-                            <div>
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={() => setShowImportPreset(true)}
+                                    className="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-1 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900/50 flex items-center gap-1"
+                                >
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                                    引用预设
+                                </button>
+                                
                                 <input 
                                     type="file" 
                                     ref={importInputRef}
@@ -496,7 +560,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                                     className="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-1 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900/50 flex items-center gap-1"
                                 >
                                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                                    导入配置
+                                    导入图片配置
                                 </button>
                             </div>
                         )}
@@ -505,7 +569,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                       disabled={!canEdit}
                       className={`w-full border rounded-lg p-3 outline-none font-mono text-sm leading-relaxed min-h-[100px] ${!canEdit ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 cursor-not-allowed' : 'bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-200 focus:ring-1 focus:ring-indigo-500'}`}
                       value={basePrompt}
-                      placeholder="e.g. outdoors, sky, clouds, masterpiece, best quality"
+                      placeholder={isCharacterMode ? "例如：1girl, long hair, blue eyes..." : "例如：outdoors, sky, clouds, masterpiece, best quality..."}
                       onChange={(e) => {setBasePrompt(e.target.value); markChange()}}
                     />
                   </section>
@@ -513,7 +577,9 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                    {/* Modules */}
                   <section>
                     <div className="flex justify-between items-center mb-3">
-                        <label className="block text-sm font-semibold text-indigo-500 dark:text-indigo-400">2. 风格模块 (Modules)</label>
+                        <label className="block text-sm font-semibold text-indigo-500 dark:text-indigo-400">
+                            {isCharacterMode ? "2. 服装/变体 (Modules)" : "2. 风格模块 (Modules)"}
+                        </label>
                         {canEdit && (
                             <button onClick={addModule} className="text-xs flex items-center bg-gray-200 dark:bg-gray-800 px-2 py-1 rounded hover:bg-gray-300 dark:hover:bg-gray-700">
                                 添加
@@ -693,6 +759,60 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, currentUser, on
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
         </div>
+      )}
+
+      {/* Import Preset Modal */}
+      {showImportPreset && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+              <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-lg shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[80vh]">
+                  <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                      <h3 className="font-bold dark:text-white">
+                          引用{isCharacterMode ? '画师 (Style)' : '角色 (Character)'}预设
+                      </h3>
+                      <button onClick={() => setShowImportPreset(false)} className="text-gray-500">✕</button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-2">
+                      {allChains
+                          .filter(c => (isCharacterMode ? (c.type === 'style' || !c.type) : c.type === 'character'))
+                          .map(c => (
+                              <div key={c.id} className="p-3 border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded flex justify-between items-center group">
+                                  <div>
+                                      <div className="font-bold text-sm dark:text-gray-200">{c.name}</div>
+                                      <div className="text-xs text-gray-500">{c.description || '无描述'}</div>
+                                  </div>
+                                  <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      {isCharacterMode ? (
+                                          <button 
+                                              onClick={() => handleImportPreset(c, 'apply_base')}
+                                              className="text-xs bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 px-2 py-1 rounded"
+                                          >
+                                              加载风格参数
+                                          </button>
+                                      ) : (
+                                          <>
+                                            <button 
+                                                onClick={() => handleImportPreset(c, 'apply_subject')}
+                                                className="text-xs bg-pink-100 dark:bg-pink-900 text-pink-700 dark:text-pink-300 px-2 py-1 rounded"
+                                            >
+                                                填入Subject
+                                            </button>
+                                            <button 
+                                                onClick={() => handleImportPreset(c, 'add_char')}
+                                                className="text-xs bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 px-2 py-1 rounded"
+                                            >
+                                                + V4.5角色
+                                            </button>
+                                          </>
+                                      )}
+                                  </div>
+                              </div>
+                          ))}
+                      {allChains.filter(c => (isCharacterMode ? (c.type === 'style' || !c.type) : c.type === 'character')).length === 0 && (
+                          <div className="text-center text-gray-400 py-8 text-sm">暂无可用预设</div>
+                      )}
+                  </div>
+              </div>
+          </div>
       )}
     </div>
   );

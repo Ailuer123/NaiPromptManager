@@ -39,11 +39,14 @@ export interface NAIParams {
   characters?: CharacterParams[]; // Multi-character support
 }
 
+export type ChainType = 'style' | 'character';
+
 // Flattened Chain Structure (No more separate versions table)
 export interface PromptChain {
   id: string;
   userId: string; // Owner
   username?: string; // Owner display name
+  type: ChainType; // New: Distinguish between Style (Artist) and Character chains
   name: string;
   description: string;
   tags: string[];

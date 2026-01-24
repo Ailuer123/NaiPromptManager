@@ -8,9 +8,9 @@ import { ArtistAdmin } from './components/ArtistAdmin';
 import { InspirationGallery } from './components/InspirationGallery';
 import { GenHistory } from './components/GenHistory';
 import { db } from './services/dbService';
-import { PromptChain, User, Artist, Inspiration } from './types';
+import { PromptChain, User, Artist, Inspiration, ChainType } from './types';
 
-type ViewState = 'list' | 'edit' | 'library' | 'inspiration' | 'admin' | 'history';
+type ViewState = 'list' | 'characters' | 'edit' | 'library' | 'inspiration' | 'admin' | 'history';
 
 const CACHE_TTL = 60 * 60 * 1000; // 1 Hour Cache
 
@@ -67,7 +67,7 @@ const App = () => {
   }, []);
 
   const refreshData = async (force = false) => {
-    // Chains
+    // Chains (Always load all chains so we can filter client side and do mutual imports)
     if (!force && chains.length > 0 && Date.now() - lastChainFetch < CACHE_TTL) return;
 
     setLoading(true);
@@ -132,7 +132,7 @@ const App = () => {
     setView(newView);
     
     // Auto-load data based on view, respecting cache
-    if (newView === 'list') refreshData();
+    if (newView === 'list' || newView === 'characters') refreshData();
     if (newView === 'library') loadArtists();
     if (newView === 'inspiration') loadInspirations();
     if (newView === 'admin') {
@@ -170,19 +170,20 @@ const App = () => {
       setInspirationsCache(null);
   };
 
-  const handleCreateChain = async (name: string, desc: string) => {
+  const handleCreateChain = async (name: string, desc: string, type: ChainType) => {
     setLoading(true);
-    await db.createChain(name, desc);
+    await db.createChain(name, desc, undefined, type);
     await refreshData(true);
     setLoading(false);
   };
 
   const handleForkChain = async (chain: PromptChain) => {
       const name = chain.name + ' (Fork)';
-      await db.createChain(name, chain.description, chain);
+      await db.createChain(name, chain.description, chain, chain.type); // Persist type on fork
       notify('Fork 成功！已保存到您的列表');
       await refreshData(true);
-      setView('list');
+      // Return to appropriate list based on type
+      setView(chain.type === 'character' ? 'characters' : 'list');
   };
 
   const handleUpdateChain = async (id: string, updates: Partial<PromptChain>) => {
@@ -194,7 +195,7 @@ const App = () => {
     setLoading(true);
     await db.deleteChain(id);
     await refreshData(true);
-    if (selectedId === id) setView('list');
+    // Stay on current list view
     setLoading(false);
   };
 
@@ -253,7 +254,7 @@ const App = () => {
                 </form>
                 
                 <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-700/50 flex justify-between items-center text-xs text-gray-400">
-                     <span>v0.4.1</span>
+                     <span>v0.5.0</span>
                      <button onClick={toggleTheme} className="hover:text-gray-600 dark:hover:text-gray-200">{isDark ? '切换亮色' : '切换深色'}</button>
                 </div>
             </div>
@@ -278,7 +279,8 @@ const App = () => {
     switch (view) {
       case 'list':
         return <ChainList 
-                    chains={chains} 
+                    chains={chains}
+                    type="style"
                     onCreate={handleCreateChain} 
                     onSelect={(id) => handleNavigate('edit', id)} 
                     onDelete={handleDelete}
@@ -287,14 +289,27 @@ const App = () => {
                     notify={notify}
                     isGuest={currentUser.role === 'guest'}
                />;
+      case 'characters':
+          return <ChainList 
+                      chains={chains}
+                      type="character"
+                      onCreate={handleCreateChain} 
+                      onSelect={(id) => handleNavigate('edit', id)} 
+                      onDelete={handleDelete}
+                      onRefresh={() => refreshData(true)}
+                      isLoading={loading}
+                      notify={notify}
+                      isGuest={currentUser.role === 'guest'}
+                 />;
       case 'edit':
         const editChain = getSelectedChain();
         if (!editChain) return <div>Chain not found</div>;
         return <ChainEditor 
-                chain={editChain} 
+                chain={editChain}
+                allChains={chains}
                 currentUser={currentUser} 
                 onUpdateChain={handleUpdateChain} 
-                onBack={() => handleNavigate('list')} 
+                onBack={() => handleNavigate(editChain.type === 'character' ? 'characters' : 'list')} 
                 onFork={handleForkChain} 
                 setIsDirty={setIsEditorDirty}
                 notify={notify}

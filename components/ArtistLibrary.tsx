@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Artist } from '../types';
 import { generateImage } from '../services/naiService'; // Import generation service
@@ -523,6 +522,57 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
       notify(`已重新加入 ${failedTasks.length} 个失败任务`);
   };
 
+  const queueMissingGenerations = () => {
+      if (!apiKey) {
+          notify('请先在设置中配置 API Key', 'error');
+          setShowConfig(true);
+          return;
+      }
+
+      const newTasks: GenTask[] = [];
+      let existsCount = 0;
+
+      // Scan currently filtered list
+      for (const artist of filteredArtists) {
+          // Check if image exists for active slot
+          let hasImage = false;
+          if (activeSlot === 0) {
+              // Slot 0: Check benchmark[0] OR legacy previewUrl
+              if (artist.previewUrl) hasImage = true;
+              else if (artist.benchmarks && artist.benchmarks[0]) hasImage = true;
+          } else {
+              // Other slots: Check benchmark[activeSlot]
+              if (artist.benchmarks && artist.benchmarks[activeSlot]) hasImage = true;
+          }
+
+          if (!hasImage) {
+              // Check if already queued
+              const isQueued = taskQueue.some(t => t.artistId === artist.id && t.slot === activeSlot) ||
+                               failedTasks.some(t => t.artistId === artist.id && t.slot === activeSlot) ||
+                               (currentTask?.artistId === artist.id && currentTask?.slot === activeSlot);
+              
+              if (!isQueued) {
+                  newTasks.push({
+                      uniqueId: crypto.randomUUID(),
+                      artistId: artist.id,
+                      slot: activeSlot
+                  });
+              } else {
+                  existsCount++;
+              }
+          }
+      }
+
+      if (newTasks.length === 0) {
+          if (existsCount > 0) notify('缺失项已在队列中', 'error');
+          else notify('当前列表无缺失项', 'success');
+          return;
+      }
+
+      setTaskQueue(prev => [...prev, ...newTasks]);
+      notify(`已添加 ${newTasks.length} 个补全任务`);
+  };
+
   // --- Lightbox Navigation Logic ---
   const navigateLightbox = useCallback((direction: 'next' | 'prev') => {
       setLightboxState(current => {
@@ -710,6 +760,18 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
 
             {/* Settings Group */}
             <div className="flex gap-2 items-center ml-auto">
+                {/* Auto-Fill Button */}
+                {viewMode === 'benchmark' && apiKey && (
+                     <button 
+                        onClick={queueMissingGenerations} 
+                        title={`一键补全当前列表中缺失 "Slot ${activeSlot + 1}: ${config.slots[activeSlot]?.label}" 的画师`}
+                        className="h-8 px-3 rounded-full border border-purple-300 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/50 font-bold flex items-center gap-1 transition-colors text-sm"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        补全
+                    </button>
+                )}
+
                 {/* Queue / Log Button */}
                 {(taskQueue.length > 0 || failedTasks.length > 0 || logs.length > 0) && (
                     <div className={`flex items-center gap-1 px-2 py-1 rounded border cursor-pointer select-none transition-colors ${
@@ -860,7 +922,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                                  {/* Actions Overlay */}
                                  <div className="absolute top-2 right-2 flex flex-col gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                                      <button onClick={(e) => toggleFav(artist.name, e)} className={`p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm ${isFav ? 'text-yellow-500' : 'text-gray-600 dark:text-white'}`}>
-                                         <svg className="w-4 h-4" fill={isFav ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l1.518-4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
+                                         <svg className="w-4 h-4" fill={isFav ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.563.044.8.77.38 1.178l-4.244 4.134a.563.563 0 00-.153.476l1.24 5.376c.13.565-.487 1.01-.967.756L12 18.232l-4.894 3.08c-.48.254-1.097-.19-.967-.756l1.24-5.376a.563.563 0 00-.153-.476L2.985 10.575c-.42-.408-.183-1.134.38-1.178l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" /></svg>
                                      </button>
                                      <a href={`https://danbooru.donmai.us/posts?tags=${artist.name}`} target="_blank" rel="noreferrer" className="hidden md:block p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm text-blue-500 dark:text-blue-300 hover:text-blue-600 pointer-events-auto">
                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
@@ -939,7 +1001,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                                          {artist.name}
                                      </h3>
                                      <button onClick={(e) => toggleFav(artist.name, e)} className={`${isFav ? 'text-yellow-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}>
-                                         <svg className="w-5 h-5" fill={isFav ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l1.518-4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
+                                         <svg className="w-5 h-5" fill={isFav ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.563.044.8.77.38 1.178l-4.244 4.134a.563.563 0 00-.153.476l1.24 5.376c.13.565-.487 1.01-.967.756L12 18.232l-4.894 3.08c-.48.254-1.097-.19-.967-.756l1.24-5.376a.563.563 0 00-.153-.476L2.985 10.575c-.42-.408-.183-1.134.38-1.178l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" /></svg>
                                      </button>
                                      <a href={`https://danbooru.donmai.us/posts?tags=${artist.name}`} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-600 dark:text-blue-400">
                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>

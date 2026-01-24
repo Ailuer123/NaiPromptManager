@@ -1,5 +1,5 @@
 
-import { PromptChain, Artist, Inspiration, User } from '../types';
+import { PromptChain, Artist, Inspiration, User, ChainType } from '../types';
 import { api } from './api';
 
 class DBService {
@@ -66,14 +66,16 @@ class DBService {
     return await api.get('/chains');
   }
 
-  async createChain(name: string, description: string, copyFrom?: PromptChain): Promise<string> {
-    const payload: any = { name, description };
+  async createChain(name: string, description: string, copyFrom?: PromptChain, type: ChainType = 'style'): Promise<string> {
+    const payload: any = { name, description, type };
     if (copyFrom) {
         payload.basePrompt = copyFrom.basePrompt;
         payload.negativePrompt = copyFrom.negativePrompt;
         payload.modules = copyFrom.modules;
         payload.params = copyFrom.params;
         payload.previewImage = copyFrom.previewImage;
+        // Don't copy type if it's explicitly passed, otherwise assume same type
+        if (!type && copyFrom.type) payload.type = copyFrom.type;
     }
     const res = await api.post('/chains', payload);
     return res.id;

@@ -82,6 +82,7 @@ const INIT_SQL = `
     id TEXT PRIMARY KEY,
     user_id TEXT, 
     username TEXT, 
+    type TEXT DEFAULT 'style',
     name TEXT NOT NULL,
     description TEXT,
     tags TEXT,
@@ -243,6 +244,7 @@ export default {
       try { await db.prepare("ALTER TABLE chains ADD COLUMN variable_values TEXT DEFAULT '{}'").run(); } catch (e) {}
       try { await db.prepare("ALTER TABLE artists ADD COLUMN preview_url TEXT").run(); } catch (e) {}
       try { await db.prepare("ALTER TABLE artists ADD COLUMN benchmarks TEXT DEFAULT '[]'").run(); } catch (e) {}
+      try { await db.prepare("ALTER TABLE chains ADD COLUMN type TEXT DEFAULT 'style'").run(); } catch (e) {}
 
       // Default Admin
       try {
@@ -456,8 +458,9 @@ export default {
       if (path === '/api/chains' && method === 'GET') {
         const chainsResult = await db.prepare('SELECT * FROM chains ORDER BY updated_at DESC').all();
         const data = chainsResult.results.map((c: any) => ({
-          id: c.id, userId: c.user_id, username: c.username, name: c.name, description: c.description,
-          tags: JSON.parse(c.tags || '[]'), previewImage: c.preview_image, basePrompt: c.base_prompt,
+          id: c.id, userId: c.user_id, username: c.username, type: c.type || 'style', name: c.name, description: c.description,
+          tags: JSON.parse(c.tags || '[]'), previewImage: c.preview_image, base_prompt: c.base_prompt, // raw DB column needed? No, mapping below
+          basePrompt: c.base_prompt,
           negativePrompt: c.negative_prompt, modules: JSON.parse(c.modules || '[]'), params: JSON.parse(c.params || '{}'),
           variableValues: JSON.parse(c.variable_values || '{}'), createdAt: c.created_at, updatedAt: c.updated_at
         }));
@@ -467,7 +470,8 @@ export default {
         if (currentUser.role === 'guest') return error('Forbidden', 403);
         const body = await request.json() as any;
         const id = crypto.randomUUID();
-        await db.prepare(`INSERT INTO chains (id, user_id, username, name, description, tags, preview_image, base_prompt, negative_prompt, modules, params, variable_values, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, currentUser.id, currentUser.username, body.name, body.description, '[]', null, body.basePrompt || '', body.negativePrompt || '', body.modules ? JSON.stringify(body.modules) : '[]', body.params ? JSON.stringify(body.params) : '{}', body.variableValues ? JSON.stringify(body.variableValues) : '{}', Date.now(), Date.now()).run();
+        const type = body.type || 'style'; // Default to style
+        await db.prepare(`INSERT INTO chains (id, user_id, username, type, name, description, tags, preview_image, base_prompt, negative_prompt, modules, params, variable_values, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, currentUser.id, currentUser.username, type, body.name, body.description, '[]', null, body.basePrompt || '', body.negativePrompt || '', body.modules ? JSON.stringify(body.modules) : '[]', body.params ? JSON.stringify(body.params) : '{}', body.variableValues ? JSON.stringify(body.variableValues) : '{}', Date.now(), Date.now()).run();
         return json({ id });
       }
       const chainIdMatch = path.match(/^\/api\/chains\/([^\/]+)$/);
