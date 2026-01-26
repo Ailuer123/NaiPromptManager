@@ -62,16 +62,16 @@ export const ChainEditorParams: React.FC<ChainEditorParamsProps> = ({ params, se
                     <div className="flex items-center gap-2">
                         <input 
                         type="checkbox" 
-                        id="varietyBoost"
+                        id="variety"
                         disabled={!canEdit}
-                        checked={params.varietyBoost ?? false}
+                        checked={params.variety ?? false}
                         onChange={(e) => {
-                            setParams({ ...params, varietyBoost: e.target.checked });
+                            setParams({ ...params, variety: e.target.checked });
                             markChange();
                         }}
                         className="w-4 h-4 text-pink-600 rounded focus:ring-pink-500"
                         />
-                        <label htmlFor="varietyBoost" className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer select-none flex items-center gap-1">
+                        <label htmlFor="variety" className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer select-none flex items-center gap-1">
                             <span>Variety+ (多样性)</span>
                         </label>
                     </div>

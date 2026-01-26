@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { PromptChain, PromptModule, User, CharacterParams } from '../types';
-import { compilePrompt } from '../services/promptUtils';
+import { compilePrompt, NAI_QUALITY_TAGS, NAI_UC_PRESETS } from '../services/promptUtils';
 import { generateImage } from '../services/naiService';
 import { localHistory } from '../services/localHistory';
 import { api } from '../services/api';
@@ -89,7 +89,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: 0, 
         qualityToggle: true, ucPreset: 0, characters: [],
         useCoords: chain.params?.useCoords ?? true, // Default to Manual for backward compatibility
-        varietyBoost: chain.params?.varietyBoost ?? false,
+        variety: chain.params?.variety ?? false,
         cfgRescale: chain.params?.cfgRescale ?? 0,
         ...chain.params
     });
@@ -296,9 +296,15 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                   if (json.sampler) newParams.sampler = json.sampler;
                   if (json.width) newParams.width = json.width;
                   if (json.height) newParams.height = json.height;
-                  if (json.qualityToggle !== undefined) newParams.qualityToggle = json.qualityToggle;
-                  if (json.ucPreset !== undefined) newParams.ucPreset = json.ucPreset;
                   
+                  // Handle Variety+ (controlled by skip_cfg_above_sigma)
+                  // If skip_cfg_above_sigma is present (and > 0), Variety is ON.
+                  if (json.skip_cfg_above_sigma !== undefined && json.skip_cfg_above_sigma !== null) {
+                      newParams.variety = true;
+                  } else {
+                      newParams.variety = false;
+                  }
+
                   if (json.v4_prompt) {
                       const v4 = json.v4_prompt;
                       if (v4.caption?.base_caption) {
@@ -322,7 +328,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                       newParams.characters = [];
                   }
                   
-                  // NEW: Parse V4 Negative Prompts for Characters
+                  // Parse V4 Negative Prompts for Characters
                   if (json.v4_negative_prompt) {
                       const v4Neg = json.v4_negative_prompt;
                       if (v4Neg.caption?.base_caption) {
@@ -340,12 +346,11 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                       }
                   }
                   
-                  // New Params
-                  if (json.variety_boost !== undefined) newParams.varietyBoost = json.variety_boost;
                   if (json.cfg_rescale !== undefined) newParams.cfgRescale = json.cfg_rescale;
 
               } catch(e) { console.error(e); }
           } else {
+              // Legacy text format parser (simplified, variety logic might be missed here if not explicit)
               const negIndex = rawMeta.indexOf('Negative prompt:');
               const stepsIndex = rawMeta.indexOf('Steps:');
               if (stepsIndex !== -1) {
@@ -379,11 +384,42 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
               newParams.characters = [];
           }
 
+          // --- Process Quality Tags & UC Presets from Strings ---
+          
+          // 1. Detect Quality Tags
+          // Ends with NAI_QUALITY_TAGS?
+          if (prompt.endsWith(NAI_QUALITY_TAGS)) {
+              newParams.qualityToggle = true;
+              prompt = prompt.substring(0, prompt.length - NAI_QUALITY_TAGS.length);
+          } else {
+              // If not found, default to false (or true? user said: if contains -> remove & open. implied: else -> false?)
+              // Safe default is to assume false if not present, unless we want to force it.
+              newParams.qualityToggle = false;
+          }
+
+          // 2. Detect UC Preset
+          // Check from ID 3 (Human - Longest) to 0. 4 is None.
+          newParams.ucPreset = 4; // Default to None
+          // We check ID 3 (Human), 2 (Furry), 1 (Light), 0 (Heavy).
+          // Note: Human Focus (3) string starts with Heavy (0) string prefix.
+          // So we MUST check Human (3) before Heavy (0).
+          const checkOrder = [3, 2, 1, 0];
+          
+          for (const id of checkOrder) {
+              // @ts-ignore
+              const presetStr = NAI_UC_PRESETS[id];
+              if (negative.startsWith(presetStr)) {
+                  newParams.ucPreset = id;
+                  negative = negative.substring(presetStr.length);
+                  break; // Found matching preset, stop
+              }
+          }
+
           setBasePrompt(prompt);
           setNegativePrompt(negative);
           setParams(newParams);
           markChange();
-          notify('参数已导入。注意：元数据可能缺失 Quality/Variety/Preset 设置，请按需手动调整。');
+          notify('参数已导入。Quality/UC/Variety 设置已根据 Prompt 内容自动匹配。');
       } catch (e: any) {
           notify('解析失败: ' + e.message, 'error');
       }

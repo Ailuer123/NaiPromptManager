@@ -41,7 +41,7 @@ export interface NAIParams {
   
   // New Features
   useCoords?: boolean; // true = Manual Coords, false = AI's Choice
-  varietyBoost?: boolean; // Variety+
+  variety?: boolean; // Variety+ (controlled via skip_cfg_above_sigma)
   cfgRescale?: number; // Prompt Guidance Rescale (0.0 - 1.0)
 }
 

@@ -2,6 +2,7 @@
 import JSZip from 'jszip';
 import { NAIParams } from '../types';
 import { api } from './api';
+import { NAI_QUALITY_TAGS, NAI_UC_PRESETS } from './promptUtils';
 
 export const generateImage = async (apiKey: string, prompt: string, negative: string, params: NAIParams) => {
   // Logic update: NAI API treats missing seed as random. 0 is a specific seed.
@@ -9,6 +10,26 @@ export const generateImage = async (apiKey: string, prompt: string, negative: st
   let seed: number | undefined = undefined;
   if (params.seed !== undefined && params.seed !== null && params.seed !== -1) {
       seed = params.seed;
+  }
+
+  // --- Pre-process Prompt & Negative based on V4 Settings ---
+  
+  // 1. Quality Tags (Append to positive prompt if enabled)
+  // Note: NAI Appends strictly at the end.
+  let finalPrompt = prompt;
+  if (params.qualityToggle ?? true) {
+      finalPrompt = finalPrompt + NAI_QUALITY_TAGS;
+  }
+
+  // 2. UC Preset (Prepend to negative prompt)
+  let finalNegative = negative;
+  const presetId = params.ucPreset ?? 0;
+  if (presetId !== 4) { // 4 is 'None'
+      // @ts-ignore - Index access is safe here as UI restricts values
+      const presetString = NAI_UC_PRESETS[presetId];
+      if (presetString) {
+          finalNegative = presetString + finalNegative;
+      }
   }
 
   // Prepare Character Captions for V4.5
@@ -26,13 +47,11 @@ export const generateImage = async (apiKey: string, prompt: string, negative: st
       centers: [ { x: c.x, y: c.y } ] // Coordinates mirrored
   })) : [];
 
-  // 3. AI's Choice Logic: 
-  // API param 'use_coords': false = AI Choice, true = Manual.
-  // We default to true (manual) if characters exist for backward compatibility, unless explicitly set to false.
+  // 3. AI's Choice Logic
   const useCoords = params.useCoords ?? hasCharacters; 
 
   const payload: any = {
-    input: prompt, // Keep flat input as fallback or for summary
+    input: finalPrompt, // Use processed prompt
     model: "nai-diffusion-4-5-full",
     action: "generate",
     parameters: {
@@ -44,13 +63,16 @@ export const generateImage = async (apiKey: string, prompt: string, negative: st
       steps: params.steps,
       n_samples: 1,
       
-      // V4.5 Specifics
-      qualityToggle: params.qualityToggle ?? true, // Default to true
-      ucPreset: params.ucPreset ?? 0, // Default to 0 (Heavy)
-      
       // New Features
-      variety_boost: params.varietyBoost ?? false,
+      // Variety+ is controlled by skip_cfg_above_sigma.
+      // If On, set to 58 (V4 standard for variety). If Off, omit or null.
+      skip_cfg_above_sigma: params.variety ? 58 : null,
+      
       cfg_rescale: params.cfgRescale ?? 0,
+
+      // V4 Specifics (Sent even if processed into prompt)
+      qualityToggle: params.qualityToggle ?? true,
+      ucPreset: params.ucPreset ?? 0,
 
       // Legacy / Standard params
       sm: false,
@@ -61,12 +83,12 @@ export const generateImage = async (apiKey: string, prompt: string, negative: st
       add_original_image: true,
       uncond_scale: 1,
       noise_schedule: "karras",
-      negative_prompt: negative,
+      negative_prompt: finalNegative, // Use processed negative
       // seed key is added conditionally below
       
       v4_prompt: {
         caption: {
-          base_caption: prompt, // The compiled global prompt
+          base_caption: finalPrompt, // Use processed prompt
           char_captions: charCaptions
         },
         use_coords: useCoords, // Controlled by UI toggle
@@ -74,7 +96,7 @@ export const generateImage = async (apiKey: string, prompt: string, negative: st
       },
       v4_negative_prompt: {
         caption: {
-          base_caption: negative,
+          base_caption: finalNegative, // Use processed negative
           char_captions: charNegativeCaptions
         },
         legacy_uc: false
@@ -97,7 +119,7 @@ export const generateImage = async (apiKey: string, prompt: string, negative: st
   // 解析 Zip (逻辑保持不变)
   const zip = await JSZip.loadAsync(blob);
   const filename = Object.keys(zip.files)[0];
-  if (!filename) throw new Error("No image found in response");
+  if (!filename) throw new Error("No image found in response ");
   
   const fileData = await zip.files[filename].async('base64');
   return `data:image/png;base64,${fileData}`;
