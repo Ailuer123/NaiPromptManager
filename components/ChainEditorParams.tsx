@@ -55,7 +55,7 @@ export const ChainEditorParams: React.FC<ChainEditorParamsProps> = ({ params, se
                         className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
                         />
                         <label htmlFor="qualityToggle" className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer select-none">
-                            Quality Tags (Auto)
+                            正面质量预设
                         </label>
                     </div>
                     {/* Variety+ Toggle */}
@@ -77,7 +77,7 @@ export const ChainEditorParams: React.FC<ChainEditorParamsProps> = ({ params, se
                     </div>
                 </div>
                 <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-500 block mb-1">负面预设 (UC Preset)</label>
+                    <label className="text-xs text-gray-500 dark:text-gray-500 block mb-1">负面预设</label>
                     <select 
                     disabled={!canEdit}
                     className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm outline-none"
@@ -108,12 +108,12 @@ export const ChainEditorParams: React.FC<ChainEditorParamsProps> = ({ params, se
                         {Object.entries(RESOLUTIONS).map(([key, val]) => (
                             <option key={key} value={key}>{val.label}</option>
                         ))}
-                        <option value="Custom">自定义 ({params.width}x{params.height})</option>
+                        <option value="Custom">自定义（{params.width}×{params.height}）</option>
                     </select>
                 </div>
                 <div className="flex gap-2">
                     <div className="flex-1">
-                        <label className="text-xs text-gray-500 dark:text-gray-500 block mb-1">Steps (Max 28)</label>
+                        <label className="text-xs text-gray-500 dark:text-gray-500 block mb-1">步数（最大 28）</label>
                         <input type="number" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm outline-none" 
                             disabled={!canEdit}
                             value={params.steps} 
@@ -127,7 +127,7 @@ export const ChainEditorParams: React.FC<ChainEditorParamsProps> = ({ params, se
                     </div>
                     {/* Seed Input */}
                     <div className="flex-1">
-                        <label className="text-xs text-gray-500 dark:text-gray-500 block mb-1">Seed (空=随机)</label>
+                        <label className="text-xs text-gray-500 dark:text-gray-500 block mb-1">Seed（留空=随机）</label>
                         <input 
                             type="number" 
                             className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm outline-none" 
@@ -164,7 +164,7 @@ export const ChainEditorParams: React.FC<ChainEditorParamsProps> = ({ params, se
                     </div>
                     <div>
                         <div className="flex justify-between items-center mb-1">
-                            <label className="text-xs text-gray-500 dark:text-gray-500 block" title="Prompt Guidance Rescale">Rescale (CFG Correction)</label>
+                            <label className="text-xs text-gray-500 dark:text-gray-500 block">CFG Rescale</label>
                             <span className="text-xs font-mono text-pink-600 dark:text-pink-400">{params.cfgRescale ?? 0}</span>
                         </div>
                         <input 

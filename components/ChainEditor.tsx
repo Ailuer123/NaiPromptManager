@@ -181,7 +181,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
   // --- Character Handlers ---
   const addCharacter = () => {
       if (!canEdit) return;
-      const newChar: CharacterParams = { id: crypto.randomUUID(), prompt: "character description", x: 0.5, y: 0.5 };
+      const newChar: CharacterParams = { id: crypto.randomUUID(), prompt: '', x: 0.5, y: 0.5 };
       setParams({ ...params, characters: [...(params.characters || []), newChar] });
       markChange();
   };
@@ -565,7 +565,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
              <div className="flex items-center gap-2 group cursor-pointer min-w-0 flex-1" onClick={() => isOwner && setIsEditingInfo(true)}>
                 <div className="flex flex-col md:flex-row md:items-baseline gap-0.5 md:gap-2 overflow-hidden min-w-0">
                     <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border flex-shrink-0 ${isCharacterMode ? 'bg-pink-100 text-pink-700 border-pink-200' : 'bg-blue-100 text-blue-700 border-blue-200'}`}>
-                        {isCharacterMode ? 'Char' : 'Style'}
+                        {isCharacterMode ? '角色串' : '画师串'}
                     </span>
                     <h1 className="text-base md:text-lg font-bold text-gray-900 dark:text-white truncate min-w-0">{chainName}</h1>
                     <span className="text-xs text-gray-500 dark:text-gray-500 truncate block max-w-full md:max-w-xs min-w-0">{chainDesc}</span>
@@ -580,14 +580,14 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                 <button 
                     onClick={() => copyPromptToClipboard(false)} 
                     className="p-1.5 rounded text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-900/30"
-                    title="复制完整正面 Prompt"
+                    title="复制完整正面提示词"
                 >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
                 </button>
                 <button 
                     onClick={() => copyPromptToClipboard(true)} 
                     className="p-1.5 rounded text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30"
-                    title="复制负面 Prompt"
+                    title="复制负面提示词"
                 >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
                 </button>
@@ -634,7 +634,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                   <section>
                     <div className="flex justify-between items-end mb-2">
                         <label className="block text-sm font-semibold text-indigo-500 dark:text-indigo-400">
-                            {isCharacterMode ? "1. 基础画风 (Base)" : "1. 基础画风 (Base)"}
+                            1. 基础画风
                         </label>
                         {/* Import & Load Preset Buttons */}
                         {canEdit && (
@@ -677,7 +677,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                   <section>
                     <div className="flex justify-between items-center mb-3">
                         <label className="block text-sm font-semibold text-indigo-500 dark:text-indigo-400">
-                            {isCharacterMode ? "2. 模块 (Modules)" : "2. 模块 (Modules)"}
+                            2. 模块
                         </label>
                         {canEdit && (
                             <button onClick={addModule} className="text-xs flex items-center bg-gray-200 dark:bg-gray-800 px-2 py-1 rounded hover:bg-gray-300 dark:hover:bg-gray-700">
@@ -733,7 +733,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                   {/* Character Management (New V4.5) */}
                   <section className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-4 border border-indigo-100 dark:border-indigo-800/50">
                       <div className="flex justify-between items-center mb-3">
-                          <label className="block text-sm font-semibold text-indigo-600 dark:text-indigo-300">3. 多角色管理 (V4.5 Characters)</label>
+                          <label className="block text-sm font-semibold text-indigo-600 dark:text-indigo-300">3. 多角色管理</label>
                           <div className="flex gap-2 items-center">
                               {/* AI Choice Toggle */}
                               <label className="flex items-center gap-1.5 cursor-pointer bg-white dark:bg-gray-700 px-2 py-1 rounded shadow-sm hover:bg-gray-100 dark:hover:bg-gray-600 border border-transparent dark:border-gray-600">
@@ -760,31 +760,30 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                       
                       <div className="space-y-3">
                           {(params.characters || []).length === 0 && (
-                              <div className="text-xs text-gray-400 text-center py-2">暂无角色定义，Prompt 将作为整体处理。</div>
+                              <div className="text-xs text-gray-400 text-center py-2">暂无角色定义，提示词将作为整体处理。</div>
                           )}
                           {(params.characters || []).map((char, idx) => (
                               <div key={char.id} className="bg-white dark:bg-gray-800 rounded p-3 border border-gray-200 dark:border-gray-700 shadow-sm relative">
                                   <div className="flex gap-3 items-start">
                                       <div className="flex-1 space-y-2">
                                           <div>
-                                              <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">Prompt</label>
+                                              <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">人物描述</label>
                                               <textarea 
                                                   disabled={!canEdit}
                                                   value={char.prompt}
                                                   onChange={(e) => updateCharacter(idx, { prompt: e.target.value })}
                                                   className="w-full text-xs p-2 border border-gray-300 dark:border-gray-600 rounded bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 h-16 resize-none focus:ring-1 focus:ring-indigo-500 outline-none"
-                                                  placeholder="e.g. 1girl, blue hair, standing"
+                                                  placeholder="人物描述"
                                               />
                                           </div>
                                           <div>
-                                              {/* Replaced red style with neutral style */}
-                                              <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">专属负面 (Negative)</label>
+                                              <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">专属负面</label>
                                               <textarea 
                                                   disabled={!canEdit}
                                                   value={char.negativePrompt || ''}
                                                   onChange={(e) => updateCharacter(idx, { negativePrompt: e.target.value })}
                                                   className="w-full text-xs p-2 border border-gray-300 dark:border-gray-600 rounded bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 h-10 resize-none focus:ring-1 focus:ring-indigo-500 outline-none placeholder-gray-400"
-                                                  placeholder="Optional"
+                                                  placeholder="选填"
                                               />
                                           </div>
                                       </div>
@@ -823,7 +822,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
 
                   {/* Negative Prompt */}
                   <section className="mb-8">
-                    <label className="block text-sm font-semibold text-red-500 dark:text-red-400 mb-2">全局负面 Prompt</label>
+                    <label className="block text-sm font-semibold text-red-500 dark:text-red-400 mb-2">全局负面提示词</label>
                     <textarea
                       disabled={!canEdit}
                       className={`w-full border rounded-lg p-3 outline-none font-mono text-sm leading-relaxed min-h-[80px] ${!canEdit ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 cursor-not-allowed' : 'bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-red-900 dark:text-red-100/80 focus:ring-1 focus:ring-red-500/50'}`}
@@ -896,7 +895,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
               <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-lg shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[80vh]">
                   <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
                       <h3 className="font-bold dark:text-white">
-                          引用{isCharacterMode ? '画师 (Style)' : '角色 (Character)'}预设
+                          引用{isCharacterMode ? '画师串' : '角色串'}预设
                       </h3>
                       <button onClick={() => setShowImportPreset(false)} className="text-gray-500">✕</button>
                   </div>
@@ -941,7 +940,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                           <input type="checkbox" checked={importOptions.baseToSubject} onChange={e => setImportOptions({...importOptions, baseToSubject: e.target.checked, overwriteBase: false})} className="rounded text-indigo-600 focus:ring-indigo-500" />
                           <div className="text-sm dark:text-gray-200">
                               <div>作为变量/主体导入 (推荐)</div>
-                              <div className="text-xs text-gray-500">将源 Base Prompt 填入当前 Subject，不覆盖当前 Base。</div>
+                              <div className="text-xs text-gray-500">将源基础提示词填入当前主体，不覆盖当前基础提示词。</div>
                           </div>
                       </label>
 
@@ -949,7 +948,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                           <input type="checkbox" checked={importOptions.overwriteBase} onChange={e => setImportOptions({...importOptions, overwriteBase: e.target.checked, baseToSubject: false})} className="rounded text-indigo-600 focus:ring-indigo-500" />
                           <div className="text-sm dark:text-gray-200">
                               <div>覆盖 Base Prompt</div>
-                              <div className="text-xs text-gray-500">使用源 Base Prompt 替换当前 Base。</div>
+                              <div className="text-xs text-gray-500">使用源基础提示词替换当前基础提示词。</div>
                           </div>
                       </label>
 
@@ -963,7 +962,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                       
                       <label className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700/30">
                           <input type="checkbox" checked={importOptions.overwriteNegative} onChange={e => setImportOptions({...importOptions, overwriteNegative: e.target.checked})} className="rounded text-indigo-600 focus:ring-indigo-500" />
-                          <span className="text-sm dark:text-gray-200">覆盖负面 Prompt</span>
+                          <span className="text-sm dark:text-gray-200">覆盖负面提示词</span>
                       </label>
                   </div>
                   <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 rounded-b-xl flex justify-end gap-3">
