@@ -89,7 +89,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
     setParams({
         width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: undefined, 
         qualityToggle: true, ucPreset: 4, characters: [],
-        useCoords: chain.params?.useCoords ?? true, // Default to Manual for backward compatibility
+        useCoords: chain.params?.useCoords ?? false, // Default to AI 自动构图 (useCoords=false)
         variety: chain.params?.variety ?? false,
         cfgRescale: chain.params?.cfgRescale ?? 0,
         ...chain.params
@@ -668,7 +668,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                       disabled={!canEdit}
                       className={`w-full border rounded-lg p-3 outline-none font-mono text-sm leading-relaxed min-h-[100px] ${!canEdit ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 cursor-not-allowed' : 'bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-200 focus:ring-1 focus:ring-indigo-500'}`}
                       value={basePrompt}
-                      placeholder={isCharacterMode ? "例如：1girl, long hair, blue eyes..." : "例如：outdoors, sky, clouds, masterpiece, best quality..."}
+                      placeholder="画风与场景标签，如 masterpiece、best quality、场景、光线等，英文逗号分隔"
                       onChange={(e) => {setBasePrompt(e.target.value); markChange()}}
                     />
                   </section>
@@ -892,32 +892,39 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
       {/* Import Preset List Modal */}
       {showImportPreset && !importCandidate && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-              <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-lg shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[80vh]">
+              <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-2xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[85vh]">
                   <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
                       <h3 className="font-bold dark:text-white">
                           引用{isCharacterMode ? '画师串' : '角色串'}预设
                       </h3>
-                      <button onClick={() => setShowImportPreset(false)} className="text-gray-500">✕</button>
+                      <button onClick={() => setShowImportPreset(false)} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">✕</button>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-2">
+                  <div className="flex-1 overflow-y-auto p-3 min-h-0 space-y-1.5">
                       {allChains
                           .filter(c => (isCharacterMode ? (c.type === 'style' || !c.type) : c.type === 'character'))
                           .map(c => (
-                              <div key={c.id} className="p-3 border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded flex justify-between items-center group">
-                                  <div>
-                                      <div className="font-bold text-sm dark:text-gray-200">{c.name}</div>
-                                      <div className="text-xs text-gray-500">{c.description || '无描述'}</div>
+                              <div key={c.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-transparent hover:border-gray-200 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700/50 group">
+                                  <div className="flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600">
+                                      {c.previewImage ? (
+                                          <img src={c.previewImage} alt="" className="w-full h-full object-cover" />
+                                      ) : (
+                                          <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">无图</div>
+                                      )}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                      <div className="font-bold text-sm dark:text-gray-200 truncate">{c.name}</div>
+                                      <div className="text-xs text-gray-500 truncate mt-0.5">{c.description || '无描述'}</div>
                                   </div>
                                   <button 
                                       onClick={() => initiateImport(c)}
-                                      className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 rounded text-xs hover:bg-indigo-100 dark:hover:bg-indigo-800 transition-colors"
+                                      className="flex-shrink-0 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 rounded text-xs hover:bg-indigo-100 dark:hover:bg-indigo-800 transition-colors"
                                   >
                                       选择
                                   </button>
                               </div>
                           ))}
                       {allChains.filter(c => (isCharacterMode ? (c.type === 'style' || !c.type) : c.type === 'character')).length === 0 && (
-                          <div className="text-center text-gray-400 py-8 text-sm">暂无可用预设</div>
+                          <div className="text-center text-gray-400 py-12 text-sm">暂无可用预设</div>
                       )}
                   </div>
               </div>
