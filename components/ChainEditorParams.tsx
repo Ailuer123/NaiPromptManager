@@ -151,11 +151,11 @@ export const ChainEditorParams: React.FC<ChainEditorParamsProps> = ({ params, se
                 <div className="md:col-span-2 grid grid-cols-2 gap-4 pt-2 border-t border-gray-100 dark:border-gray-700">
                     <div>
                         <div className="flex justify-between items-center mb-1">
-                            <label className="text-xs text-gray-500 dark:text-gray-500 block">Scale (Guidance)</label>
+                            <label className="text-xs text-gray-500 dark:text-gray-500 block">CFG Scale</label>
                             <span className="text-xs font-mono text-indigo-600 dark:text-indigo-400">{params.scale}</span>
                         </div>
-                        <input 
-                            type="range" min="1" max="25" step="0.1"
+                        <input
+                            type="range" min="0" max="10" step="0.1"
                             disabled={!canEdit}
                             value={params.scale}
                             onChange={(e) => {setParams({...params, scale: parseFloat(e.target.value)}); markChange();}}
