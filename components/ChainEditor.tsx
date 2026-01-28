@@ -677,7 +677,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                       disabled={!canEdit}
                       className={`w-full border rounded-lg p-3 outline-none font-mono text-sm leading-relaxed min-h-[100px] ${!canEdit ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 cursor-not-allowed' : 'bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-200 focus:ring-1 focus:ring-indigo-500'}`}
                       value={basePrompt}
-                      placeholder="画风与场景标签，如 masterpiece、best quality、场景、光线等，英文逗号分隔"
+                      placeholder="画风标签，如 masterpiece、best quality、画师tag等，英文逗号分隔"
                       onChange={(e) => {setBasePrompt(e.target.value); markChange()}}
                     />
                   </section>
