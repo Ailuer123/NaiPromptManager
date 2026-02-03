@@ -139,9 +139,6 @@ npx wrangler pages project create nai-prompt-manager --production-branch main ||
   - 只能管理自己的灵感图。
   - 有存储空间配额限制（默认 300MB）。
 
-### 性能监控
-项目集成了 `Server-Timing` API。在 Chrome DevTools 的 Network 面板中，你可以看到详细的后端耗时（如 `db_check`, `r2_put`, `db_update`），方便排查上传延迟问题。
-
 ---
 
 ## 🛠️ 技术架构

@@ -131,6 +131,39 @@ function parseCookies(request: Request) {
   return cookies;
 }
 
+// Helper: 记录登录日志
+async function logAccess(
+  db: D1Database, 
+  user: {id: string, username: string, role: string}, 
+  request: Request, 
+  action: string
+) {
+  const ip = request.headers.get('CF-Connecting-IP') || 
+             request.headers.get('X-Forwarded-For') || 
+             'unknown';
+  const userAgent = request.headers.get('User-Agent') || 'unknown';
+  try {
+    await db.prepare(
+      'INSERT INTO access_logs (user_id, username, role, ip, user_agent, action, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind(user.id, user.username, user.role, ip, userAgent.slice(0, 200), action, Date.now()).run();
+  } catch (e) {
+    console.error('Failed to log access:', e);
+  }
+}
+
+// Helper: 更新每日统计
+async function incrementDailyStat(db: D1Database, field: string) {
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  try {
+    await db.prepare(`
+      INSERT INTO daily_stats (date, ${field}) VALUES (?, 1)
+      ON CONFLICT(date) DO UPDATE SET ${field} = ${field} + 1
+    `).bind(today).run();
+  } catch (e) {
+    console.error('Failed to update daily stat:', e);
+  }
+}
+
 // Helper: Delete File from R2
 async function deleteR2File(env: Env, url: string) {
     if (!env.BUCKET || !url) return;
@@ -246,6 +279,38 @@ export default {
       try { await db.prepare("ALTER TABLE artists ADD COLUMN benchmarks TEXT DEFAULT '[]'").run(); } catch (e) {}
       try { await db.prepare("ALTER TABLE chains ADD COLUMN type TEXT DEFAULT 'style'").run(); } catch (e) {}
 
+      // 创建访问日志表
+      try {
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS access_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT,
+            username TEXT,
+            role TEXT,
+            ip TEXT,
+            user_agent TEXT,
+            action TEXT,
+            created_at INTEGER
+          )
+        `).run();
+        await db.prepare('CREATE INDEX IF NOT EXISTS idx_access_logs_created_at ON access_logs(created_at)').run();
+        await db.prepare('CREATE INDEX IF NOT EXISTS idx_access_logs_role ON access_logs(role)').run();
+      } catch (e) { console.error('Access logs table init failed', e) }
+
+      // 创建每日统计表
+      try {
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS daily_stats (
+            date TEXT PRIMARY KEY,
+            total_requests INTEGER DEFAULT 0,
+            api_requests INTEGER DEFAULT 0,
+            guest_logins INTEGER DEFAULT 0,
+            user_logins INTEGER DEFAULT 0,
+            generate_requests INTEGER DEFAULT 0
+          )
+        `).run();
+      } catch (e) { console.error('Daily stats table init failed', e) }
+
       // Default Admin
       try {
         const admin = await db.prepare('SELECT * FROM users WHERE username = ?').bind('admin').first();
@@ -309,6 +374,9 @@ export default {
           const sessionId = crypto.randomUUID();
           const expiresAt = Date.now() + 86400000;
           await db.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)').bind(sessionId, guestUser.id, expiresAt).run();
+          // 记录登录日志和每日统计
+          await logAccess(db, { id: guestUser.id, username: guestUser.username, role: 'guest' }, request, 'guest_login');
+          await incrementDailyStat(db, 'guest_logins');
           return json({ success: true, user: { id: guestUser.id, username: guestUser.username, role: 'guest', storageUsage: 0 } }, 200, { 'Set-Cookie': `session_id=${sessionId}; Expires=${new Date(expiresAt).toUTCString()}; Path=/; SameSite=Lax; HttpOnly` });
       }
 
@@ -324,6 +392,9 @@ export default {
           const sessionId = crypto.randomUUID();
           const expiresAt = Date.now() + 604800000;
           await db.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)').bind(sessionId, user.id, expiresAt).run();
+          // 记录登录日志和每日统计
+          await logAccess(db, { id: user.id, username, role: user.role }, request, 'login');
+          await incrementDailyStat(db, 'user_logins');
           return json({ success: true, user: { id: user.id, username, role: user.role, storageUsage: user.storage_usage || 0 } }, 200, { 'Set-Cookie': `session_id=${sessionId}; Expires=${new Date(expiresAt).toUTCString()}; Path=/; SameSite=Lax; HttpOnly` });
       }
 
@@ -394,6 +465,71 @@ export default {
           if (currentUser.role !== 'admin') return error('Forbidden', 403);
           const { passcode } = await request.json() as any;
           await db.prepare('UPDATE users SET password = ? WHERE role = ?').bind(passcode, 'guest').run();
+          return json({ success: true });
+      }
+
+      // --- ADMIN: Usage Statistics ---
+      if (path === '/api/admin/stats' && method === 'GET') {
+          if (currentUser.role !== 'admin') return error('Forbidden', 403);
+          
+          // 近 30 天的每日统计
+          const dailyStatsResult = await db.prepare(`
+              SELECT * FROM daily_stats 
+              WHERE date >= date('now', '-30 days')
+              ORDER BY date DESC
+          `).all();
+          
+          // 最近 50 条登录日志
+          const recentLogsResult = await db.prepare(`
+              SELECT * FROM access_logs 
+              ORDER BY created_at DESC 
+              LIMIT 50
+          `).all();
+          
+          // 存储统计
+          const userStorageStats = await db.prepare(`
+              SELECT SUM(storage_usage) as total_storage, COUNT(*) as user_count 
+              FROM users WHERE role != 'guest'
+          `).first<{total_storage: number, user_count: number}>();
+          
+          const chainsCount = await db.prepare('SELECT COUNT(*) as count FROM chains').first<{count: number}>();
+          const inspirationsCount = await db.prepare('SELECT COUNT(*) as count FROM inspirations').first<{count: number}>();
+          const artistsCount = await db.prepare('SELECT COUNT(*) as count FROM artists').first<{count: number}>();
+          
+          return json({
+              dailyStats: dailyStatsResult.results.map((s: any) => ({
+                  date: s.date,
+                  totalRequests: s.total_requests || 0,
+                  apiRequests: s.api_requests || 0,
+                  guestLogins: s.guest_logins || 0,
+                  userLogins: s.user_logins || 0,
+                  generateRequests: s.generate_requests || 0
+              })),
+              recentLogs: recentLogsResult.results.map((l: any) => ({
+                  id: l.id,
+                  userId: l.user_id,
+                  username: l.username,
+                  role: l.role,
+                  ip: l.ip,
+                  userAgent: l.user_agent,
+                  action: l.action,
+                  createdAt: l.created_at
+              })),
+              storage: {
+                  totalUserStorage: userStorageStats?.total_storage || 0,
+                  userCount: userStorageStats?.user_count || 0,
+                  chainsCount: chainsCount?.count || 0,
+                  inspirationsCount: inspirationsCount?.count || 0,
+                  artistsCount: artistsCount?.count || 0
+              }
+          });
+      }
+
+      // --- ADMIN: Clear Old Logs ---
+      if (path === '/api/admin/clear-logs' && method === 'POST') {
+          if (currentUser.role !== 'admin') return error('Forbidden', 403);
+          const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+          await db.prepare('DELETE FROM access_logs WHERE created_at < ?').bind(thirtyDaysAgo).run();
           return json({ success: true });
       }
 

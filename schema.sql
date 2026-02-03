@@ -54,3 +54,28 @@ CREATE TABLE inspirations (
   prompt TEXT,
   created_at INTEGER
 );
+
+-- 访问日志表（用于统计）
+CREATE TABLE access_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT,
+  username TEXT,
+  role TEXT,
+  ip TEXT,
+  user_agent TEXT,
+  action TEXT,
+  created_at INTEGER
+);
+
+CREATE INDEX idx_access_logs_created_at ON access_logs(created_at);
+CREATE INDEX idx_access_logs_role ON access_logs(role);
+
+-- 每日统计表（按日聚合）
+CREATE TABLE daily_stats (
+  date TEXT PRIMARY KEY,
+  total_requests INTEGER DEFAULT 0,
+  api_requests INTEGER DEFAULT 0,
+  guest_logins INTEGER DEFAULT 0,
+  user_logins INTEGER DEFAULT 0,
+  generate_requests INTEGER DEFAULT 0
+);

@@ -101,6 +101,46 @@ export interface LocalGenItem {
   createdAt: number;
 }
 
+// --- 使用统计相关类型 ---
+
+// 访问日志
+export interface AccessLog {
+  id: number;
+  userId: string;
+  username: string;
+  role: string;
+  ip: string;
+  userAgent: string;
+  action: string;
+  createdAt: number;
+}
+
+// 每日统计
+export interface DailyStat {
+  date: string;
+  totalRequests: number;
+  apiRequests: number;
+  guestLogins: number;
+  userLogins: number;
+  generateRequests: number;
+}
+
+// 存储统计
+export interface StorageStats {
+  totalUserStorage: number;
+  userCount: number;
+  chainsCount: number;
+  inspirationsCount: number;
+  artistsCount: number;
+}
+
+// 完整统计响应
+export interface UsageStats {
+  dailyStats: DailyStat[];
+  recentLogs: AccessLog[];
+  storage: StorageStats;
+}
+
 // Global Env Type for Cloudflare/Runtime injection
 declare global {
   interface Window {

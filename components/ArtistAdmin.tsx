@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
-import { Artist, User } from '../types';
+import { Artist, User, UsageStats, AccessLog, DailyStat } from '../types';
 
 interface ExtendedArtistAdminProps {
     currentUser: User;
@@ -19,7 +19,7 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
     isDark, toggleTheme, onLogout 
 }) => {
   const isAdmin = currentUser.role === 'admin';
-  const [activeTab, setActiveTab] = useState<'artist' | 'users' | 'profile'>(isAdmin ? 'artist' : 'profile');
+  const [activeTab, setActiveTab] = useState<'artist' | 'users' | 'profile' | 'stats'>(isAdmin ? 'artist' : 'profile');
   
   // Artist State (Managed via props now, filtered here if needed)
   const artists = artistsData || [];
@@ -47,6 +47,11 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
 
   // Profile State
   const [myNewPassword, setMyNewPassword] = useState('');
+
+  // Usage Stats State
+  const [usageStats, setUsageStats] = useState<UsageStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [clearingLogs, setClearingLogs] = useState(false);
 
   // Storage calculation helpers
   const MAX_STORAGE = 300 * 1024 * 1024;
@@ -138,6 +143,43 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
           db.getGuestCode().then(setGuestCode).catch(console.error);
       }
   }, [activeTab, isAdmin]);
+
+  // Fetch Usage Stats when Stats Tab is active
+  useEffect(() => {
+      if (isAdmin && activeTab === 'stats') {
+          setStatsLoading(true);
+          db.getUsageStats()
+              .then(setUsageStats)
+              .catch(console.error)
+              .finally(() => setStatsLoading(false));
+      }
+  }, [activeTab, isAdmin]);
+
+  // 清理旧日志
+  const handleClearLogs = async () => {
+      if (!confirm('确定要清理 30 天前的登录日志吗？')) return;
+      setClearingLogs(true);
+      try {
+          await db.clearOldLogs();
+          // 刷新统计数据
+          const newStats = await db.getUsageStats();
+          setUsageStats(newStats);
+          alert('旧日志已清理');
+      } catch (e) {
+          alert('清理失败');
+      }
+      setClearingLogs(false);
+  };
+
+  // 格式化日期时间
+  const formatDateTime = (timestamp: number) => {
+      return new Date(timestamp).toLocaleString('zh-CN', {
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+      });
+  };
 
   const handleUpdateGuestCode = async () => {
       if (!guestCode) return;
@@ -242,6 +284,7 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                 <>
                     <button onClick={() => setActiveTab('artist')} className={`pb-3 px-2 border-b-2 whitespace-nowrap ${activeTab === 'artist' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500'}`}>画师管理</button>
                     <button onClick={() => setActiveTab('users')} className={`pb-3 px-2 border-b-2 whitespace-nowrap ${activeTab === 'users' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500'}`}>用户管理</button>
+                    <button onClick={() => setActiveTab('stats')} className={`pb-3 px-2 border-b-2 whitespace-nowrap ${activeTab === 'stats' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500'}`}>使用统计</button>
                 </>
             )}
             <button onClick={() => setActiveTab('profile')} className={`pb-3 px-2 border-b-2 whitespace-nowrap ${activeTab === 'profile' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500'}`}>个人设置</button>
@@ -376,6 +419,140 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                         </tbody>
                     </table>
                 </div>
+            </div>
+        )}
+
+        {/* --- STATS TAB --- */}
+        {activeTab === 'stats' && isAdmin && (
+            <div className="space-y-6">
+                {statsLoading ? (
+                    <div className="text-center py-12 text-gray-500">加载中...</div>
+                ) : usageStats ? (
+                    <>
+                        {/* 存储概览卡片 */}
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow">
+                                <div className="text-2xl font-bold text-indigo-600">{usageStats.storage.userCount}</div>
+                                <div className="text-sm text-gray-500 dark:text-gray-400">注册用户</div>
+                            </div>
+                            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow">
+                                <div className="text-2xl font-bold text-green-600">{usageStats.storage.chainsCount}</div>
+                                <div className="text-sm text-gray-500 dark:text-gray-400">画师串/角色串</div>
+                            </div>
+                            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow">
+                                <div className="text-2xl font-bold text-purple-600">{usageStats.storage.inspirationsCount}</div>
+                                <div className="text-sm text-gray-500 dark:text-gray-400">灵感图</div>
+                            </div>
+                            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow">
+                                <div className="text-2xl font-bold text-orange-600">{usageStats.storage.artistsCount}</div>
+                                <div className="text-sm text-gray-500 dark:text-gray-400">画师库</div>
+                            </div>
+                            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow">
+                                <div className="text-2xl font-bold text-blue-600">{formatBytes(usageStats.storage.totalUserStorage)}</div>
+                                <div className="text-sm text-gray-500 dark:text-gray-400">R2 存储</div>
+                            </div>
+                        </div>
+
+                        {/* 每日统计 */}
+                        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow">
+                            <h3 className="font-bold dark:text-white mb-4">近期登录统计</h3>
+                            {usageStats.dailyStats.length > 0 ? (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead>
+                                            <tr className="text-left border-b dark:border-gray-700 text-gray-500">
+                                                <th className="pb-2">日期</th>
+                                                <th className="pb-2">游客登录</th>
+                                                <th className="pb-2">用户登录</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {usageStats.dailyStats.slice(0, 7).map((stat) => (
+                                                <tr key={stat.date} className="border-b dark:border-gray-700 last:border-0">
+                                                    <td className="py-2 dark:text-gray-200">{stat.date}</td>
+                                                    <td className="py-2">
+                                                        <span className="px-2 py-1 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 rounded text-xs font-medium">
+                                                            {stat.guestLogins}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-2">
+                                                        <span className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded text-xs font-medium">
+                                                            {stat.userLogins}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <div className="text-gray-500 text-center py-4">暂无统计数据</div>
+                            )}
+                        </div>
+
+                        {/* 登录日志 */}
+                        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="font-bold dark:text-white">登录日志（最近 50 条）</h3>
+                                <button 
+                                    onClick={handleClearLogs}
+                                    disabled={clearingLogs}
+                                    className="text-sm px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded hover:bg-red-200 dark:hover:bg-red-900/50 disabled:opacity-50"
+                                >
+                                    {clearingLogs ? '清理中...' : '清理 30 天前日志'}
+                                </button>
+                            </div>
+                            {usageStats.recentLogs.length > 0 ? (
+                                <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                                    <table className="w-full text-sm">
+                                        <thead className="sticky top-0 bg-white dark:bg-gray-800">
+                                            <tr className="text-left border-b dark:border-gray-700 text-gray-500">
+                                                <th className="pb-2 pr-4">时间</th>
+                                                <th className="pb-2 pr-4">用户</th>
+                                                <th className="pb-2 pr-4">角色</th>
+                                                <th className="pb-2 pr-4">IP</th>
+                                                <th className="pb-2">操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {usageStats.recentLogs.map((log) => (
+                                                <tr key={log.id} className={`border-b dark:border-gray-700 last:border-0 ${log.role === 'guest' ? 'bg-yellow-50 dark:bg-yellow-900/10' : ''}`}>
+                                                    <td className="py-2 pr-4 dark:text-gray-300 whitespace-nowrap">{formatDateTime(log.createdAt)}</td>
+                                                    <td className="py-2 pr-4 dark:text-gray-200 font-medium">{log.username}</td>
+                                                    <td className="py-2 pr-4">
+                                                        <span className={`px-2 py-0.5 rounded text-xs ${
+                                                            log.role === 'admin' ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' :
+                                                            log.role === 'guest' ? 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                                                            'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
+                                                        }`}>
+                                                            {log.role}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-2 pr-4 dark:text-gray-400 font-mono text-xs">{log.ip}</td>
+                                                    <td className="py-2 dark:text-gray-400">{log.action}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <div className="text-gray-500 text-center py-4">暂无登录日志</div>
+                            )}
+                        </div>
+
+                        {/* Cloudflare 免费额度提示 */}
+                        <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800">
+                            <h4 className="font-bold text-blue-800 dark:text-blue-300 text-sm mb-2">📊 Cloudflare 免费额度参考</h4>
+                            <div className="text-xs text-blue-700 dark:text-blue-400 space-y-1">
+                                <div>• Workers: 每日 10 万次请求</div>
+                                <div>• D1 数据库: 每日 500 万行读取 / 10 万行写入</div>
+                                <div>• R2 存储: 10GB 存储 + 每月 1000 万次操作</div>
+                            </div>
+                        </div>
+                    </>
+                ) : (
+                    <div className="text-center py-12 text-gray-500">无法加载统计数据</div>
+                )}
             </div>
         )}
 

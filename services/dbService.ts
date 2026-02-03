@@ -1,5 +1,5 @@
 
-import { PromptChain, Artist, Inspiration, User, ChainType } from '../types';
+import { PromptChain, Artist, Inspiration, User, ChainType, UsageStats } from '../types';
 import { api } from './api';
 
 class DBService {
@@ -140,6 +140,15 @@ class DBService {
 
   async bulkDeleteInspirations(ids: string[]): Promise<void> {
       await api.post('/inspirations/bulk-delete', { ids });
+  }
+
+  // --- Admin: Usage Statistics ---
+  async getUsageStats(): Promise<UsageStats> {
+      return await api.get('/admin/stats');
+  }
+
+  async clearOldLogs(): Promise<void> {
+      await api.post('/admin/clear-logs', {});
   }
 }
 
