@@ -54,6 +54,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
     const [importModalSearch, setImportModalSearch] = useState('');
     const [importModalSelectedTags, setImportModalSelectedTags] = useState<Set<string>>(new Set());
     const [showImportPreset, setShowImportPreset] = useState(false);
+    const [quickImportMode, setQuickImportMode] = useState(true); // 快速导入模式：默认开启，跳过模块选择
     // Detailed Import Config State
     const [importCandidate, setImportCandidate] = useState<PromptChain | null>(null);
     const [importOptions, setImportOptions] = useState({
@@ -243,15 +244,13 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
     };
 
     // --- Smart Import Logic ---
-    const initiateImport = (c: PromptChain) => {
-        setImportCandidate(c);
-
+    const getDefaultImportOptions = (c: PromptChain) => {
         // Determine type-based defaults
         const isTargetChar = c.type === 'character';
         const hasModules = c.modules && c.modules.length > 0;
 
         // Default options based on target type
-        setImportOptions({
+        return {
             importBasePrompt: !isTargetChar,     // Artist: Checked, Char: Unchecked (per Rule 6 & 5)
             importSubject: isTargetChar,         // Char: Checked, Artist: Unchecked (per Rule 5 & 6)
             importNegative: !isTargetChar,       // Artist: Checked, Char: Unchecked
@@ -261,36 +260,52 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
             appendCharacters: false,
             importSettings: !isTargetChar,       // Artist: Checked, Char: Unchecked
             importSeed: false,                   // Both: Unchecked
-        });
+        };
+    };
 
+    const initiateImport = (c: PromptChain) => {
+        // 快速导入模式：直接使用默认设置导入，不弹出详细配置
+        if (quickImportMode) {
+            const defaultOptions = getDefaultImportOptions(c);
+            executeImport(c, defaultOptions, new Set((c.modules || []).map(m => m.id)));
+            return;
+        }
+
+        // 详细模式：弹出配置窗口
+        setImportCandidate(c);
+        setImportOptions(getDefaultImportOptions(c));
         // Select all modules by default
         setSelectedImportModuleIds(new Set((c.modules || []).map(m => m.id)));
     };
 
-    const confirmImport = () => {
-        if (!importCandidate || !canEdit) return;
-        const target = importCandidate;
+    // 执行导入的核心逻辑（提取为独立函数）
+    const executeImport = (
+        target: PromptChain,
+        options: typeof importOptions,
+        moduleIds: Set<string>
+    ) => {
+        if (!canEdit) return;
 
         // 1. Prompt (Base + Subject)
-        if (importOptions.importBasePrompt) {
+        if (options.importBasePrompt) {
             setBasePrompt(target.basePrompt || '');
         }
-        if (importOptions.importSubject) {
+        if (options.importSubject) {
             const targetSubject = target.variableValues?.['subject'] || '';
             setSubjectPrompt(targetSubject);
         }
 
         // 2. Negative
-        if (importOptions.importNegative) {
+        if (options.importNegative) {
             setNegativePrompt(target.negativePrompt || '');
         }
 
         // 3. Modules
-        if (importOptions.importModules && target.modules && target.modules.length > 0) {
-            const modulesToImport = target.modules.filter(m => selectedImportModuleIds.has(m.id));
+        if (options.importModules && target.modules && target.modules.length > 0) {
+            const modulesToImport = target.modules.filter(m => moduleIds.has(m.id));
             const newModules = modulesToImport.map(m => ({ ...m, id: crypto.randomUUID() }));
 
-            if (importOptions.appendModules) {
+            if (options.appendModules) {
                 setModules(prev => [...prev, ...newModules]); // Append
             } else {
                 setModules(newModules); // Replace
@@ -298,20 +313,20 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
 
             // Update active state
             setActiveModules(prev => {
-                const next = importOptions.appendModules ? { ...prev } : {};
+                const next = options.appendModules ? { ...prev } : {};
                 newModules.forEach(m => next[m.id] = m.isActive);
                 return next;
             });
         }
 
         // 4. Characters
-        if (importOptions.importCharacters && target.params?.characters) {
+        if (options.importCharacters && target.params?.characters) {
             const newChars = target.params.characters.map(c => ({
                 ...c,
                 id: crypto.randomUUID() // Regen IDs
             }));
 
-            if (importOptions.appendCharacters) {
+            if (options.appendCharacters) {
                 setParams(prev => ({ ...prev, characters: [...(prev.characters || []), ...newChars] }));
             } else {
                 setParams(prev => ({ ...prev, characters: newChars }));
@@ -319,7 +334,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         }
 
         // 5. Settings
-        if (importOptions.importSettings) {
+        if (options.importSettings) {
             setParams(prev => ({
                 ...prev,
                 steps: target.params?.steps ?? prev.steps,
@@ -336,7 +351,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         }
 
         // 6. Seed
-        if (importOptions.importSeed && target.params?.seed !== undefined) {
+        if (options.importSeed && target.params?.seed !== undefined) {
             setParams(prev => ({ ...prev, seed: target.params.seed }));
         }
 
@@ -345,6 +360,11 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         setLoadedPreset(target.name);
         setImportCandidate(null);
         setShowImportPreset(false);
+    };
+
+    const confirmImport = () => {
+        if (!importCandidate || !canEdit) return;
+        executeImport(importCandidate, importOptions, selectedImportModuleIds);
     };
 
     // --- Import Logic ---
@@ -1092,8 +1112,31 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
             {showImportPreset && !importCandidate && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                     <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-4xl md:max-w-5xl lg:max-w-6xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[85vh]">
-                        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center flex-shrink-0 gap-4">
+                        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center flex-shrink-0 gap-4 flex-wrap">
                             <h3 className="font-bold dark:text-white flex-shrink-0">引用预设</h3>
+
+                            {/* 快速导入开关 */}
+                            <label className="flex items-center gap-2 cursor-pointer select-none flex-shrink-0 group">
+                                <span className="text-xs text-gray-500 dark:text-gray-400">快速导入</span>
+                                <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={quickImportMode}
+                                    onClick={() => setQuickImportMode(!quickImportMode)}
+                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setQuickImportMode(!quickImportMode); } }}
+                                    className={`relative w-10 h-5 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 ${quickImportMode ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+                                >
+                                    <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${quickImportMode ? 'left-5' : 'left-0.5'}`}></div>
+                                </button>
+                                <span className="relative">
+                                    <svg className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                                        开启后点击预设直接导入，关闭则显示详细选项
+                                    </span>
+                                </span>
+                            </label>
 
                             <div className="flex bg-gray-100 dark:bg-gray-700/50 p-1 rounded-lg flex-1 max-w-xs">
                                 <button
