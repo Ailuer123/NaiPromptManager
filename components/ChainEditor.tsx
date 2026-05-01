@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { PromptChain, PromptModule, User, CharacterParams } from '../types';
-import { compilePrompt, NAI_QUALITY_TAGS, NAI_UC_PRESETS } from '../services/promptUtils';
+import { PromptChain, PromptModule, User, CharacterParams, NAIParams } from '../types';
+import { compilePrompt } from '../services/promptUtils';
 import { generateImage } from '../services/naiService';
 import { localHistory } from '../services/localHistory';
 import { api } from '../services/api';
-import { extractMetadata } from '../services/metadataService';
+import { extractMetadata, parseNovelAIMetadata, IMPORT_SESSION_KEY } from '../services/metadataService';
 import { ChainEditorParams } from './ChainEditorParams';
 import { ChainEditorPreview } from './ChainEditorPreview';
 
@@ -155,6 +155,23 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
 
     }, [chain.id, chain.basePrompt, chain.negativePrompt, chain.modules, chain.params, chain.name, chain.description, chain.variableValues]);
     // Dependency note: we still list props to satisfy linter, but the guard 'if (prevChainId === chain.id) return' blocks re-execution.
+
+    // --- sessionStorage 侦听：接收来自历史/灵感页面的一键导入数据 ---
+    useEffect(() => {
+        const raw = sessionStorage.getItem(IMPORT_SESSION_KEY);
+        if (!raw) return;
+
+        try {
+            const data = JSON.parse(raw) as { prompt: string; negativePrompt: string; params: NAIParams };
+            // 清除标志位，防止重复消费
+            sessionStorage.removeItem(IMPORT_SESSION_KEY);
+            // 应用数据到当前编辑器
+            applyImportData(data);
+        } catch (e) {
+            console.error('解析 pending import 数据失败', e);
+            sessionStorage.removeItem(IMPORT_SESSION_KEY);
+        }
+    }, [chain.id]); // 仅在编辑器挂载或 chain 切换时消费
 
 
     // --- Logic: Compilation ---
@@ -382,149 +399,29 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         if (!confirm('是否用该图片的参数覆盖当前 Base Prompt、Negative Prompt 和参数设置？\n(Subject 和 模块不会被修改)')) return;
 
         try {
-            let prompt = rawMeta;
-            let negative = '';
-            let newParams: any = { ...params };
-
-            if (rawMeta.trim().startsWith('{')) {
-                try {
-                    const json = JSON.parse(rawMeta);
-                    if (json.prompt) prompt = json.prompt;
-                    if (json.uc) negative = json.uc;
-                    if (json.steps) newParams.steps = json.steps;
-                    if (json.scale) newParams.scale = json.scale;
-                    if (json.seed) newParams.seed = json.seed;
-                    if (json.sampler) newParams.sampler = json.sampler;
-                    if (json.width) newParams.width = json.width;
-                    if (json.height) newParams.height = json.height;
-
-                    // Handle Variety+ (controlled by skip_cfg_above_sigma)
-                    // If skip_cfg_above_sigma is present (and > 0), Variety is ON.
-                    if (json.skip_cfg_above_sigma !== undefined && json.skip_cfg_above_sigma !== null) {
-                        newParams.variety = true;
-                    } else {
-                        newParams.variety = false;
-                    }
-
-                    if (json.v4_prompt) {
-                        const v4 = json.v4_prompt;
-                        if (v4.caption?.base_caption) {
-                            prompt = v4.caption.base_caption;
-                        }
-                        // V4.5 AI Choice / Manual
-                        if (v4.use_coords !== undefined) {
-                            newParams.useCoords = v4.use_coords;
-                        }
-
-                        newParams.characters = [];
-                        if (v4.caption?.char_captions && Array.isArray(v4.caption.char_captions)) {
-                            newParams.characters = v4.caption.char_captions.map((cc: any) => ({
-                                id: crypto.randomUUID(),
-                                prompt: cc.char_caption || '',
-                                x: cc.centers?.[0]?.x ?? 0.5,
-                                y: cc.centers?.[0]?.y ?? 0.5
-                            }));
-                        }
-                    } else {
-                        newParams.characters = [];
-                    }
-
-                    // Parse V4 Negative Prompts for Characters
-                    if (json.v4_negative_prompt) {
-                        const v4Neg = json.v4_negative_prompt;
-                        if (v4Neg.caption?.base_caption) {
-                            negative = v4Neg.caption.base_caption;
-                        }
-
-                        // Match negative captions to characters if they exist
-                        if (newParams.characters.length > 0 && v4Neg.caption?.char_captions && Array.isArray(v4Neg.caption.char_captions)) {
-                            newParams.characters.forEach((char: any, idx: number) => {
-                                const negCharCap = v4Neg.caption.char_captions[idx];
-                                if (negCharCap && negCharCap.char_caption) {
-                                    char.negativePrompt = negCharCap.char_caption;
-                                }
-                            });
-                        }
-                    }
-
-                    if (json.cfg_rescale !== undefined) newParams.cfgRescale = json.cfg_rescale;
-
-                } catch (e) { console.error(e); }
-            } else {
-                // Legacy text format parser (simplified, variety logic might be missed here if not explicit)
-                const negIndex = rawMeta.indexOf('Negative prompt:');
-                const stepsIndex = rawMeta.indexOf('Steps:');
-                if (stepsIndex !== -1) {
-                    const paramStr = rawMeta.substring(stepsIndex);
-                    const getVal = (key: string) => {
-                        const regex = new RegExp(`${key}:\\s*([^,]+)`);
-                        const match = paramStr.match(regex);
-                        return match ? match[1].trim() : null;
-                    };
-                    const steps = getVal('Steps');
-                    const sampler = getVal('Sampler');
-                    const scale = getVal('CFG scale');
-                    const seed = getVal('Seed');
-                    const size = getVal('Size');
-                    if (steps) newParams.steps = parseInt(steps);
-                    if (sampler) newParams.sampler = sampler.toLowerCase().replace(/ /g, '_');
-                    if (scale) newParams.scale = parseFloat(scale);
-                    if (seed) newParams.seed = parseInt(seed);
-                    if (size) {
-                        const [w, h] = size.split('x').map(Number);
-                        newParams.width = w;
-                        newParams.height = h;
-                    }
-                    if (negIndex !== -1 && negIndex < stepsIndex) {
-                        prompt = rawMeta.substring(0, negIndex).trim();
-                        negative = rawMeta.substring(negIndex + 16, stepsIndex).trim();
-                    } else {
-                        prompt = rawMeta.substring(0, stepsIndex).trim();
-                    }
-                }
-                newParams.characters = [];
-            }
-
-            // --- Process Quality Tags & UC Presets from Strings ---
-
-            // 1. Detect Quality Tags
-            // Ends with NAI_QUALITY_TAGS?
-            if (prompt.endsWith(NAI_QUALITY_TAGS)) {
-                newParams.qualityToggle = true;
-                prompt = prompt.substring(0, prompt.length - NAI_QUALITY_TAGS.length);
-            } else {
-                // If not found, default to false (or true? user said: if contains -> remove & open. implied: else -> false?)
-                // Safe default is to assume false if not present, unless we want to force it.
-                newParams.qualityToggle = false;
-            }
-
-            // 2. Detect UC Preset
-            // Check from ID 3 (Human - Longest) to 0. 4 is None.
-            newParams.ucPreset = 4; // Default to None
-            // We check ID 3 (Human), 2 (Furry), 1 (Light), 0 (Heavy).
-            // Note: Human Focus (3) string starts with Heavy (0) string prefix.
-            // So we MUST check Human (3) before Heavy (0).
-            const checkOrder = [3, 2, 1, 0];
-
-            for (const id of checkOrder) {
-                // @ts-ignore
-                const presetStr = NAI_UC_PRESETS[id];
-                if (negative.startsWith(presetStr)) {
-                    newParams.ucPreset = id;
-                    negative = negative.substring(presetStr.length);
-                    break; // Found matching preset, stop
-                }
-            }
-
-            setBasePrompt(prompt);
-            setNegativePrompt(negative);
-            setParams(newParams);
+            // 调用公共解析服务
+            const parsed = parseNovelAIMetadata(rawMeta, params);
+            setBasePrompt(parsed.prompt);
+            setNegativePrompt(parsed.negativePrompt);
+            setParams(parsed.params);
             markChange();
             notify('参数已导入。Quality/UC/Variety 设置已根据 Prompt 内容自动匹配。');
         } catch (e: any) {
             notify('解析失败: ' + e.message, 'error');
         }
         if (importInputRef.current) importInputRef.current.value = '';
+    };
+
+    /**
+     * 从外部投递的数据（历史/灵感页面的一键导入）中加载参数
+     * 由 useEffect 在检测到 sessionStorage 中的 nai_pending_import 时调用
+     */
+    const applyImportData = (data: { prompt: string; negativePrompt: string; params: NAIParams }) => {
+        setBasePrompt(data.prompt);
+        setNegativePrompt(data.negativePrompt);
+        setParams(data.params);
+        markChange();
+        notify('已从外部图片导入完整配置。');
     };
 
 
