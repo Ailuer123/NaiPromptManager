@@ -4,5 +4,18 @@ compatibility_date = "2024-04-01"
 compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = "dist"
 
+# [D1 Database Configuration]
+# 请将下方的 id 替换为你真实的 D1 Database ID
+[[d1_databases]]
+binding = "DB"
+database_name = "nai-db"
+database_id = "7aa2f212-aea4-4faa-b4fd-ddc7d0cf4d92"
+
+# [R2 Bucket Configuration]
+# 绑定 R2 Bucket，用于存储封面图和灵感图
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "nai-assets" # 请替换为你真实创建的 Bucket 名称
+
 [vars]
 GUEST_PASSCODE = "kklovenai123" # 默认游客口令，部署后请在后台修改或修改此处
