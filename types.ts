@@ -30,6 +30,42 @@ export interface CharacterParams {
   y: number; // 0.0 to 1.0
 }
 
+export interface VibeEncoding {
+  /** NovelAI 文件中的编码模型分组，例如 v4full。 */
+  model: string;
+  informationExtracted: number;
+  encoding: string;
+}
+
+export interface VibePreset {
+  id: string;
+  name: string;
+  thumbnailUrl?: string;
+  encodings: VibeEncoding[];
+  defaultStrength: number;
+  defaultInformationExtracted: number;
+  sourceFilename?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** 随 Chain 保存的轻量挂载，不包含体积较大的预编码数据。 */
+export interface VibeMount {
+  vibeId: string;
+  name: string;
+  strength: number;
+  informationExtracted: number;
+}
+
+/** 仅在生成前由本地库解析出的运行时数据。 */
+export interface ResolvedVibe {
+  vibeId: string;
+  name: string;
+  strength: number;
+  informationExtracted: number;
+  encoding: string;
+}
+
 export interface NAIParams {
   width: number;
   height: number;
@@ -46,6 +82,7 @@ export interface NAIParams {
   useCoords?: boolean; // true = Manual Coords, false = AI's Choice
   variety?: boolean; // Variety+ (controlled via skip_cfg_above_sigma)
   cfgRescale?: number; // Prompt Guidance Rescale (0.0 - 1.0)
+  vibes?: VibeMount[];
 }
 
 export type ChainType = 'style' | 'character';

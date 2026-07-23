@@ -35,6 +35,7 @@ Authority gaps:
 - 项目是 NAI Prompt Manager，全栈 Serverless 应用。
 - 用户通过前端管理提示词链、画师库、灵感图库、本地生成历史与偏好。
 - 本地历史、NAI API Key、部分偏好保留在浏览器端。
+- Vibe encoded、IE 档位与缩略图保存在独立 IndexedDB `NAI_Vibe_DB`；Chain 仅保存轻量挂载引用。
 
 ### 4.2 Non-negotiables
 
@@ -55,6 +56,10 @@ Authority gaps:
 - `worker/index.ts` 是 D1 初始化、迁移和后端 API 的 source of truth。
 - `services/dbService.ts` 是前端 API 薄封装。
 - `services/promptUtils.ts` 是 Prompt 编译顺序 owner。
+- `services/vibeFile.ts` 是 NovelAI / 智绘姬 Vibe 外部文件格式 owner。
+- `services/vibeLibrary.ts` 是 Vibe encoded 本地持久化 owner。
+- `services/vibeRules.ts` 是挂载校验与运行时 encoded 解析 owner。
+- `services/naiPayload.ts` 是 NovelAI 图片生成 payload owner。
 - `components/ArtistAdmin.tsx` 当前承载“设置 → 偏好设置”。
 - `components/ArtistLibrary.tsx` 当前承载“军火库”页面逻辑。
 
@@ -77,6 +82,10 @@ Authority gaps:
 - 军火库底部已选条 UI -> `components/ArtistLibraryCart.tsx`
 - Prompt 编译 -> `services/promptUtils.ts`
 - API fetch 封装 -> `services/dbService.ts`
+- Vibe 文件解析 -> `services/vibeFile.ts`
+- Vibe 本地持久化 -> `services/vibeLibrary.ts`
+- Vibe 挂载解析 -> `services/vibeRules.ts`
+- NAI 图片生成 payload -> `services/naiPayload.ts`
 - Worker API / schema init -> `worker/index.ts`
 
 ## 7. Current State and Risks
@@ -95,4 +104,5 @@ Authority gaps:
 
 - 不破坏现有登录、游客模式、画师管理、灵感图库和本地历史。
 - 不改动云端数据结构，除非需求明确。
+- Vibe encoded 不写入 Chain、D1 或 R2；本地库缺失时必须明确报错，不使用 inline fallback。
 - 不重写用户已有 LocalStorage 历史数据，除非有迁移计划和用户确认。

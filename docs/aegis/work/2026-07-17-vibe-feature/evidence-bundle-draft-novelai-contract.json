@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "aegis.schema.v0",
+  "artifactKey": "novelai-contract",
+  "type": "contract",
+  "source": "https://image.novelai.net/docs/doc.json",
+  "summary": "官方 schema 确认 reference_image_multiple、reference_strength_multiple、reference_information_extracted_multiple 均为数组字段",
+  "verifier": "NovelAI Image API OpenAPI"
+}

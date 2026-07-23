@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "aegis.schema.v0",
+  "taskId": "2026-07-17-vibe-feature",
+  "currentTodo": "全部验收完成",
+  "completedTodos": [
+    "Vibe 文件解析与真实格式边界",
+    "IndexedDB 本地库与挂载规则",
+    "NovelAI payload contract",
+    "编辑器面板、生成接线与垃圾桶图标",
+    "24 项自动化、完整构建、官方 schema 与用户全量手动验收"
+  ],
+  "activeSlice": "目标关闭",
+  "evidenceRefs": [
+    "full-test-suite",
+    "production-build",
+    "novelai-contract",
+    "user-manual-acceptance"
+  ],
+  "blockedOn": null,
+  "nextStep": "无",
+  "updatedAt": "2026-07-17"
+}

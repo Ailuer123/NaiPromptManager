@@ -9,6 +9,9 @@ import { api } from '../services/api';
 import { extractMetadata, parseNovelAIMetadata, IMPORT_SESSION_KEY } from '../services/metadataService';
 import { ChainEditorParams } from './ChainEditorParams';
 import { ChainEditorPreview } from './ChainEditorPreview';
+import { ChainEditorVibePanel } from './ChainEditorVibePanel';
+import { vibeLibrary } from '../services/vibeLibrary';
+import { resolveVibeMounts, validateVibeMounts } from '../services/vibeRules';
 
 interface ChainEditorProps {
     chain: PromptChain;
@@ -430,6 +433,11 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
 
     const handleSaveAll = () => {
         if (!isOwner) return;
+        const vibeError = validateVibeMounts(params.vibes ?? []);
+        if (vibeError) {
+            notify(vibeError, 'error');
+            return;
+        }
         const updatedModules = modules.map(m => ({
             ...m,
             isActive: activeModules[m.id] ?? true
@@ -463,7 +471,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         setNegativePrompt(''); // keep empty for playground
         // Reset params to defaults
         setParams({
-            width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: undefined, qualityToggle: true, ucPreset: 4, characters: []
+            width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: undefined, qualityToggle: true, ucPreset: 4, characters: [], vibes: []
         });
         setSubjectPrompt('');
         setModules([]);
@@ -519,7 +527,13 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         setErrorMsg(null);
         try {
             const activeParams = { ...params };
-            const result = await generateImage(apiKey, finalPrompt, negativePrompt, activeParams);
+            const vibeMounts = activeParams.vibes ?? [];
+            const vibePresets = vibeMounts.length === 0
+                ? []
+                : (await Promise.all(vibeMounts.map(mount => vibeLibrary.get(mount.vibeId))))
+                    .filter(preset => preset !== undefined);
+            const resolvedVibes = resolveVibeMounts(vibeMounts, vibePresets);
+            const result = await generateImage(apiKey, finalPrompt, negativePrompt, activeParams, resolvedVibes);
             setGeneratedImage(result.image);
             // Use actual seed returned from generation
             const finalParams = { ...activeParams, seed: result.seed };
@@ -971,6 +985,13 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                             setParams={setParams}
                             canEdit={canEdit}
                             markChange={markChange}
+                        />
+                        <ChainEditorVibePanel
+                            params={params}
+                            setParams={setParams}
+                            canEdit={canEdit}
+                            markChange={markChange}
+                            notify={notify}
                         />
                     </div>
 

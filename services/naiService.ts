@@ -1,115 +1,18 @@
 
 import JSZip from 'jszip';
-import { NAIParams } from '../types';
+import type { NAIParams, ResolvedVibe } from '../types';
 import { api } from './api';
-import { NAI_QUALITY_TAGS, NAI_UC_PRESETS } from './promptUtils';
+import { buildGenerationPayload } from './naiPayload';
 
-export const generateImage = async (apiKey: string, prompt: string, negative: string, params: NAIParams) => {
-  // Logic update: NAI API treats missing seed as random. 0 is a specific seed.
-  // We pass seed only if it is a valid number and not -1 (our internal convention for random).
-  let seed: number | undefined = undefined;
-  if (params.seed !== undefined && params.seed !== null && params.seed !== -1) {
-    seed = params.seed;
-  }
-
-  // --- Pre-process Prompt & Negative based on V4 Settings ---
-
-  // 1. Quality Tags (Append to positive prompt if enabled)
-  // Note: NAI Appends strictly at the end.
-  let finalPrompt = prompt;
-  if (params.qualityToggle ?? true) {
-    finalPrompt = finalPrompt + NAI_QUALITY_TAGS;
-  }
-
-  // 2. UC Preset (Prepend to negative prompt)
-  let finalNegative = negative;
-  const presetId = params.ucPreset ?? 0;
-  if (presetId !== 4) { // 4 is 'None'
-    // @ts-ignore - Index access is safe here as UI restricts values
-    const presetString = NAI_UC_PRESETS[presetId];
-    if (presetString) {
-      finalNegative = presetString + finalNegative;
-    }
-  }
-
-  // Prepare Character Captions for V4.5
-  const hasCharacters = params.characters && params.characters.length > 0;
-
-  // 1. Positive Character Captions
-  const charCaptions = hasCharacters ? params.characters!.map(c => ({
-    char_caption: c.prompt,
-    centers: [{ x: c.x, y: c.y }]
-  })) : [];
-
-  // 2. Negative Character Captions (Structure must mirror positive)
-  const charNegativeCaptions = hasCharacters ? params.characters!.map(c => ({
-    char_caption: c.negativePrompt || "", // Use empty string placeholder if undefined
-    centers: [{ x: c.x, y: c.y }] // Coordinates mirrored
-  })) : [];
-
-  // 3. AI's Choice Logic
-  const useCoords = params.useCoords ?? hasCharacters;
-
-  const payload: any = {
-    input: finalPrompt, // Use processed prompt
-    model: "nai-diffusion-4-5-full",
-    action: "generate",
-    parameters: {
-      params_version: 3,
-      width: params.width,
-      height: params.height,
-      scale: params.scale,
-      sampler: params.sampler,
-      steps: params.steps,
-      n_samples: 1,
-
-      // New Features
-      // Variety+ is controlled by skip_cfg_above_sigma.
-      // If On, set to 58 (V4 standard for variety). If Off, omit or null.
-      skip_cfg_above_sigma: params.variety ? 58 : null,
-
-      cfg_rescale: params.cfgRescale ?? 0,
-
-      // V4 Specifics (Sent even if processed into prompt)
-      qualityToggle: params.qualityToggle ?? true,
-      ucPreset: params.ucPreset ?? 0,
-
-      // Legacy / Standard params
-      sm: false,
-      sm_dyn: false,
-      dynamic_thresholding: false,
-      controlnet_strength: 1,
-      legacy: false,
-      add_original_image: true,
-      uncond_scale: 1,
-      noise_schedule: "karras",
-      negative_prompt: finalNegative, // Use processed negative
-      // seed key is added conditionally below
-
-      v4_prompt: {
-        caption: {
-          base_caption: finalPrompt, // Use processed prompt
-          char_captions: charCaptions
-        },
-        use_coords: useCoords, // Controlled by UI toggle
-        use_order: true
-      },
-      v4_negative_prompt: {
-        caption: {
-          base_caption: finalNegative, // Use processed negative
-          char_captions: charNegativeCaptions
-        },
-        legacy_uc: false
-      },
-
-      deliberate_euler_ancestral_bug: false,
-      prefer_brownian: true
-    }
-  };
-
-  if (seed !== undefined) {
-    payload.parameters.seed = seed;
-  }
+export const generateImage = async (
+  apiKey: string,
+  prompt: string,
+  negative: string,
+  params: NAIParams,
+  vibes: ResolvedVibe[] = [],
+) => {
+  const payload = buildGenerationPayload(prompt, negative, params, vibes);
+  const seed = payload.parameters.seed as number | undefined;
 
   // 调用 Worker Proxy, 传递 API Key Header
   const blob = await api.postBinary('/generate', payload, {

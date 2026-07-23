@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "aegis.schema.v0",
+  "artifactKey": "user-manual-acceptance",
+  "type": "manual-verification",
+  "source": "用户手动测试反馈",
+  "summary": "完整手动测试清单全部通过；唯一 UI 反馈“删”字改为垃圾桶图标已完成",
+  "verifier": "项目维护者"
+}

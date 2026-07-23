@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "aegis.schema.v0",
+  "candidateDocs": [
+    "docs/aegis/baseline/2026-06-22-initial-baseline.md"
+  ],
+  "whyRelevant": "约束本地数据与云端隔离并保持现有 Chain 兼容",
+  "missingAuthority": []
+}

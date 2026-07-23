@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "aegis.schema.v0",
+  "artifactKey": "parser-library-rules-tests",
+  "type": "test",
+  "source": "npm test -- services/vibeFile.test.ts services/vibeLibrary.test.ts services/vibeRules.test.ts",
+  "summary": "Vibe 文件解析 5 项、本地库 4 项、挂载规则 6 项测试通过",
+  "verifier": "Vitest 4.1.10"
+}
