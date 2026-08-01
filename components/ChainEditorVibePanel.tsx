@@ -6,6 +6,7 @@ import {
   clampMountStrength,
   getMaxStrengthForMount,
   getVibeStrengthTotal,
+  isVibeStrengthOverRecommended,
   MAX_MOUNTED_VIBES,
   tryAppendVibeMount,
   validateVibeMounts,
@@ -60,6 +61,7 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
   );
   const validationError = validateVibeMounts(mounts);
   const strengthTotal = getVibeStrengthTotal(mounts);
+  const strengthOverRecommended = isVibeStrengthOverRecommended(mounts);
   const filteredPresets = presets.filter(preset => (
     preset.name.toLowerCase().includes(search.trim().toLowerCase())
   ));
@@ -90,15 +92,11 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
 
       let nextMounts = mounts;
       let mountedCount = 0;
-      let skippedStrength = 0;
       for (const preset of imported) {
         if (nextMounts.some(mount => mount.vibeId === preset.id)) continue;
         if (nextMounts.length >= MAX_MOUNTED_VIBES) break;
         const result = tryAppendVibeMount(nextMounts, preset);
-        if ('error' in result) {
-          if (result.error.includes('Strength')) skippedStrength += 1;
-          break;
-        }
+        if ('error' in result) break;
         nextMounts = result.mounts;
         mountedCount += 1;
       }
@@ -106,10 +104,7 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
 
       notify(`已导入 ${imported.length} 个 Vibe`);
       if (mountedCount < imported.length) {
-        const reason = skippedStrength > 0
-          ? 'Strength 合计不足或已达上限'
-          : `挂载上限为 ${MAX_MOUNTED_VIBES}`;
-        notify(`${reason}，其余 Vibe 已保存到本地库`);
+        notify(`挂载上限为 ${MAX_MOUNTED_VIBES}，其余 Vibe 已保存到本地库`);
       }
     } catch (error) {
       notify(error instanceof Error ? error.message : '导入 Vibe 失败', 'error');
@@ -266,8 +261,14 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
         </div>
       )}
 
-      <div className={`mt-3 flex items-center justify-between rounded-lg px-3 py-2 text-xs ${validationError ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-900/60 dark:text-gray-400'}`}>
-        <span>{validationError ? `⚠ ${validationError}` : 'Strength 合计建议不超过 1'}</span>
+      <div className={`mt-3 flex items-center justify-between rounded-lg px-3 py-2 text-xs ${validationError || strengthOverRecommended ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-900/60 dark:text-gray-400'}`}>
+        <span>
+          {validationError
+            ? `⚠ ${validationError}`
+            : strengthOverRecommended
+              ? '⚠ Strength 合计建议不超过 1（当前已超出，仍可保存与生成）'
+              : 'Strength 合计建议不超过 1'}
+        </span>
         <strong>{strengthTotal.toFixed(2)} / 1.00</strong>
       </div>
 

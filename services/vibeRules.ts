@@ -16,22 +16,20 @@ export const getVibeStrengthTotal = (mounts: VibeMount[]): number => (
   quantize(mounts.reduce((total, mount) => total + mount.strength, 0))
 );
 
-export const getRemainingVibeStrength = (mounts: VibeMount[]): number => (
-  clampUnit(1 - getVibeStrengthTotal(mounts))
+/** Strength 合计是否超出建议值 1（软提示，不阻断）。 */
+export const isVibeStrengthOverRecommended = (mounts: VibeMount[]): boolean => (
+  getVibeStrengthTotal(mounts) > 1 + EPSILON
 );
 
-/** 在已有挂载上，指定下标可再调到的 Strength 上限。 */
-export const getMaxStrengthForMount = (mounts: VibeMount[], index: number): number => {
-  const others = quantize(mounts.reduce((total, mount, mountIndex) => (
-    mountIndex === index ? total : total + mount.strength
-  ), 0));
-  return clampUnit(1 - others);
-};
+/** 单项 Strength 上限始终为 1（合计不再硬性封顶）。 */
+export const getMaxStrengthForMount = (_mounts: VibeMount[], _index: number): number => 1;
 
-export const clampMountStrength = (mounts: VibeMount[], index: number, strength: number): number => {
-  const max = getMaxStrengthForMount(mounts, index);
-  return clampUnit(Math.min(max, Math.max(0, strength)));
-};
+/** 把某一项 strength 钳到 0–1，不再按合计剩余额度压缩。 */
+export const clampMountStrength = (
+  _mounts: VibeMount[],
+  _index: number,
+  strength: number,
+): number => clampUnit(strength);
 
 /** 尝试把 preset 挂到现有列表；失败返回错误文案，成功返回新列表。 */
 export const tryAppendVibeMount = (
@@ -45,15 +43,10 @@ export const tryAppendVibeMount = (
     return { error: `最多挂载 ${MAX_MOUNTED_VIBES} 个 Vibe` };
   }
 
-  const remaining = getRemainingVibeStrength(mounts);
-  if (remaining <= EPSILON) {
-    return { error: 'Vibe Strength 合计已满，无法继续挂载' };
-  }
-
   const nextMount: VibeMount = {
     vibeId: preset.id,
     name: preset.name,
-    strength: clampUnit(Math.min(preset.defaultStrength, remaining)),
+    strength: clampUnit(preset.defaultStrength),
     informationExtracted: preset.defaultInformationExtracted,
   };
   const nextMounts = [...mounts, nextMount];
@@ -62,6 +55,7 @@ export const tryAppendVibeMount = (
   return { mounts: nextMounts };
 };
 
+/** 硬校验：数量与单项范围；Strength 合计 > 1 仅作 UI 提示，不在此拦截。 */
 export const validateVibeMounts = (mounts: VibeMount[]): string | null => {
   if (mounts.length > MAX_MOUNTED_VIBES) {
     return `最多挂载 ${MAX_MOUNTED_VIBES} 个 Vibe`;
@@ -78,10 +72,6 @@ export const validateVibeMounts = (mounts: VibeMount[]): string | null => {
     ) {
       return `Vibe「${mount.name}」的 IE 必须在 0 到 1 之间`;
     }
-  }
-
-  if (getVibeStrengthTotal(mounts) > 1 + EPSILON) {
-    return 'Vibe Strength 合计不能超过 1';
   }
 
   return null;

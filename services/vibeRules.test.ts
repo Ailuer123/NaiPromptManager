@@ -34,11 +34,11 @@ describe('validateVibeMounts', () => {
     expect(validateVibeMounts([])).toBeNull();
   });
 
-  it('阻止总 Strength 超过 1', () => {
+  it('允许总 Strength 超过 1（仅软提示，不硬拦）', () => {
     expect(validateVibeMounts([
       mount({ vibeId: 'one', strength: 0.6 }),
       mount({ vibeId: 'two', strength: 0.5 }),
-    ])).toContain('Strength 合计不能超过 1');
+    ])).toBeNull();
   });
 
   it('阻止超过 4 个挂载', () => {
@@ -48,7 +48,7 @@ describe('validateVibeMounts', () => {
 });
 
 describe('tryAppendVibeMount', () => {
-  it('把默认 strength 压到剩余额度内', () => {
+  it('按默认 strength 挂载，不因合计接近 1 而压缩', () => {
     const result = tryAppendVibeMount(
       [mount({ vibeId: 'one', strength: 0.7 })],
       { ...preset, id: 'vibe-2', name: '线稿', defaultStrength: 0.6 },
@@ -56,17 +56,22 @@ describe('tryAppendVibeMount', () => {
     expect(result).toEqual({
       mounts: [
         { vibeId: 'one', name: '水彩', strength: 0.7, informationExtracted: 0.7 },
-        { vibeId: 'vibe-2', name: '线稿', strength: 0.3, informationExtracted: 0.7 },
+        { vibeId: 'vibe-2', name: '线稿', strength: 0.6, informationExtracted: 0.7 },
       ],
     });
   });
 
-  it('Strength 已满时拒绝挂载', () => {
+  it('Strength 合计已满时仍可继续挂载', () => {
     const result = tryAppendVibeMount(
       [mount({ vibeId: 'one', strength: 1 })],
-      { ...preset, id: 'vibe-2', name: '线稿' },
+      { ...preset, id: 'vibe-2', name: '线稿', defaultStrength: 0.6 },
     );
-    expect(result).toEqual({ error: 'Vibe Strength 合计已满，无法继续挂载' });
+    expect(result).toEqual({
+      mounts: [
+        { vibeId: 'one', name: '水彩', strength: 1, informationExtracted: 0.7 },
+        { vibeId: 'vibe-2', name: '线稿', strength: 0.6, informationExtracted: 0.7 },
+      ],
+    });
   });
 
   it('重复挂载时拒绝', () => {
@@ -77,12 +82,14 @@ describe('tryAppendVibeMount', () => {
 });
 
 describe('clampMountStrength', () => {
-  it('不允许把某一项 strength 调到合计超过 1', () => {
+  it('允许把某一项 strength 调到使合计超过 1，仅钳制单项 0–1', () => {
     const mounts = [
       mount({ vibeId: 'one', strength: 0.6 }),
       mount({ vibeId: 'two', name: '线稿', strength: 0.3 }),
     ];
-    expect(clampMountStrength(mounts, 1, 0.9)).toBeCloseTo(0.4, 5);
+    expect(clampMountStrength(mounts, 1, 0.9)).toBeCloseTo(0.9, 5);
+    expect(clampMountStrength(mounts, 1, 1.2)).toBeCloseTo(1, 5);
+    expect(clampMountStrength(mounts, 1, -0.1)).toBeCloseTo(0, 5);
   });
 });
 

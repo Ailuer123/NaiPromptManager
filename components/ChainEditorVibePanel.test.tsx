@@ -91,7 +91,7 @@ describe('ChainEditorVibePanel', () => {
     });
   });
 
-  it('Strength 合计超限时展示阻断提示', async () => {
+  it('Strength 合计超 1 时展示软提示而非阻断', async () => {
     const library = new VibeLibrary(`NAI_Vibe_UI_${crypto.randomUUID()}`);
     await library.put(makePreset('水彩'));
     await library.put(makePreset('线稿'));
@@ -104,10 +104,12 @@ describe('ChainEditorVibePanel', () => {
       ]}
     />);
 
-    expect(await screen.findByText(/Strength 合计不能超过 1/)).toBeInTheDocument();
+    expect(await screen.findByText(/Strength 合计建议不超过 1（当前已超出/)).toBeInTheDocument();
+    expect(screen.getByLabelText('水彩 Strength')).not.toBeDisabled();
+    expect(screen.getByLabelText('线稿 Strength')).not.toBeDisabled();
   });
 
-  it('连续导入默认 strength 时自动压到合计不超过 1', async () => {
+  it('连续导入默认 strength 时保留各自默认值，允许合计超过 1', async () => {
     const user = userEvent.setup();
     const library = new VibeLibrary(`NAI_Vibe_UI_${crypto.randomUUID()}`);
     render(<Host library={library} />);
@@ -132,9 +134,10 @@ describe('ChainEditorVibePanel', () => {
     await waitFor(() => {
       const state = JSON.parse(screen.getByTestId('params-state').textContent || '{}');
       const total = (state.vibes || []).reduce((sum: number, item: { strength: number }) => sum + item.strength, 0);
-      expect(total).toBeLessThanOrEqual(1 + 1e-6);
       expect(state.vibes).toHaveLength(2);
-      expect(state.vibes[1].strength).toBeCloseTo(0.4, 5);
+      expect(state.vibes[0].strength).toBeCloseTo(0.6, 5);
+      expect(state.vibes[1].strength).toBeCloseTo(0.6, 5);
+      expect(total).toBeCloseTo(1.2, 5);
     });
   });
 
