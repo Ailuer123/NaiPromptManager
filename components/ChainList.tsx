@@ -383,7 +383,7 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onCreate, on
 
                 <div className="p-3 flex flex-col flex-1">
                   <div className="flex justify-between items-start mb-1">
-                    <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 truncate pr-2 w-full" title={chain.name}>{chain.name}</h3>
+                    <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 truncate pr-2 w-full flex items-center gap-1" title={chain.name}>{chain.isPrivate && <span className="text-indigo-500 dark:text-indigo-300" title="私人串：仅 VIP 本人和管理员可见" aria-label="私人串">🔒</span>}{chain.name}</h3>
                     <button
                       type="button"
                       onClick={(e) => toggleFav(chain.id, e)}

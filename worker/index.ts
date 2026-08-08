@@ -125,6 +125,7 @@ const INIT_SQL = `
     params TEXT DEFAULT '{}',
     variable_values TEXT DEFAULT '{}',
     guest_hidden INTEGER NOT NULL DEFAULT 0,
+    is_private INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER,
     updated_at INTEGER
   );
@@ -384,6 +385,7 @@ export default {
       try { await db.prepare("ALTER TABLE artists ADD COLUMN benchmarks TEXT DEFAULT '[]'").run(); } catch (e) {}
       try { await db.prepare("ALTER TABLE chains ADD COLUMN type TEXT DEFAULT 'style'").run(); } catch (e) {}
       try { await db.prepare("ALTER TABLE chains ADD COLUMN guest_hidden INTEGER NOT NULL DEFAULT 0").run(); } catch (e) {}
+      try { await db.prepare("ALTER TABLE chains ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0").run(); } catch (e) {}
       
 
       // 创建访问日志表
@@ -820,23 +822,25 @@ export default {
 
       // Chains
       if (path === '/api/chains' && method === 'GET') {
-        // 游客不返回 guest_hidden=1 的记录
+        // 私人串权限：admin 可见全部；VIP 仅可见自己的私人串；普通用户/游客不可见私人串。
         const isGuestUser = currentUser.role === 'guest';
+        const isAdmin = currentUser.role === 'admin';
+        const isVip = currentUser.role === 'vip';
+        const privateVisibilityClause = isAdmin
+          ? ''
+          : isVip
+            ? ' AND (is_private = 0 OR user_id = ?)'
+            : ' AND is_private = 0';
+        const privateVisibilityParams = isVip && !isAdmin ? [currentUser.id] : [];
+        const visibilityClause = isGuestUser ? ' AND guest_hidden = 0' : '';
+        const queryChains = () => db.prepare(`SELECT * FROM chains WHERE 1 = 1${visibilityClause}${privateVisibilityClause} ORDER BY updated_at DESC`).bind(...privateVisibilityParams);
         let chainsResult;
         try {
-          if (isGuestUser) {
-            chainsResult = await db.prepare('SELECT * FROM chains WHERE guest_hidden = 0 ORDER BY updated_at DESC').all();
-          } else {
-            chainsResult = await db.prepare('SELECT * FROM chains ORDER BY updated_at DESC').all();
-          }
+          chainsResult = await queryChains().all();
         } catch (e: any) {
           if (isMissingColumnError(e)) {
             await initDB();
-            if (isGuestUser) {
-              chainsResult = await db.prepare('SELECT * FROM chains WHERE guest_hidden = 0 ORDER BY updated_at DESC').all();
-            } else {
-              chainsResult = await db.prepare('SELECT * FROM chains ORDER BY updated_at DESC').all();
-            }
+            chainsResult = await queryChains().all();
           } else {
             throw e;
           }
@@ -846,7 +850,7 @@ export default {
           tags: JSON.parse(c.tags || '[]'), previewImage: c.preview_image, base_prompt: c.base_prompt, // raw DB column needed? No, mapping below
           basePrompt: c.base_prompt,
           negativePrompt: c.negative_prompt, modules: JSON.parse(c.modules || '[]'), params: JSON.parse(c.params || '{}'),
-          variableValues: JSON.parse(c.variable_values || '{}'), guestHidden: c.guest_hidden === 1, createdAt: c.created_at, updatedAt: c.updated_at
+          variableValues: JSON.parse(c.variable_values || '{}'), guestHidden: c.guest_hidden === 1, isPrivate: c.is_private === 1, createdAt: c.created_at, updatedAt: c.updated_at
         }));
         return json(data);
       }
@@ -856,6 +860,8 @@ export default {
         const id = crypto.randomUUID();
         const type = body.type || 'style'; // Default to style
         const guestHidden = body.guestHidden ? 1 : 0;
+        if (body.isPrivate && !['admin', 'vip'].includes(currentUser.role)) return error('只有 VIP 或管理员可以创建私人串', 403);
+        const isPrivate = body.isPrivate ? 1 : 0;
         // Sanitize and validate tags
         let tags = '[]';
         if (Array.isArray(body.tags)) {
@@ -865,12 +871,12 @@ export default {
           tags = JSON.stringify(sanitizedTags);
         }
         try {
-          await db.prepare(`INSERT INTO chains (id, user_id, username, type, name, description, tags, preview_image, base_prompt, negative_prompt, modules, params, variable_values, guest_hidden, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, currentUser.id, currentUser.username, type, body.name, body.description, tags, null, body.basePrompt || '', body.negativePrompt || '', body.modules ? JSON.stringify(body.modules) : '[]', body.params ? JSON.stringify(body.params) : '{}', body.variableValues ? JSON.stringify(body.variableValues) : '{}', guestHidden, Date.now(), Date.now()).run();
+          await db.prepare(`INSERT INTO chains (id, user_id, username, type, name, description, tags, preview_image, base_prompt, negative_prompt, modules, params, variable_values, guest_hidden, is_private, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, currentUser.id, currentUser.username, type, body.name, body.description, tags, null, body.basePrompt || '', body.negativePrompt || '', body.modules ? JSON.stringify(body.modules) : '[]', body.params ? JSON.stringify(body.params) : '{}', body.variableValues ? JSON.stringify(body.variableValues) : '{}', guestHidden, isPrivate, Date.now(), Date.now()).run();
           return json({ id });
         } catch (e: any) {
           if (isMissingColumnError(e)) {
             await initDB();
-            await db.prepare(`INSERT INTO chains (id, user_id, username, type, name, description, tags, preview_image, base_prompt, negative_prompt, modules, params, variable_values, guest_hidden, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, currentUser.id, currentUser.username, type, body.name, body.description, tags, null, body.basePrompt || '', body.negativePrompt || '', body.modules ? JSON.stringify(body.modules) : '[]', body.params ? JSON.stringify(body.params) : '{}', body.variableValues ? JSON.stringify(body.variableValues) : '{}', guestHidden, Date.now(), Date.now()).run();
+            await db.prepare(`INSERT INTO chains (id, user_id, username, type, name, description, tags, preview_image, base_prompt, negative_prompt, modules, params, variable_values, guest_hidden, is_private, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, currentUser.id, currentUser.username, type, body.name, body.description, tags, null, body.basePrompt || '', body.negativePrompt || '', body.modules ? JSON.stringify(body.modules) : '[]', body.params ? JSON.stringify(body.params) : '{}', body.variableValues ? JSON.stringify(body.variableValues) : '{}', guestHidden, isPrivate, Date.now(), Date.now()).run();
             return json({ id });
           }
           throw e;
@@ -881,6 +887,7 @@ export default {
         if (currentUser.role === 'guest') return error('Forbidden', 403);
         const id = chainIdMatch[1];
         const updates = await request.json() as any;
+        if (updates.isPrivate === true && !['admin', 'vip'].includes(currentUser.role)) return error('只有 VIP 或管理员可以设置私人串', 403);
         const chain = await db.prepare('SELECT user_id, preview_image FROM chains WHERE id = ?').bind(id).first<{user_id: string, preview_image: string}>();
         if (!chain) return error('Not Found', 404);
         if (chain.user_id && chain.user_id !== currentUser.id && currentUser.role !== 'admin') return error('Permission Denied', 403);
@@ -908,6 +915,7 @@ export default {
         if (updates.variableValues !== undefined) { fields.push('variable_values = ?'); values.push(JSON.stringify(updates.variableValues)); }
         if (updates.tags !== undefined) { fields.push('tags = ?'); values.push(JSON.stringify(updates.tags)); }
         if (updates.guestHidden !== undefined) { fields.push('guest_hidden = ?'); values.push(updates.guestHidden ? 1 : 0); }
+        if (updates.isPrivate !== undefined) { fields.push('is_private = ?'); values.push(updates.isPrivate ? 1 : 0); }
         if (fields.length > 0) {
           fields.push('updated_at = ?');
           values.push(Date.now());

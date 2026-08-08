@@ -182,8 +182,11 @@ const App = () => {
         res = await db.login(loginUser, loginPass);
       }
       setCurrentUser(res.user);
-      // Force refresh chains to apply guest_hidden filter based on new role
-      refreshData(true);
+      // 切换角色后丢弃旧列表，避免前一个账号的私人串短暂残留
+      setChains([]);
+      setLastChainFetch(0);
+      // Force refresh chains to apply guest_hidden/private filters based on new role
+      await refreshData(true);
       // Guest should not stay in admin/profile view
       if (res.user.role === 'guest' && (view === 'admin' || view === 'edit')) {
         setView('list');

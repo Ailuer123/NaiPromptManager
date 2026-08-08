@@ -108,6 +108,7 @@ export interface PromptChain {
   variableValues?: Record<string, string>;
 
   guestHidden?: boolean; // 游客不可见标记，默认 false
+  isPrivate?: boolean; // 私人串：仅 VIP（仅本人）和 admin 可见，默认 false
 
   createdAt: number;
   updatedAt: number;

@@ -77,7 +77,7 @@ class DBService {
   }
 
   async createChain(name: string, description: string, copyFrom?: PromptChain, type: ChainType = 'style'): Promise<string> {
-    const payload: any = { name, description, type };
+    const payload: any = { name, description, type, isPrivate: false };
     if (copyFrom) {
       payload.basePrompt = copyFrom.basePrompt;
       payload.negativePrompt = copyFrom.negativePrompt;
@@ -91,6 +91,7 @@ class DBService {
       payload.variableValues = copyFrom.variableValues;
       // Copy tags from the source chain
       payload.tags = copyFrom.tags || [];
+      // Fork 默认创建为公开串，避免把私人状态意外扩散到新串
     } else {
       // Create Default Modules for new chain
       payload.modules = [];

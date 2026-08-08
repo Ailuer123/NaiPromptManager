@@ -38,6 +38,7 @@ CREATE TABLE chains (
   params TEXT DEFAULT '{}',
   variable_values TEXT DEFAULT '{}', -- 新增字段
   guest_hidden INTEGER NOT NULL DEFAULT 0, -- 游客不可见标记
+  is_private INTEGER NOT NULL DEFAULT 0, -- 私人串：VIP仅本人可见，admin可见全部
   created_at INTEGER,
   updated_at INTEGER
 );

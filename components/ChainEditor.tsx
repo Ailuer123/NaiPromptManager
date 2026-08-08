@@ -39,6 +39,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
     const [chainDesc, setChainDesc] = useState(chain.description);
     const [chainTags, setChainTags] = useState<string[]>(chain.tags || []);
     const [guestHidden, setGuestHidden] = useState(chain.guestHidden || false);
+    const [isPrivate, setIsPrivate] = useState(chain.isPrivate || false);
     const [isEditingInfo, setIsEditingInfo] = useState(false);
 
     // --- Prompt State ---
@@ -141,6 +142,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         setChainDesc(chain.description);
         setChainTags(chain.tags || []);
         setGuestHidden(chain.guestHidden || false);
+        setIsPrivate(chain.isPrivate || false);
 
         // Default subject to empty, not '1girl'
         const savedVars = chain.variableValues || {};
@@ -159,7 +161,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         const savedKey = localStorage.getItem('nai_api_key');
         if (savedKey) setApiKey(savedKey);
 
-    }, [chain.id, chain.basePrompt, chain.negativePrompt, chain.modules, chain.params, chain.name, chain.description, chain.variableValues, chain.guestHidden]);
+    }, [chain.id, chain.basePrompt, chain.negativePrompt, chain.modules, chain.params, chain.name, chain.description, chain.variableValues, chain.guestHidden, chain.isPrivate]);
     // Dependency note: we still list props to satisfy linter, but the guard 'if (prevChainId === chain.id) return' blocks re-execution.
 
     // --- sessionStorage 侦听：接收来自历史/灵感页面的一键导入数据 ---
@@ -448,6 +450,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
             description: chainDesc,
             tags: chainTags,
             guestHidden,
+            isPrivate,
             basePrompt,
             negativePrompt,
             modules: updatedModules,
@@ -1001,22 +1004,32 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                             <div className="text-xs text-gray-500 ml-2">
                                 {hasChanges ? <span className="text-yellow-600 dark:text-yellow-500 font-medium">⚠️ 未保存</span> : <span className="text-green-600 dark:text-green-500">✅ 已保存</span>}
                             </div>
-                            <div className="flex items-center gap-2 md:gap-3">
+                            <div className="flex flex-1 min-w-0 items-center flex-wrap justify-end gap-1 md:gap-3">
                                 {/* 游客不可见 Checkbox */}
-                                <label className="flex items-center gap-1.5 cursor-pointer select-none" title="勾选后游客无法查看此预设">
-                                    <input
-                                        type="checkbox"
-                                        checked={guestHidden}
-                                        onChange={(e) => {
-                                            setGuestHidden(e.target.checked);
-                                            markChange();
-                                        }}
-                                        className="w-3.5 h-3.5 rounded text-red-600 focus:ring-red-500 bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600"
-                                    />
-                                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300 hidden md:inline">
-                                        游客不可见
-                                    </span>
-                                </label>
+                                <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={guestHidden}
+                                    onClick={() => { setGuestHidden(!guestHidden); markChange(); }}
+                                    className={`min-h-10 px-2 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-colors ${guestHidden ? 'text-red-600 bg-red-50 dark:text-red-300 dark:bg-red-900/20' : 'text-gray-600 bg-gray-100 dark:text-gray-300 dark:bg-gray-800'}`}
+                                    title="开启后游客无法查看此预设"
+                                >
+                                    <span className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${guestHidden ? 'bg-red-500' : 'bg-gray-300 dark:bg-gray-600'}`}><span className={`inline-block h-4 w-4 mt-0.5 rounded-full bg-white shadow transition-transform ${guestHidden ? 'translate-x-4' : 'translate-x-0.5'}`} /></span>
+                                    <span>游客不可见</span>
+                                </button>
+                                {(currentUser.role === 'vip' || currentUser.role === 'admin') && (
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={isPrivate}
+                                        onClick={() => { setIsPrivate(!isPrivate); markChange(); }}
+                                        className={`min-h-10 px-2 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-colors ${isPrivate ? 'text-indigo-700 bg-indigo-50 dark:text-indigo-300 dark:bg-indigo-900/30' : 'text-gray-600 bg-gray-100 dark:text-gray-300 dark:bg-gray-800'}`}
+                                        title="开启后仅您本人（VIP）或管理员可以查看"
+                                    >
+                                        <span className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${isPrivate ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'}`}><span className={`inline-block h-4 w-4 mt-0.5 rounded-full bg-white shadow transition-transform ${isPrivate ? 'translate-x-4' : 'translate-x-0.5'}`} /></span>
+                                        <span>🔒 私人串</span>
+                                    </button>
+                                )}
                                 <button
                                     onClick={handleSaveAll}
                                     disabled={!hasChanges}
