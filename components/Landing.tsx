@@ -44,7 +44,7 @@ const MODULES = [
   },
   {
     title: '生图实验室',
-    desc: '同一提示词一次出多张，对比采样与强度。',
+    desc: '同一提示词试跑，对比采样与强度。',
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M9 3h6l1 4H8l1-4z" />
