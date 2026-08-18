@@ -159,7 +159,7 @@ export function Landing({
               ) : (
                 <Field
                   label="游客口令"
-                  hint="游客可查看提示词，填入 API Key 后可测试生图 (数据仅存本地)"
+                  hint="游客可查看提示词。进入后点「未配置」徽标即可填写 API Key，数据仅存本地"
                 >
                   <Input
                     name="guest-passcode"

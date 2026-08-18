@@ -4,8 +4,8 @@ import { Artist, User } from '../types';
 import { generateImage } from '../services/naiService'; // Import generation service
 import { api } from '../services/api'; // Import api for updating
 import { db } from '../services/dbService'; // Import DB to fetch config
-import { getApiKey, hasApiKey, subscribeApiKey } from '../services/apiKeyStore';
-import { Tag } from './ui';
+import { getApiKey, hasApiKey } from '../services/apiKeyStore';
+import { ApiKeyBadge, ApiKeySheet, useApiKeyConfigured } from './ui';
 import { ArtistLibraryConfig } from './ArtistLibraryConfig';
 import { ArtistLibraryCart } from './ArtistLibraryCart';
 
@@ -68,7 +68,6 @@ interface ArtistLibraryProps {
     onRefresh: () => Promise<void>;
     notify: (msg: string, type?: 'success' | 'error') => void;
     currentUser?: User | null; // Add current user prop for permission check
-    onOpenSettings?: () => void;
 }
 
 // Helper to get first char
@@ -194,7 +193,7 @@ interface LogEntry {
     type: 'success' | 'error' | 'info';
 }
 
-export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleTheme, artistsData, onRefresh, notify, currentUser, onOpenSettings }) => {
+export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleTheme, artistsData, onRefresh, notify, currentUser }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [cart, setCart] = useState<CartItem[]>([]);
     const [favorites, setFavorites] = useState<Set<string>>(new Set());
@@ -229,7 +228,8 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
     const [showConfig, setShowConfig] = useState(false);
     const [config, setConfig] = useState<BenchmarkConfig>(DEFAULT_BENCHMARK_CONFIG);
 
-    const [keyConfigured, setKeyConfigured] = useState(() => hasApiKey());
+    const keyConfigured = useApiKeyConfigured();
+    const [keySheetOpen, setKeySheetOpen] = useState(false);
 
     // Check if current user is admin
     const isAdmin = currentUser?.role === 'admin';
@@ -277,7 +277,6 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
             }
         });
 
-        const unsubKey = subscribeApiKey(() => setKeyConfigured(hasApiKey()));
         const handleArtistWeightSyntaxChange = () => {
             setArtistWeightSyntax(getStoredArtistWeightSyntax());
         };
@@ -290,7 +289,6 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
         window.addEventListener('storage', handleArtistWeightSyntaxStorage);
 
         return () => {
-            unsubKey();
             window.removeEventListener(ARTIST_WEIGHT_SYNTAX_CHANGE_EVENT, handleArtistWeightSyntaxChange);
             window.removeEventListener('storage', handleArtistWeightSyntaxStorage);
         };
@@ -574,8 +572,8 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
     const queueGeneration = (artist: Artist, slots: number[], e: React.MouseEvent) => {
         e.stopPropagation();
         if (!hasApiKey()) {
-            notify('请先在设置中配置 API Key', 'error');
-            onOpenSettings?.();
+            notify('请先配置 API Key', 'error');
+            setKeySheetOpen(true);
             return;
         }
 
@@ -599,8 +597,8 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
 
     const queueMissingGenerations = () => {
         if (!hasApiKey()) {
-            notify('请先在设置中配置 API Key', 'error');
-            onOpenSettings?.();
+            notify('请先配置 API Key', 'error');
+            setKeySheetOpen(true);
             return;
         }
 
@@ -820,16 +818,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
 
                     {/* Config & Slots (Show Config button always, Slots only in Grid-Benchmark mode) */}
                     <div className="flex items-center gap-2 overflow-x-auto max-w-full">
-                        <button
-                            type="button"
-                            onClick={() => onOpenSettings?.()}
-                            className="flex items-center flex-shrink-0"
-                            title="前往设置配置 API Key"
-                        >
-                            <Tag tone={keyConfigured ? 'sage' : undefined}>
-                                {keyConfigured ? '已配置' : '未配置'}
-                            </Tag>
-                        </button>
+                        <ApiKeyBadge configured={keyConfigured} onClick={() => setKeySheetOpen(true)} />
                         <button
                             onClick={() => setShowConfig(true)}
                             className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex-shrink-0"
@@ -1312,6 +1301,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                 initialConfig={config}
                 notify={notify}
             />
+            <ApiKeySheet open={keySheetOpen} onClose={() => setKeySheetOpen(false)} />
         </div>
     );
 };

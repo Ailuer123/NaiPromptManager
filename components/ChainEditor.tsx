@@ -3,8 +3,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { PromptChain, PromptModule, User, CharacterParams, NAIParams } from '../types';
 import { compilePrompt, compilePromptSegments, type CompiledPromptSegments } from '../services/promptUtils';
 import { generateImage } from '../services/naiService';
-import { getApiKey, hasApiKey, subscribeApiKey } from '../services/apiKeyStore';
-import { Tag, type CompiledSegId } from './ui';
+import { getApiKey } from '../services/apiKeyStore';
+import { ApiKeyBadge, ApiKeySheet, useApiKeyConfigured, type CompiledSegId } from './ui';
 import { localHistory } from '../services/localHistory';
 import { compressPngToJpg } from '../services/imageCompression';
 import { api } from '../services/api';
@@ -26,10 +26,9 @@ interface ChainEditorProps {
     onFork: (chain: PromptChain, targetType?: 'style' | 'character') => void;
     setIsDirty: (isDirty: boolean) => void;
     notify: (msg: string, type?: 'success' | 'error') => void;
-    onOpenSettings?: () => void;
 }
 
-export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, currentUser, onUpdateChain, onBack, onFork, setIsDirty, notify, onOpenSettings }) => {
+export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, currentUser, onUpdateChain, onBack, onFork, setIsDirty, notify }) => {
     // Permission Check
     // Guests are allowed to EDIT (in memory) for testing, but NOT SAVE.
     const isGuest = currentUser.role === 'guest';
@@ -107,7 +106,8 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
     const [finalPrompt, setFinalPrompt] = useState('');
 
     // --- Generation State ---
-    const [keyConfigured, setKeyConfigured] = useState(() => hasApiKey());
+    const keyConfigured = useApiKeyConfigured();
+    const [keySheetOpen, setKeySheetOpen] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [hoveredSeg, setHoveredSeg] = useState<CompiledSegId | null>(null);
     const [hoveredModuleId, setHoveredModuleId] = useState<string | null>(null);
@@ -166,8 +166,6 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         setHasChanges(false);
 
     }, [chain.id, chain.basePrompt, chain.negativePrompt, chain.modules, chain.params, chain.name, chain.description, chain.variableValues, chain.guestHidden, chain.isPrivate]);
-
-    useEffect(() => subscribeApiKey(() => setKeyConfigured(hasApiKey())), []);
     // Dependency note: we still list props to satisfy linter, but the guard 'if (prevChainId === chain.id) return' blocks re-execution.
 
     // --- sessionStorage 侦听：接收来自历史/灵感页面的一键导入数据 ---
@@ -525,7 +523,8 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
     const handleGenerate = async () => {
         const apiKey = getApiKey();
         if (!apiKey) {
-            setErrorMsg('请先在设置中配置 NovelAI API Key');
+            setErrorMsg('请先配置 NovelAI API Key');
+            setKeySheetOpen(true);
             return;
         }
         setIsGenerating(true);
@@ -717,16 +716,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                         </button>
                     </div>
 
-                    <button
-                        type="button"
-                        onClick={() => onOpenSettings?.()}
-                        className="flex items-center"
-                        title="前往设置配置 API Key"
-                    >
-                        <Tag tone={keyConfigured ? 'sage' : undefined}>
-                            {keyConfigured ? '已配置' : '未配置'}
-                        </Tag>
-                    </button>
+                    <ApiKeyBadge configured={keyConfigured} onClick={() => setKeySheetOpen(true)} />
 
                     {/* Fork / Save to Library Button */}
                     {((!isOwner && !isGuest) || chain.id === 'playground') && (
@@ -1368,6 +1358,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                     </div>
                 </div>
             )}
+            <ApiKeySheet open={keySheetOpen} onClose={() => setKeySheetOpen(false)} />
         </div>
     );
 };
