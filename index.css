@@ -1030,6 +1030,101 @@ a { color: inherit; text-decoration: none; }
 
 .empty .empty-action { margin-top: 16px; }
 
+/* —— 编译分段预览 / 参数分组 / 脏点 —— */
+.compiled {
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--ink-soft);
+  word-break: break-word;
+  max-height: 280px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--ink) 4%, var(--cream));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.compiled-seg {
+  position: relative;
+  padding: 8px 10px 8px 12px;
+  border-radius: 8px;
+  background: var(--seg-bg, transparent);
+  border-left: 2px solid var(--seg-bar, var(--accent));
+  cursor: pointer;
+  transition: box-shadow 0.16s var(--ease), filter 0.16s var(--ease);
+}
+
+.compiled-seg[data-seg="base"] { --seg-bg: var(--seg-base); --seg-bar: var(--c1); }
+.compiled-seg[data-seg="pre"] { --seg-bg: var(--seg-pre); --seg-bar: var(--c3); }
+.compiled-seg[data-seg="subject"] { --seg-bg: var(--seg-subject); --seg-bar: var(--c2); }
+.compiled-seg[data-seg="post"] { --seg-bg: var(--seg-post); --seg-bar: var(--c4); }
+.compiled-seg[data-seg="neg"] { --seg-bg: var(--seg-neg); --seg-bar: var(--danger); }
+
+.compiled-seg.lit,
+.compiled-seg:hover {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--seg-bar) 45%, transparent);
+  filter: saturate(1.15);
+}
+
+.compiled-seg .seg-label {
+  display: block;
+  font-family: var(--font);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+  margin-bottom: 2px;
+}
+
+.compiled-seg .seg-text { white-space: pre-wrap; }
+
+.module-item.lit {
+  outline: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  background: var(--accent-wash);
+}
+
+.param-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.param-group + .param-group { margin-top: 16px; }
+
+.param-group-label {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mute);
+}
+
+.param-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 480px) {
+  .param-grid { grid-template-columns: 1fr; }
+}
+
+.dirty-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-left: 8px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

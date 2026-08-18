@@ -1,5 +1,7 @@
 
 import React, { useRef, useState } from 'react';
+import { Button, CompiledPrompt, type CompiledSegId } from './ui';
+import type { CompiledPromptSegments } from '../services/promptUtils';
 
 interface ChainEditorPreviewProps {
     subjectPrompt: string;
@@ -16,6 +18,11 @@ interface ChainEditorPreviewProps {
     handleUploadCover: (e: React.ChangeEvent<HTMLInputElement>) => void;
     getDownloadFilename: () => string;
     hideCoverActions?: boolean;
+    segments: CompiledPromptSegments;
+    negativePrompt: string;
+    highlightSeg: CompiledSegId | null;
+    onHighlightSeg: (seg: CompiledSegId | null) => void;
+    onCopySegment?: (label: string) => void;
 }
 
 export const ChainEditorPreview: React.FC<ChainEditorPreviewProps> = ({
@@ -32,7 +39,12 @@ export const ChainEditorPreview: React.FC<ChainEditorPreviewProps> = ({
     handleSavePreview,
     handleUploadCover,
     getDownloadFilename,
-    hideCoverActions
+    hideCoverActions,
+    segments,
+    negativePrompt,
+    highlightSeg,
+    onHighlightSeg,
+    onCopySegment,
 }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isDownloading, setIsDownloading] = useState(false);
@@ -80,15 +92,25 @@ export const ChainEditorPreview: React.FC<ChainEditorPreviewProps> = ({
                     />
                 </div>
 
-                {/* Generated Image */}
-                <button
+                <div className="mb-4">
+                    <CompiledPrompt
+                        segments={segments}
+                        negative={negativePrompt}
+                        highlight={highlightSeg}
+                        onHighlight={onHighlightSeg}
+                        onCopy={(label) => onCopySegment?.(label)}
+                    />
+                </div>
+
+                <Button
+                    variant="primary"
+                    block
+                    className="mb-4 flex-shrink-0"
+                    loading={isGenerating}
                     onClick={handleGenerate}
-                    disabled={isGenerating}
-                    className={`w-full py-3 rounded-lg font-bold text-white shadow-lg transition-all mb-4 flex-shrink-0 ${isGenerating ? 'bg-gray-400 cursor-wait' : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500'
-                        }`}
                 >
-                    {isGenerating ? '生成中...' : '生成预览 (自动保存历史)'}
-                </button>
+                    {isGenerating ? '生成中' : '生成预览 (自动保存历史)'}
+                </Button>
                 {errorMsg && <div className="text-red-500 text-xs mb-2 text-center">{errorMsg}</div>}
 
                 <div

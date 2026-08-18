@@ -1,8 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { PromptChain, PromptModule, User, CharacterParams, NAIParams } from '../types';
-import { compilePrompt } from '../services/promptUtils';
+import { compilePrompt, compilePromptSegments, type CompiledPromptSegments } from '../services/promptUtils';
 import { generateImage } from '../services/naiService';
+import { getApiKey, hasApiKey, subscribeApiKey } from '../services/apiKeyStore';
+import { Tag, type CompiledSegId } from './ui';
 import { localHistory } from '../services/localHistory';
 import { compressPngToJpg } from '../services/imageCompression';
 import { api } from '../services/api';
@@ -13,6 +15,8 @@ import { ChainEditorVibePanel } from './ChainEditorVibePanel';
 import { vibeLibrary } from '../services/vibeLibrary';
 import { resolveVibeMounts, validateVibeMounts } from '../services/vibeRules';
 
+const EMPTY_SEGMENTS: CompiledPromptSegments = { base: '', pre: '', subject: '', post: '' };
+
 interface ChainEditorProps {
     chain: PromptChain;
     allChains: PromptChain[]; // Need access to other chains for importing
@@ -22,9 +26,10 @@ interface ChainEditorProps {
     onFork: (chain: PromptChain, targetType?: 'style' | 'character') => void;
     setIsDirty: (isDirty: boolean) => void;
     notify: (msg: string, type?: 'success' | 'error') => void;
+    onOpenSettings?: () => void;
 }
 
-export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, currentUser, onUpdateChain, onBack, onFork, setIsDirty, notify }) => {
+export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, currentUser, onUpdateChain, onBack, onFork, setIsDirty, notify, onOpenSettings }) => {
     // Permission Check
     // Guests are allowed to EDIT (in memory) for testing, but NOT SAVE.
     const isGuest = currentUser.role === 'guest';
@@ -102,8 +107,11 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
     const [finalPrompt, setFinalPrompt] = useState('');
 
     // --- Generation State ---
-    const [apiKey, setApiKey] = useState('');
+    const [keyConfigured, setKeyConfigured] = useState(() => hasApiKey());
     const [isGenerating, setIsGenerating] = useState(false);
+    const [hoveredSeg, setHoveredSeg] = useState<CompiledSegId | null>(null);
+    const [hoveredModuleId, setHoveredModuleId] = useState<string | null>(null);
+    const [segments, setSegments] = useState<CompiledPromptSegments>(EMPTY_SEGMENTS);
     const [isUploading, setIsUploading] = useState(false);
     const [generatedImage, setGeneratedImage] = useState<string | null>(null);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -157,11 +165,9 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         setActiveModules(initialModules);
         setHasChanges(false);
 
-        // Load API Key
-        const savedKey = localStorage.getItem('nai_api_key');
-        if (savedKey) setApiKey(savedKey);
-
     }, [chain.id, chain.basePrompt, chain.negativePrompt, chain.modules, chain.params, chain.name, chain.description, chain.variableValues, chain.guestHidden, chain.isPrivate]);
+
+    useEffect(() => subscribeApiKey(() => setKeyConfigured(hasApiKey())), []);
     // Dependency note: we still list props to satisfy linter, but the guard 'if (prevChainId === chain.id) return' blocks re-execution.
 
     // --- sessionStorage 侦听：接收来自历史/灵感页面的一键导入数据 ---
@@ -192,14 +198,9 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
             }))
         } as any;
 
-        const compiled = compilePrompt(tempChain, subjectPrompt);
-        setFinalPrompt(compiled);
+        setFinalPrompt(compilePrompt(tempChain, subjectPrompt));
+        setSegments(compilePromptSegments(tempChain, subjectPrompt));
     }, [basePrompt, modules, activeModules, subjectPrompt]);
-
-    const handleApiKeyChange = (val: string) => {
-        setApiKey(val);
-        localStorage.setItem('nai_api_key', val);
-    };
 
     const getDownloadFilename = () => {
         const now = new Date();
@@ -522,8 +523,9 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
     };
 
     const handleGenerate = async () => {
+        const apiKey = getApiKey();
         if (!apiKey) {
-            setErrorMsg('请在右上角设置 NovelAI API Key');
+            setErrorMsg('请先在设置中配置 NovelAI API Key');
             return;
         }
         setIsGenerating(true);
@@ -686,7 +688,10 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border flex-shrink-0 ${isCharacterMode ? 'bg-pink-100 text-pink-700 border-pink-200' : 'bg-blue-100 text-blue-700 border-blue-200'}`}>
                                     {isCharacterMode ? '角色串' : '画师串'}
                                 </span>
-                                <h1 className="text-base md:text-lg font-bold text-gray-900 dark:text-white truncate min-w-0">{chainName}</h1>
+                                <h1 className="text-base md:text-lg font-bold text-gray-900 dark:text-white truncate min-w-0">
+                                    {chainName}
+                                    {hasChanges && <i className="dirty-dot" title="未保存" />}
+                                </h1>
                                 <span className="text-xs text-gray-500 dark:text-gray-500 truncate block max-w-full md:max-w-xs min-w-0">{chainDesc}</span>
                             </div>
                             {isOwner && <svg className="w-4 h-4 text-gray-400 opacity-50 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>}
@@ -712,15 +717,16 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                         </button>
                     </div>
 
-                    <div className="relative group">
-                        <input
-                            type="password"
-                            placeholder="API Key"
-                            className="w-16 md:w-32 focus:w-40 md:focus:w-64 transition-all bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-sm text-gray-800 dark:text-gray-200 outline-none focus:ring-1 focus:ring-indigo-500"
-                            value={apiKey}
-                            onChange={(e) => handleApiKeyChange(e.target.value)}
-                        />
-                    </div>
+                    <button
+                        type="button"
+                        onClick={() => onOpenSettings?.()}
+                        className="flex items-center"
+                        title="前往设置配置 API Key"
+                    >
+                        <Tag tone={keyConfigured ? 'sage' : undefined}>
+                            {keyConfigured ? '已配置' : '未配置'}
+                        </Tag>
+                    </button>
 
                     {/* Fork / Save to Library Button */}
                     {((!isOwner && !isGuest) || chain.id === 'playground') && (
@@ -826,7 +832,19 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                             </div>
                             <div className="space-y-3">
                                 {(modules || []).map((mod, idx) => (
-                                    <div key={mod.id} className={`bg-gray-50 dark:bg-gray-800/40 border rounded-lg p-3 ${activeModules[mod.id] !== false ? 'border-gray-300 dark:border-gray-700' : 'border-gray-200 dark:border-gray-800 opacity-60'}`}>
+                                    <div
+                                        key={mod.id}
+                                        data-pos={mod.position === 'pre' ? 'pre' : 'post'}
+                                        onMouseEnter={() => {
+                                            setHoveredSeg(mod.position === 'pre' ? 'pre' : 'post');
+                                            setHoveredModuleId(mod.id);
+                                        }}
+                                        onMouseLeave={() => {
+                                            setHoveredSeg(null);
+                                            setHoveredModuleId(null);
+                                        }}
+                                        className={`module-item bg-gray-50 dark:bg-gray-800/40 border rounded-lg p-3 ${activeModules[mod.id] !== false ? 'border-gray-300 dark:border-gray-700' : 'border-gray-200 dark:border-gray-800 opacity-60'} ${hoveredSeg === (mod.position === 'pre' ? 'pre' : 'post') && (!hoveredModuleId || hoveredModuleId === mod.id) ? 'lit' : ''}`}
+                                    >
                                         <div className="flex flex-wrap gap-2 mb-2 items-center">
                                             <input type="checkbox" checked={activeModules[mod.id] !== false} onChange={() => toggleModuleActive(mod.id)} className="rounded bg-gray-100 dark:bg-gray-900 text-indigo-600 focus:ring-0 flex-shrink-0" />
                                             <input
@@ -1061,6 +1079,14 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                     handleUploadCover={handleUploadCover}
                     getDownloadFilename={getDownloadFilename}
                     hideCoverActions={chain.id === 'playground'}
+                    segments={segments}
+                    negativePrompt={negativePrompt}
+                    highlightSeg={hoveredSeg}
+                    onHighlightSeg={(seg) => {
+                        setHoveredSeg(seg);
+                        setHoveredModuleId(null);
+                    }}
+                    onCopySegment={(label) => notify(`已复制${label}`)}
                 />
             </div>
 

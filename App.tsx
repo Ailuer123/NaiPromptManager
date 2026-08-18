@@ -299,6 +299,7 @@ const App = () => {
           onFork={handleForkChain}
           setIsDirty={setIsEditorDirty}
           notify={notify}
+          onOpenSettings={() => handleNavigate('admin')}
         />;
       case 'library':
         return <ArtistLibrary
@@ -308,6 +309,7 @@ const App = () => {
           onRefresh={() => loadArtists(true)}
           notify={notify}
           currentUser={currentUser}
+          onOpenSettings={() => handleNavigate('admin')}
         />;
       case 'inspiration':
         return <InspirationGallery
@@ -341,6 +343,7 @@ const App = () => {
           onFork={handleForkChain}
           setIsDirty={() => { }}
           notify={notify}
+          onOpenSettings={() => handleNavigate('admin')}
         />;
       default:
         return <div>Unknown View</div>;

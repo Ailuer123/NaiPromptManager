@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
 import { Artist, User, UsageStats, AccessLog, DailyStat } from '../types';
 import { ROLE_POLICY } from '../config/rolePolicy';
+import { Button, Field, Input, Seg } from './ui';
+import { clearApiKey, getApiKey, isApiKeyRemembered, setApiKey } from '../services/apiKeyStore';
 
 type ArtistWeightSyntax = 'numeric' | 'bracket';
 
@@ -60,6 +62,24 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
 
   // Profile State
   const [myNewPassword, setMyNewPassword] = useState('');
+
+  const [naiKeyDraft, setNaiKeyDraft] = useState(() => getApiKey());
+  const [keyScope, setKeyScope] = useState<'session' | 'local'>(() => (
+    isApiKeyRemembered() ? 'local' : 'session'
+  ));
+  const [keyStatus, setKeyStatus] = useState('');
+
+  const handleSaveApiKey = () => {
+    const trimmed = naiKeyDraft.trim();
+    if (!trimmed) {
+      clearApiKey();
+      setNaiKeyDraft('');
+      setKeyStatus('已清除');
+      return;
+    }
+    setApiKey(trimmed, keyScope === 'local');
+    setKeyStatus(keyScope === 'local' ? '已保存到本机' : '仅本次会话有效');
+  };
 
   // 图片压缩偏好（与"历史压缩 / 自动 JPG 保存"共享）
   // 存储：LocalStorage `naipm.compaction.*` 命名空间
@@ -736,6 +756,48 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
         {/* --- PROFILE TAB --- */}
         {activeTab === 'profile' && (
             <div className="space-y-6">
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow max-w-md">
+                    <h2 className="font-bold dark:text-white mb-1">API Key</h2>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                        仅保存在本机。本次会话刷新后丢失；本机记住写入 localStorage。
+                    </p>
+                    <Seg<'session' | 'local'>
+                        value={keyScope}
+                        onChange={setKeyScope}
+                        aria-label="API Key 存储范围"
+                        options={[
+                            { value: 'session', label: '本次会话' },
+                            { value: 'local', label: '本机记住' },
+                        ]}
+                    />
+                    <Field label="NAI API Key" className="mt-4" hint={keyStatus || (keyScope === 'local' ? '关闭浏览器后仍保留，请确保设备安全。' : '仅存在内存，刷新页面后清除。')}>
+                        <Input
+                            type="password"
+                            value={naiKeyDraft}
+                            placeholder="pst-..."
+                            autoComplete="off"
+                            onChange={(e) => {
+                                setNaiKeyDraft(e.target.value);
+                                setKeyStatus('');
+                            }}
+                        />
+                    </Field>
+                    <div className="flex gap-2 mt-4">
+                        <Button variant="secondary" size="sm" onClick={handleSaveApiKey}>保存密钥</Button>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                                clearApiKey();
+                                setNaiKeyDraft('');
+                                setKeyStatus('已清除');
+                            }}
+                        >
+                            清除
+                        </Button>
+                    </div>
+                </div>
+
                 {/* Guest cannot change password - uses shared passcode */}
                 {currentUser.role !== 'guest' && (
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow max-w-md">

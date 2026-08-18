@@ -2,6 +2,7 @@ export { Avatar, type AvatarProps } from './Avatar';
 export { Button, type ButtonProps, type ButtonSize, type ButtonVariant } from './Button';
 export { Card, type CardMediaRatio, type CardProps } from './Card';
 export { Chip, Seg, type ChipProps, type SegOption, type SegProps } from './Chip';
+export { CompiledPrompt, type CompiledPromptProps, type CompiledSegId } from './CompiledPrompt';
 export { Collapse, type CollapseProps } from './Collapse';
 export { Empty, type EmptyProps } from './Empty';
 export { Field, Input, Select, Textarea, type FieldProps, type InputProps, type SelectProps, type TextareaProps } from './Field';

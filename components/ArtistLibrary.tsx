@@ -4,6 +4,8 @@ import { Artist, User } from '../types';
 import { generateImage } from '../services/naiService'; // Import generation service
 import { api } from '../services/api'; // Import api for updating
 import { db } from '../services/dbService'; // Import DB to fetch config
+import { getApiKey, hasApiKey, subscribeApiKey } from '../services/apiKeyStore';
+import { Tag } from './ui';
 import { ArtistLibraryConfig } from './ArtistLibraryConfig';
 import { ArtistLibraryCart } from './ArtistLibraryCart';
 
@@ -66,6 +68,7 @@ interface ArtistLibraryProps {
     onRefresh: () => Promise<void>;
     notify: (msg: string, type?: 'success' | 'error') => void;
     currentUser?: User | null; // Add current user prop for permission check
+    onOpenSettings?: () => void;
 }
 
 // Helper to get first char
@@ -191,7 +194,7 @@ interface LogEntry {
     type: 'success' | 'error' | 'info';
 }
 
-export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleTheme, artistsData, onRefresh, notify, currentUser }) => {
+export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleTheme, artistsData, onRefresh, notify, currentUser, onOpenSettings }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [cart, setCart] = useState<CartItem[]>([]);
     const [favorites, setFavorites] = useState<Set<string>>(new Set());
@@ -226,8 +229,8 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
     const [showConfig, setShowConfig] = useState(false);
     const [config, setConfig] = useState<BenchmarkConfig>(DEFAULT_BENCHMARK_CONFIG);
 
-    const [apiKey, setApiKey] = useState('');
-    
+    const [keyConfigured, setKeyConfigured] = useState(() => hasApiKey());
+
     // Check if current user is admin
     const isAdmin = currentUser?.role === 'admin';
     
@@ -274,19 +277,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
             }
         });
 
-        // API Key 安全存储策略：
-        // 1. 优先从 sessionStorage 读取（会话级，关闭标签页即清除）
-        // 2. 其次从 localStorage 读取（持久化，用户明确选择"记住"）
-        // 注意：前端无法真正保护存储的密钥，"记住"功能意味着用户接受风险
-        const sessionKey = sessionStorage.getItem('nai_api_key');
-        if (sessionKey) {
-            setApiKey(sessionKey);
-        } else {
-            const savedKey = localStorage.getItem('nai_api_key');
-            if (savedKey) {
-                setApiKey(savedKey);
-            }
-        }
+        const unsubKey = subscribeApiKey(() => setKeyConfigured(hasApiKey()));
         const handleArtistWeightSyntaxChange = () => {
             setArtistWeightSyntax(getStoredArtistWeightSyntax());
         };
@@ -299,38 +290,11 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
         window.addEventListener('storage', handleArtistWeightSyntaxStorage);
 
         return () => {
+            unsubKey();
             window.removeEventListener(ARTIST_WEIGHT_SYNTAX_CHANGE_EVENT, handleArtistWeightSyntaxChange);
             window.removeEventListener('storage', handleArtistWeightSyntaxStorage);
         };
     }, []);
-
-    // API Key 存储状态：是否记住（持久化到 localStorage）
-    const [rememberApiKey, setRememberApiKey] = useState(() => {
-        return localStorage.getItem('nai_api_key') !== null;
-    });
-
-    const handleApiKeyChange = (val: string) => {
-        setApiKey(val);
-        // 始终存入 sessionStorage（会话级）
-        sessionStorage.setItem('nai_api_key', val);
-        // 仅在用户选择"记住"时持久化到 localStorage
-        if (rememberApiKey) {
-            localStorage.setItem('nai_api_key', val);
-        } else {
-            localStorage.removeItem('nai_api_key');
-        }
-    };
-
-    const handleRememberKeyChange = (remember: boolean) => {
-        setRememberApiKey(remember);
-        if (remember && apiKey) {
-            // 用户选择记住，持久化当前 Key（用户需自行承担风险）
-            localStorage.setItem('nai_api_key', apiKey);
-        } else {
-            // 用户取消记住，清除 localStorage
-            localStorage.removeItem('nai_api_key');
-        }
-    };
 
     const handleRefresh = async () => {
         setIsLoading(true);
@@ -542,7 +506,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                 const seed = config.seed;
 
                 // Generate
-                const result = await generateImage(apiKey, prompt, negative, {
+                const result = await generateImage(getApiKey(), prompt, negative, {
                     width: 832, height: 1216, steps: config.steps, scale: config.scale, sampler: 'k_euler_ancestral', seed: seed,
                     qualityToggle: true, ucPreset: 0
                 });
@@ -601,7 +565,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
         };
 
         processNext();
-    }, [taskQueue, isProcessing, isPaused, apiKey, config, artistsData, onRefresh, notify]);
+    }, [taskQueue, isProcessing, isPaused, config, artistsData, onRefresh, notify]);
 
     // (The rest of the file remains unchanged, omitted for brevity as per instructions to only include changes if possible, but minimal diff implies keeping context if necessary. I'll include the rest to be safe and runnable)
     // ... (Code for queueGeneration, retryFailedTasks, queueMissingGenerations, lightbox logic, etc.)
@@ -609,9 +573,9 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
     // Add tasks to queue
     const queueGeneration = (artist: Artist, slots: number[], e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!apiKey) {
+        if (!hasApiKey()) {
             notify('请先在设置中配置 API Key', 'error');
-            setShowConfig(true); // Open config modal
+            onOpenSettings?.();
             return;
         }
 
@@ -634,9 +598,9 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
     };
 
     const queueMissingGenerations = () => {
-        if (!apiKey) {
+        if (!hasApiKey()) {
             notify('请先在设置中配置 API Key', 'error');
-            setShowConfig(true);
+            onOpenSettings?.();
             return;
         }
 
@@ -857,6 +821,16 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                     {/* Config & Slots (Show Config button always, Slots only in Grid-Benchmark mode) */}
                     <div className="flex items-center gap-2 overflow-x-auto max-w-full">
                         <button
+                            type="button"
+                            onClick={() => onOpenSettings?.()}
+                            className="flex items-center flex-shrink-0"
+                            title="前往设置配置 API Key"
+                        >
+                            <Tag tone={keyConfigured ? 'sage' : undefined}>
+                                {keyConfigured ? '已配置' : '未配置'}
+                            </Tag>
+                        </button>
+                        <button
                             onClick={() => setShowConfig(true)}
                             className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex-shrink-0"
                             title="配置分组"
@@ -883,7 +857,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                     {/* Settings Group */}
                     <div className="flex gap-2 items-center ml-auto">
                         {/* Auto-Fill Button - Only show for admins */}
-                        {isAdmin && (layoutMode === 'list' || viewMode === 'benchmark') && apiKey && (
+                        {isAdmin && (layoutMode === 'list' || viewMode === 'benchmark') && keyConfigured && (
                             <button
                                 onClick={queueMissingGenerations}
                                 title={layoutMode === 'list'
@@ -1054,7 +1028,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" /></svg>
                                             </button>
 
-                                            {isAdmin && viewMode === 'benchmark' && apiKey && (
+                                            {isAdmin && viewMode === 'benchmark' && keyConfigured && (
                                                 <>
                                                     <button
                                                         onClick={(e) => queueGeneration(artist, [activeSlot], e)}
@@ -1124,7 +1098,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                                             </a>
                                         </div>
-                                        {isAdmin && apiKey && (
+                                        {isAdmin && keyConfigured && (
                                             <button
                                                 onClick={(e) => queueGeneration(artist, config.slots.map((_, i) => i), e)}
                                                 className="text-xs bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-3 py-1 rounded hover:bg-green-100 dark:hover:bg-green-900/50 flex items-center gap-1 border border-green-200 dark:border-green-800"
@@ -1181,7 +1155,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                                                                 )}
                                                             </div>
                                                         )}
-                                                        {isAdmin && apiKey && !taskRunning && !taskPending && (
+                                                        {isAdmin && keyConfigured && !taskRunning && !taskPending && (
                                                             <div className="absolute bottom-1 right-1 transition-opacity opacity-0 group-hover:opacity-100 z-10">
                                                                 <button
                                                                     onClick={(e) => queueGeneration(artist, [i], e)}
@@ -1336,10 +1310,6 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                 onClose={() => setShowConfig(false)}
                 onSave={saveConfig}
                 initialConfig={config}
-                apiKey={apiKey}
-                onApiKeyChange={handleApiKeyChange}
-                rememberApiKey={rememberApiKey}
-                onRememberApiKeyChange={handleRememberKeyChange}
                 notify={notify}
             />
         </div>
