@@ -43,4 +43,23 @@ describe('Card', () => {
     await user.click(link);
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
+
+  it('onOpen 无标题时仍有拉伸链接，可点开', async () => {
+    const user = userEvent.setup();
+    const onOpen = vi.fn();
+    const { container } = render(
+      <Card onOpen={onOpen} media={<img alt="" src="about:blank" />} />,
+    );
+
+    const root = container.querySelector('article.card');
+    expect(root).toBeTruthy();
+    expect(root).not.toHaveAttribute('role', 'button');
+    expect(container.querySelector('.card-body')).toBeNull();
+
+    const link = screen.getByRole('link', { name: '打开' });
+    expect(link).toHaveClass('card-link');
+
+    await user.click(link);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
 });
