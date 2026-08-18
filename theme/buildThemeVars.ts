@@ -11,17 +11,12 @@ import {
 export type ThemeMode = 'light' | 'dark';
 export type ThemeVars = Record<string, string>;
 
-function pickAccent(colors: readonly string[]): string {
-  const sorted = [...colors].sort((a, b) => luminance(a) - luminance(b));
-  return sorted[0];
-}
-
 export function buildThemeVars(colors: readonly string[], mode: ThemeMode = 'light'): ThemeVars {
   const [c1, c2, c3, c4] = colors;
   const byLum = [...colors].sort((a, b) => luminance(a) - luminance(b));
   const darkest = byLum[0];
   const lightest = byLum[byLum.length - 1];
-  const accent0 = pickAccent(colors);
+  const accent0 = darkest;
   const midTone = byLum[Math.min(1, byLum.length - 1)];
   const soft = byLum[Math.min(2, byLum.length - 1)] || c3;
   const light = lightest;

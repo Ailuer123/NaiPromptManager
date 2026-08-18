@@ -4,6 +4,14 @@ import { DEFAULT_THEME_ID, themeById, type ThemeId } from './palettes';
 export const THEME_ID_STORAGE_KEY = 'nai_atelier_theme';
 export const THEME_MODE_STORAGE_KEY = 'nai_theme';
 
+function getLocalStorage(): Storage | null {
+  try {
+    return (globalThis as typeof globalThis & { localStorage?: Storage }).localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function resolveMode(mode: string | null | undefined): ThemeMode {
   return mode === 'dark' ? 'dark' : 'light';
 }
@@ -12,9 +20,10 @@ export function readStoredTheme(): { themeId: ThemeId; mode: ThemeMode } {
   let saved: string = DEFAULT_THEME_ID;
   let mode: ThemeMode = 'light';
   try {
-    if (typeof localStorage !== 'undefined') {
-      saved = localStorage.getItem(THEME_ID_STORAGE_KEY) || DEFAULT_THEME_ID;
-      mode = resolveMode(localStorage.getItem(THEME_MODE_STORAGE_KEY));
+    const storage = getLocalStorage();
+    if (storage) {
+      saved = storage.getItem(THEME_ID_STORAGE_KEY) || DEFAULT_THEME_ID;
+      mode = resolveMode(storage.getItem(THEME_MODE_STORAGE_KEY));
     }
   } catch {
     // private mode / missing storage
@@ -22,11 +31,9 @@ export function readStoredTheme(): { themeId: ThemeId; mode: ThemeMode } {
   return { themeId: themeById(saved).id, mode };
 }
 
-function persistTheme(themeId: ThemeId, mode: ThemeMode) {
+function persistThemeId(themeId: ThemeId) {
   try {
-    if (typeof localStorage === 'undefined') return;
-    localStorage.setItem(THEME_ID_STORAGE_KEY, themeId);
-    localStorage.setItem(THEME_MODE_STORAGE_KEY, mode);
+    getLocalStorage()?.setItem(THEME_ID_STORAGE_KEY, themeId);
   } catch {
     // ignore quota / private mode
   }
@@ -36,7 +43,7 @@ export function applyTheme(id: string, mode: ThemeMode): ThemeVars {
   const theme = themeById(id);
   const resolvedMode = resolveMode(mode);
   const vars = buildThemeVars(theme.colors, resolvedMode);
-  persistTheme(theme.id, resolvedMode);
+  persistThemeId(theme.id);
 
   if (typeof document === 'undefined') return vars;
 

@@ -15,8 +15,9 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 type ApplyThemeFn = (id: string, mode?: ThemeMode) => void;
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [themeId, setThemeId] = useState<ThemeId>(() => readStoredTheme().themeId);
-  const [mode, setModeState] = useState<ThemeMode>(() => readStoredTheme().mode);
+  const [initial] = useState(readStoredTheme);
+  const [themeId, setThemeId] = useState(initial.themeId);
+  const [mode, setModeState] = useState(initial.mode);
 
   useLayoutEffect(() => {
     applyTheme(themeId, mode);

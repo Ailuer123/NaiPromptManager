@@ -11,14 +11,12 @@ function hexStops(value: string): string[] {
   return value.match(/#[0-9a-fA-F]{6}/g) ?? [];
 }
 
-function brightest(hexes: string[]): string {
-  return hexes.reduce((a, b) => (relLuminance(a) >= relLuminance(b) ? a : b));
-}
-
 function assertButtonFace(vars: Record<string, string>) {
   const stops = hexStops(vars['--btn-grad']);
   expect(stops.length).toBeGreaterThanOrEqual(2);
-  expect(contrastRatio(brightest(stops), vars['--btn-fg'])).toBeGreaterThanOrEqual(AA);
+  for (const stop of stops) {
+    expect(contrastRatio(stop, vars['--btn-fg'])).toBeGreaterThanOrEqual(AA);
+  }
 }
 
 describe('THEME_CATALOG', () => {
