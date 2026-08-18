@@ -135,4 +135,24 @@ describe('ChainList', () => {
     expect(screen.getByRole('heading', { name: '暂无数据' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '新建画师串' })).toBeNull();
   });
+
+  it('长标题仍能点进编辑，搜索会藏掉不匹配的串', async () => {
+    const user = userEvent.setup();
+    const longName = '这是一个非常非常非常非常非常非常非常长的画师串名称用来压测标题溢出';
+    const { onSelect } = renderList({
+      chains: [
+        makeChain({ id: 's1', name: longName, type: 'style' }),
+        makeChain({ id: 's2', name: '短名串', type: 'style' }),
+      ],
+    });
+
+    expect(screen.getByRole('button', { name: `更多 ${longName}` })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('link', { name: longName }));
+    expect(onSelect).toHaveBeenCalledWith('s1');
+
+    await user.type(screen.getByRole('textbox', { name: '搜索串' }), '短名');
+    expect(screen.getByRole('link', { name: '短名串' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: longName })).toBeNull();
+  });
 });
