@@ -890,9 +890,6 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                 </div>
             </header>
 
-            {/* ... rest of the component (sidebar, main content, lightbox, logs, modals) remains mostly the same, 
-          only ensure variable names match and the file is complete ... */}
-
             <nav className="arsenal-az glass" aria-label="字母索引">
                 {ALPHABET.map(char => (
                     <button
