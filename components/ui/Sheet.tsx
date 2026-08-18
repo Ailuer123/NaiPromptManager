@@ -49,32 +49,51 @@ export type SheetProps = {
 export function Sheet({ open, onClose, title, className, children }: SheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const lastFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
   const titleId = useId();
-  const wasOpen = useRef(false);
+
+  onCloseRef.current = onClose;
 
   useEffect(() => {
-    if (!open) {
-      if (wasOpen.current) {
-        lastFocusRef.current?.focus?.();
-        lastFocusRef.current = null;
-      }
-      wasOpen.current = false;
-      return;
-    }
+    if (!open) return;
 
-    wasOpen.current = true;
     lastFocusRef.current = document.activeElement as HTMLElement | null;
     const panel = panelRef.current;
     const focusables = getFocusable(panel);
     (focusables[0] ?? panel)?.focus();
 
+    return () => {
+      lastFocusRef.current?.focus?.();
+      lastFocusRef.current = null;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (open) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    const rejectFocus = (e: FocusEvent) => {
+      const target = e.target;
+      if (!(target instanceof HTMLElement) || !panel.contains(target)) return;
+      target.blur();
+    };
+
+    panel.addEventListener('focusin', rejectFocus);
+    return () => panel.removeEventListener('focusin', rejectFocus);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== 'Tab') return;
+      const panel = panelRef.current;
       const nodes = getFocusable(panel);
       if (nodes.length === 0) {
         e.preventDefault();
@@ -97,13 +116,13 @@ export function Sheet({ open, onClose, title, className, children }: SheetProps)
     return () => {
       document.removeEventListener('keydown', onKey);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (typeof document === 'undefined') return null;
 
   return createPortal(
     <>
-      <Overlay open={open} onClick={onClose} />
+      <Overlay open={open} onClick={() => onCloseRef.current()} />
       <div
         ref={panelRef}
         className={cx('sheet', 'glass-strong', open && 'open', className)}
@@ -112,12 +131,13 @@ export function Sheet({ open, onClose, title, className, children }: SheetProps)
         aria-hidden={!open}
         aria-labelledby={title != null ? titleId : undefined}
         tabIndex={-1}
+        inert={!open}
       >
         <div className="sheet-handle" />
         {(title != null) && (
           <div className="sheet-head">
             <h3 id={titleId}>{title}</h3>
-            <IconButton label="关闭" onClick={onClose}>
+            <IconButton label="关闭" onClick={() => onCloseRef.current()}>
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M6 6l12 12M18 6L6 18" />
               </svg>

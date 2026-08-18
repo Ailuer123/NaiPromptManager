@@ -62,4 +62,51 @@ describe('Sheet', () => {
     await user.click(screen.getByRole('button', { name: '关闭' }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it('onClose 换引用时不重捕焦点', async () => {
+    const user = userEvent.setup();
+
+    function FocusHost({ onClose }: { onClose: () => void }) {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>打开</button>
+          <Sheet open={open} onClose={onClose} title="对话框">
+            <input aria-label="内部输入" />
+          </Sheet>
+        </>
+      );
+    }
+
+    const { rerender } = render(<FocusHost onClose={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: '打开' }));
+
+    const input = screen.getByLabelText('内部输入');
+    input.focus();
+    expect(input).toHaveFocus();
+
+    rerender(<FocusHost onClose={vi.fn()} />);
+    expect(input).toHaveFocus();
+  });
+
+  it('关闭时不进 tab 顺序', async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <button type="button">打开</button>
+        <Sheet open={false} onClose={() => {}} title="关着">
+          <input aria-label="内部输入" />
+        </Sheet>
+      </>,
+    );
+
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog).toHaveAttribute('inert');
+
+    const opener = screen.getByRole('button', { name: '打开' });
+    opener.focus();
+    await user.tab();
+    expect(dialog?.contains(document.activeElement)).toBe(false);
+    expect(screen.queryByLabelText('内部输入')).not.toBe(document.activeElement);
+  });
 });
