@@ -258,47 +258,35 @@ const App = () => {
     return <DbSetupError />;
   }
 
+  const openChainType = (next: ChainType) => {
+    handleNavigate(next === 'character' ? 'characters' : 'list');
+  };
+
+  const renderChainList = (type: ChainType, isGuest: boolean) => (
+    <ChainList
+      chains={chains}
+      type={type}
+      onTypeChange={openChainType}
+      onCreate={handleCreateChain}
+      onSelect={(id) => handleNavigate('edit', id)}
+      onDelete={handleDelete}
+      onRefresh={() => refreshData(true)}
+      isLoading={loading}
+      notify={notify}
+      isGuest={isGuest}
+    />
+  );
+
   const renderContent = () => {
     // Guest guard for admin view - guest should never see admin panel
     if (view === 'admin' && currentUser?.role === 'guest') {
-      return <ChainList
-        chains={chains}
-        type="style"
-        onCreate={handleCreateChain}
-        onSelect={(id) => handleNavigate('edit', id)}
-        onDelete={handleDelete}
-        onRefresh={() => refreshData(true)}
-        isLoading={loading}
-        notify={notify}
-        isGuest={true}
-      />;
+      return renderChainList('style', true);
     }
     
     switch (view) {
       case 'list':
-        return <ChainList
-          chains={chains}
-          type="style"
-          onCreate={handleCreateChain}
-          onSelect={(id) => handleNavigate('edit', id)}
-          onDelete={handleDelete}
-          onRefresh={() => refreshData(true)}
-          isLoading={loading}
-          notify={notify}
-          isGuest={currentUser.role === 'guest'}
-        />;
       case 'characters':
-        return <ChainList
-          chains={chains}
-          type="character"
-          onCreate={handleCreateChain}
-          onSelect={(id) => handleNavigate('edit', id)}
-          onDelete={handleDelete}
-          onRefresh={() => refreshData(true)}
-          isLoading={loading}
-          notify={notify}
-          isGuest={currentUser.role === 'guest'}
-        />;
+        return renderChainList(view === 'characters' ? 'character' : 'style', currentUser.role === 'guest');
       case 'edit':
         const editChain = getSelectedChain();
         if (!editChain) return <div>Chain not found</div>;

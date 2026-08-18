@@ -1,0 +1,138 @@
+// @vitest-environment jsdom
+
+import '@testing-library/jest-dom/vitest';
+import React from 'react';
+import { cleanup, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { PromptChain } from '../types';
+import { ChainList } from './ChainList';
+
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
+
+function makeChain(partial: Partial<PromptChain> & Pick<PromptChain, 'id' | 'name' | 'type'>): PromptChain {
+  return {
+    userId: 'u1',
+    username: 'kira',
+    description: '',
+    tags: [],
+    basePrompt: 'base',
+    negativePrompt: 'lowres',
+    modules: [],
+    params: { width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral' },
+    createdAt: 1,
+    updatedAt: 1,
+    ...partial,
+  };
+}
+
+function renderList(
+  overrides: Partial<React.ComponentProps<typeof ChainList>> = {},
+) {
+  const onTypeChange = vi.fn();
+  const onCreate = vi.fn();
+  const onSelect = vi.fn();
+  const onDelete = vi.fn();
+  const onRefresh = vi.fn();
+  const notify = vi.fn();
+
+  const result = render(
+    <ChainList
+      chains={[
+        makeChain({ id: 's1', name: '雾霾玫瑰', type: 'style', isPrivate: true }),
+        makeChain({ id: 'c1', name: '角色乙', type: 'character', guestHidden: true }),
+      ]}
+      type="style"
+      onTypeChange={onTypeChange}
+      onCreate={onCreate}
+      onSelect={onSelect}
+      onDelete={onDelete}
+      onRefresh={onRefresh}
+      isLoading={false}
+      notify={notify}
+      {...overrides}
+    />,
+  );
+
+  return { onTypeChange, onCreate, onSelect, onDelete, onRefresh, notify, ...result };
+}
+
+describe('ChainList', () => {
+  it('Seg 切换类型时调用 onTypeChange，内部仍按 type 过滤', async () => {
+    const user = userEvent.setup();
+    const { onTypeChange } = renderList();
+
+    expect(screen.getByRole('tab', { name: '画师串' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('link', { name: /雾霾玫瑰/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /角色乙/ })).toBeNull();
+
+    await user.click(screen.getByRole('tab', { name: '角色串' }));
+    expect(onTypeChange).toHaveBeenCalledTimes(1);
+    expect(onTypeChange).toHaveBeenCalledWith('character');
+    expect(screen.getByRole('tab', { name: '画师串' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('link', { name: /角色乙/ })).toBeNull();
+  });
+
+  it('卡片标题是拉伸链接，根节点不是 button；保留私人/游客标记', () => {
+    const { container, rerender, onTypeChange, onCreate, onSelect, onDelete, onRefresh, notify } = renderList();
+
+    const root = container.querySelector('article.card');
+    expect(root).toBeTruthy();
+    expect(root).not.toHaveAttribute('role', 'button');
+    expect(screen.queryByRole('button', { name: '雾霾玫瑰' })).toBeNull();
+
+    const link = screen.getByRole('link', { name: /雾霾玫瑰/ });
+    expect(link).toHaveClass('card-link');
+    expect(within(link).getByLabelText('私人串')).toBeInTheDocument();
+
+    rerender(
+      <ChainList
+        chains={[
+          makeChain({ id: 's1', name: '雾霾玫瑰', type: 'style', isPrivate: true }),
+          makeChain({ id: 'c1', name: '角色乙', type: 'character', guestHidden: true }),
+        ]}
+        type="character"
+        onTypeChange={onTypeChange}
+        onCreate={onCreate}
+        onSelect={onSelect}
+        onDelete={onDelete}
+        onRefresh={onRefresh}
+        isLoading={false}
+        notify={notify}
+      />,
+    );
+
+    const charLink = screen.getByRole('link', { name: /角色乙/ });
+    expect(charLink).toHaveClass('card-link');
+    expect(within(charLink).getByLabelText('游客不可见')).toBeInTheDocument();
+    expect(container.querySelector('article.card')).not.toHaveAttribute('role', 'button');
+  });
+
+  it('更多按钮打开复制/删除，不进入编辑', async () => {
+    const user = userEvent.setup();
+    const { onSelect, onDelete } = renderList();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    await user.click(screen.getByRole('button', { name: '更多 雾霾玫瑰' }));
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: '雾霾玫瑰' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '复制' }));
+    expect(screen.getByRole('button', { name: '复制选中组合' })).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', { name: '更多 雾霾玫瑰' }));
+    await user.click(screen.getByRole('button', { name: '删除' }));
+    expect(onDelete).toHaveBeenCalledWith('s1');
+    confirmSpy.mockRestore();
+  });
+
+  it('空态使用 Empty；游客没有新建', () => {
+    renderList({ chains: [], isGuest: true });
+    expect(screen.getByRole('heading', { name: '暂无数据' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '新建画师串' })).toBeNull();
+  });
+});
