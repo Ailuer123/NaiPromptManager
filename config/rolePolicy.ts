@@ -48,12 +48,12 @@ export const ROLE_POLICY = {
   // 获取角色显示颜色类名
   getRoleBadgeClass: (role: UserRole): string => {
     const classes: Record<UserRole, string> = {
-      admin: 'bg-red-100 text-red-600',
-      vip: 'bg-yellow-100 text-yellow-700',
-      user: 'bg-green-100 text-green-600',
-      guest: 'bg-gray-100 text-gray-600',
+      admin: 'role-pill role-admin',
+      vip: 'role-pill role-vip',
+      user: 'role-pill role-user',
+      guest: 'role-pill role-guest',
     };
-    return classes[role] || 'bg-gray-100 text-gray-600';
+    return classes[role] || 'role-pill';
   },
 } as const;
 

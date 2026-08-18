@@ -5,9 +5,53 @@ import { generateImage } from '../services/naiService'; // Import generation ser
 import { api } from '../services/api'; // Import api for updating
 import { db } from '../services/dbService'; // Import DB to fetch config
 import { getApiKey, hasApiKey } from '../services/apiKeyStore';
-import { ApiKeyBadge, ApiKeySheet, useApiKeyConfigured } from './ui';
+import { ApiKeyBadge, ApiKeySheet, Button, Card, Chip, Empty, IconButton, Input, Seg, Sheet, Tag, Textarea, useApiKeyConfigured } from './ui';
 import { ArtistLibraryConfig } from './ArtistLibraryConfig';
 import { ArtistLibraryCart } from './ArtistLibraryCart';
+import { cx } from './ui/cx';
+
+const ICONS = {
+    refresh: (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+    ),
+    grid: (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 6h6v6H4zM14 6h6v6h-6zM4 16h6v6H4zM14 16h6v6h-6z" />
+        </svg>
+    ),
+    list: (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+    ),
+    star: (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.563.044.8.77.38 1.178l-4.244 4.134a.563.563 0 00-.153.476l1.24 5.376c.13.565-.487 1.01-.967.756L12 18.232l-4.894 3.08c-.48.254-1.097-.19-.967-.756l1.24-5.376a.563.563 0 00-.153-.476L2.985 10.575c-.42-.408-.183-1.134.38-1.178l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+        </svg>
+    ),
+    zoom: (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m-3-3h6" />
+        </svg>
+    ),
+    ext: (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+        </svg>
+    ),
+    bolt: (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+    ),
+    plus: (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+    ),
+};
 
 interface CartItem {
     name: string;
@@ -125,19 +169,17 @@ const LazyImage: React.FC<{ src: string; alt: string; className?: string }> = ({
     }, [src]);
 
     return (
-        <div ref={imgRef} className={`relative bg-gray-200 dark:bg-gray-900 overflow-hidden ${className || 'w-full h-full'}`}>
+        <div ref={imgRef} className={cx('ph-media', className)}>
             {isInView && (
                 <img
                     src={src}
                     alt={alt}
-                    className={`w-full h-full object-cover transition-all duration-700 ease-in-out ${isLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-105'}`}
+                    className={isLoaded ? 'is-on' : 'is-off'}
                     onLoad={() => setIsLoaded(true)}
                 />
             )}
             {!isLoaded && isInView && (
-                <div className="absolute inset-0 flex items-center justify-center text-gray-400">
-                    <span className="animate-pulse">...</span>
-                </div>
+                <div className="ph-miss">…</div>
             )}
         </div>
     );
@@ -723,229 +765,158 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
 
 
     return (
-        <div className="flex-1 flex flex-col h-full bg-gray-50 dark:bg-gray-900 overflow-hidden relative">
-
-            {/* --- Controls Header --- */}
-            <div className="p-4 bg-white dark:bg-gray-800 shadow-md flex flex-col items-stretch gap-4 z-10 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-
-                <div className="flex gap-2 w-full">
-                    {/* 刷新按钮：仅对可管理画师的角色显示（admin + vip） */}
-                    {canManageArtists && (
-                        <button
-                            onClick={handleRefresh}
-                            className={`p-2 rounded-lg bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex-shrink-0`}
-                            title="刷新画师列表"
-                        >
-                            <svg className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                        </button>
-                    )}
-
-                    {/* Layout Toggle */}
-                    <div className="flex bg-gray-100 dark:bg-gray-900 rounded-lg p-1 border border-gray-200 dark:border-gray-700 flex-shrink-0">
-                        <button
-                            onClick={() => setLayoutMode('grid')}
-                            className={`p-1.5 rounded transition-all ${layoutMode === 'grid' ? 'bg-white dark:bg-gray-700 shadow text-indigo-600 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-                            title="网格视图"
-                        >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
-                        </button>
-                        <button
-                            onClick={() => setLayoutMode('list')}
-                            className={`p-1.5 rounded transition-all ${layoutMode === 'list' ? 'bg-white dark:bg-gray-700 shadow text-indigo-600 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-                            title="展开视图 (实装一览)"
-                        >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
-                        </button>
+        <div className="page-fill">
+            <header className="board-head arsenal-head">
+                <div className="board-head-top">
+                    <div>
+                        <h1>军火库</h1>
+                        <p>挑选画师、组合权重，复制到剪贴板。</p>
                     </div>
-
-                    {/* Slider for Grid/List */}
-                    <div className="flex items-center gap-2 flex-1 md:flex-none md:w-36 px-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800">
-                        <span className="text-xs text-gray-400 font-mono">
-                            {layoutMode === 'grid' ? `列:${gridCols}` : `宽:${listImgWidth}`}
-                        </span>
+                    <div className="board-tools">
+                        {canManageArtists && (
+                            <IconButton label="刷新画师列表" onClick={handleRefresh}>
+                                <span className={isLoading ? 'is-spin' : undefined}>{ICONS.refresh}</span>
+                            </IconButton>
+                        )}
+                        <Seg<'grid' | 'list'>
+                            aria-label="布局"
+                            value={layoutMode}
+                            onChange={setLayoutMode}
+                            options={[
+                                { value: 'grid', label: '网格' },
+                                { value: 'list', label: '展开' },
+                            ]}
+                        />
+                    </div>
+                </div>
+                <div className="board-tools">
+                    <Input
+                        type="text"
+                        className="board-search"
+                        placeholder="搜索 / 粘贴 Prompt..."
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        aria-label="搜索画师"
+                    />
+                    <div className="arsenal-zoom">
+                        <span>{layoutMode === 'grid' ? `列:${gridCols}` : `宽:${listImgWidth}`}</span>
                         {layoutMode === 'grid' ? (
                             <input
                                 type="range"
+                                className="range"
                                 min="3" max="15" step="1"
                                 value={gridCols}
                                 onChange={(e) => setGridCols(parseInt(e.target.value))}
-                                className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-indigo-500"
                                 title="调整每行显示的列数 (3-15)"
                             />
                         ) : (
                             <input
                                 type="range"
+                                className="range"
                                 min="80" max="400" step="10"
                                 value={listImgWidth}
                                 onChange={(e) => setListImgWidth(parseInt(e.target.value))}
-                                className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-indigo-500"
                                 title="调整实装图宽度 (80-400px)"
                             />
                         )}
                     </div>
-
-                    {/* Search */}
-                    <div className="flex-1 relative">
-                        <input
-                            type="text"
-                            placeholder="搜索 / 粘贴 Prompt..."
-                            className="w-full pl-4 pr-10 py-2 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors"
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                        />
-                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-xs border border-gray-300 dark:border-gray-600 px-1.5 rounded pointer-events-none">/</div>
-                    </div>
-                </div>
-
-                <div className="flex justify-between items-center flex-wrap gap-2">
-                    {/* View Toggle (Only show in Grid mode, or keep for general settings) */}
                     {layoutMode === 'grid' && (
-                        <div className="flex bg-gray-100 dark:bg-gray-900 rounded-lg p-1 border border-gray-200 dark:border-gray-700">
-                            <button
-                                onClick={() => setViewMode('original')}
-                                className={`px-3 py-1 rounded text-xs font-medium transition-all ${viewMode === 'original' ? 'bg-white dark:bg-gray-700 shadow text-indigo-600 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+                        <Seg<'original' | 'benchmark'>
+                            aria-label="显示图"
+                            value={viewMode}
+                            onChange={setViewMode}
+                            options={[
+                                { value: 'original', label: '原图' },
+                                { value: 'benchmark', label: '实装' },
+                            ]}
+                        />
+                    )}
+                    <ApiKeyBadge configured={keyConfigured} onClick={() => setKeySheetOpen(true)} />
+                    <IconButton label="配置分组" onClick={() => setShowConfig(true)}>⚙️</IconButton>
+                    {layoutMode === 'grid' && viewMode === 'benchmark' && config.slots.map((slot, index) => (
+                        <Chip
+                            key={index}
+                            active={activeSlot === index}
+                            onClick={() => setActiveSlot(index)}
+                            title={slot.prompt}
+                        >
+                            {index + 1}. {slot.label}
+                        </Chip>
+                    ))}
+                    {isAdmin && (layoutMode === 'list' || viewMode === 'benchmark') && keyConfigured && (
+                        <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={queueMissingGenerations}
+                            title={layoutMode === 'list'
+                                ? "一键补全当前列表中所有画师的所有缺失槽位"
+                                : `一键补全当前列表中缺失 "Slot ${activeSlot + 1}: ${config.slots[activeSlot]?.label}" 的画师`
+                            }
+                        >
+                            {ICONS.plus}
+                            补全
+                        </Button>
+                    )}
+                    {(taskQueue.length > 0 || failedTasks.length > 0 || logs.length > 0) && (
+                        <div
+                            className={cx('queue-chip', failedTasks.length > 0 && 'fail')}
+                            onClick={() => setShowLogs(true)}
+                            title="点击查看生成日志"
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setShowLogs(true); }}
+                        >
+                            <span>Wait:{taskQueue.length}{failedTasks.length > 0 ? ` | Fail:${failedTasks.length}` : ''}</span>
+                            <IconButton
+                                size="sm"
+                                label={isPaused ? '恢复队列' : '暂停队列'}
+                                onClick={(e) => { e.stopPropagation(); setIsPaused(!isPaused); }}
                             >
-                                原图
-                            </button>
-                            <button
-                                onClick={() => setViewMode('benchmark')}
-                                className={`px-3 py-1 rounded text-xs font-medium transition-all flex items-center gap-1 ${viewMode === 'benchmark' ? 'bg-white dark:bg-gray-700 shadow text-indigo-600 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-                            >
-                                实装
-                            </button>
+                                {isPaused ? '▶' : '❚❚'}
+                            </IconButton>
+                            {isProcessing && !isPaused && <i className="dot-live" />}
                         </div>
                     )}
-
-                    {/* Config & Slots (Show Config button always, Slots only in Grid-Benchmark mode) */}
-                    <div className="flex items-center gap-2 overflow-x-auto max-w-full">
-                        <ApiKeyBadge configured={keyConfigured} onClick={() => setKeySheetOpen(true)} />
-                        <button
-                            onClick={() => setShowConfig(true)}
-                            className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex-shrink-0"
-                            title="配置分组"
-                        >
-                            ⚙️
-                        </button>
-
-                        {layoutMode === 'grid' && viewMode === 'benchmark' && (
-                            <div className="flex bg-gray-100 dark:bg-gray-900 rounded-lg p-1 border border-gray-200 dark:border-gray-700 overflow-x-auto max-w-[200px] md:max-w-none md:flex-wrap md:overflow-visible gap-1 items-center">
-                                {config.slots.map((slot, index) => (
-                                    <button
-                                        key={index}
-                                        onClick={() => setActiveSlot(index)}
-                                        className={`px-3 py-1 rounded text-xs font-medium transition-all whitespace-nowrap flex-shrink-0 ${activeSlot === index ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800'}`}
-                                        title={slot.prompt}
-                                    >
-                                        {index + 1}. {slot.label}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Settings Group */}
-                    <div className="flex gap-2 items-center ml-auto">
-                        {/* Auto-Fill Button - Only show for admins */}
-                        {isAdmin && (layoutMode === 'list' || viewMode === 'benchmark') && keyConfigured && (
-                            <button
-                                onClick={queueMissingGenerations}
-                                title={layoutMode === 'list'
-                                    ? "一键补全当前列表中所有画师的所有缺失槽位"
-                                    : `一键补全当前列表中缺失 "Slot ${activeSlot + 1}: ${config.slots[activeSlot]?.label}" 的画师`
-                                }
-                                className="h-8 px-3 rounded-full border border-purple-300 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/50 font-bold flex items-center gap-1 transition-colors text-sm"
-                            >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                补全
-                            </button>
-                        )}
-
-                        {/* Queue / Log Button */}
-                        {(taskQueue.length > 0 || failedTasks.length > 0 || logs.length > 0) && (
-                            <div className={`flex items-center gap-1 px-2 py-1 rounded border cursor-pointer select-none transition-colors ${failedTasks.length > 0
-                                ? 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800'
-                                : 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-100 dark:border-indigo-800'
-                                }`}
-                                onClick={() => setShowLogs(true)}
-                                title="点击查看生成日志"
-                            >
-                                <span className={`text-xs font-mono ${failedTasks.length > 0 ? 'text-red-600 dark:text-red-400' : 'text-indigo-600 dark:text-indigo-300'}`}>
-                                    Wait:{taskQueue.length} {failedTasks.length > 0 && `| Fail:${failedTasks.length}`}
-                                </span>
-                                {/* Pause/Resume Button */}
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); setIsPaused(!isPaused); }}
-                                    className={`w-5 h-5 flex items-center justify-center rounded hover:bg-white dark:hover:bg-black/20 ${isPaused ? 'text-yellow-600 animate-pulse' : 'text-indigo-600'}`}
-                                    title={isPaused ? "恢复队列" : "暂停队列"}
-                                >
-                                    {isPaused ? (
-                                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-                                    ) : (
-                                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
-                                    )}
-                                </button>
-                                {isProcessing && !isPaused && <div className="w-2 h-2 rounded-full bg-green-500 animate-ping"></div>}
-                            </div>
-                        )}
-
-                        <button
-                            onClick={() => setShowImport(true)}
-                            title="批量导入"
-                            className="h-8 px-3 rounded-full border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 font-bold flex items-center gap-2 transition-colors text-sm"
-                        >
-                            📥
-                        </button>
-
-                        <button
-                            onClick={() => setShowHistory(!showHistory)}
-                            title="历史记录"
-                            className="h-8 px-3 rounded-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center transition-colors text-sm"
-                        >
-                            🕒
-                        </button>
-
-                        <button
-                            onClick={() => setShowFavOnly(!showFavOnly)}
-                            title="收藏"
-                            className={`h-8 px-3 rounded-full border flex items-center transition-colors text-sm ${showFavOnly
-                                ? 'bg-yellow-50 border-yellow-300 text-yellow-600 dark:bg-yellow-900/30 dark:border-yellow-700 dark:text-yellow-500'
-                                : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-400'
-                                }`}
-                        >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"></path></svg>
-                        </button>
-                    </div>
+                    <Chip onClick={() => setShowImport(true)} title="批量导入">📥</Chip>
+                    <Chip active={showHistory} onClick={() => setShowHistory(!showHistory)} title="历史记录">🕒</Chip>
+                    <Chip
+                        active={showFavOnly}
+                        onClick={() => setShowFavOnly(!showFavOnly)}
+                        title="收藏"
+                        aria-label="仅显示收藏"
+                    >
+                        {ICONS.star}
+                    </Chip>
                 </div>
-            </div>
+            </header>
 
             {/* ... rest of the component (sidebar, main content, lightbox, logs, modals) remains mostly the same, 
           only ensure variable names match and the file is complete ... */}
 
-            {/* --- A-Z Navigation Sidebar (Moved to LEFT) --- */}
-            <div className="absolute left-0 top-1/2 -translate-y-1/2 z-20 hidden md:flex flex-col gap-0.5 bg-white/80 dark:bg-gray-800/80 backdrop-blur rounded-r-lg p-1 shadow-lg border border-l-0 border-gray-200 dark:border-gray-700 max-h-[80%] overflow-y-auto no-scrollbar">
+            <nav className="arsenal-az glass" aria-label="字母索引">
                 {ALPHABET.map(char => (
                     <button
                         key={char}
+                        type="button"
                         onClick={() => scrollToLetter(char)}
-                        className="text-[10px] w-5 h-5 flex items-center justify-center rounded hover:bg-indigo-100 dark:hover:bg-indigo-900 text-gray-500 dark:text-gray-400 font-bold"
                     >
                         {char}
                     </button>
                 ))}
-            </div>
+            </nav>
 
-            {/* --- Main Content Area --- */}
-            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 md:p-6 md:pl-14 pb-40 bg-gray-50 dark:bg-gray-900 scroll-smooth relative">
+            <div ref={scrollContainerRef} className="page-scroll arsenal-body">
                 {isLoading && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-gray-50/80 dark:bg-gray-900/80 z-20">
-                        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+                    <div className="queue-mask" style={{ position: 'absolute' }}>
+                        <span className="is-spin">{ICONS.refresh}</span>
                     </div>
                 )}
 
-                {layoutMode === 'grid' ? (
-                    /* --- GRID LAYOUT (Dynamic Columns using gridCols) --- */
+                {filteredArtists.length === 0 ? (
+                    <Empty title="暂无画师" description={showFavOnly ? '收藏夹是空的。' : '没有匹配的画师。'} />
+                ) : layoutMode === 'grid' ? (
                     <div
-                        className="grid gap-2 md:gap-4 md:pr-6 transition-all"
+                        className="arsenal-grid"
                         style={{ gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}
                     >
                         {filteredArtists.map((artist, idx) => {
@@ -972,89 +943,91 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                             const isTaskFailed = failedTasks.some(t => t.artistId === artist.id);
 
                             return (
-                                <div
+                                <Card
                                     key={artist.id}
-                                    id={isAnchor ? `anchor-${currChar}` : undefined}
-                                    className={`group relative bg-white dark:bg-gray-800 rounded-xl overflow-hidden border transition-all cursor-pointer shadow-sm hover:shadow-lg ${isSelected ? 'border-red-500 dark:border-red-500 ring-1 ring-red-500' : 'border-gray-200 dark:border-gray-700 hover:border-indigo-500 dark:hover:border-indigo-500'}`}
-                                    onClick={() => toggleCart(artist.name)}
-                                >
-                                    <div className="aspect-[2/3] relative overflow-hidden bg-gray-200 dark:bg-gray-900">
-                                        {!isBenchmarkMissing ? (
-                                            <LazyImage src={displayImg} alt={artist.name} />
-                                        ) : (
-                                            <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400">
-                                                <span className="text-2xl mb-1">🤖</span>
-                                                <span className="text-[10px]">No Data</span>
-                                            </div>
-                                        )}
-                                        {(isTaskPending || isTaskRunning || isTaskFailed) && (
-                                            <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center z-10">
-                                                {isTaskRunning ? (
-                                                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-white"></div>
-                                                ) : isTaskFailed ? (
-                                                    <div className="text-white text-xs font-bold bg-red-500 px-2 py-1 rounded">Failed</div>
-                                                ) : (
-                                                    <div className="text-white text-xs font-bold bg-indigo-500 px-2 py-1 rounded">Queue</div>
+                                    className={cx('arsenal-card', isSelected && 'is-picked')}
+                                    mediaRatio="portrait"
+                                    onOpen={() => toggleCart(artist.name)}
+                                    media={(
+                                        <>
+                                            <div id={isAnchor ? `anchor-${currChar}` : undefined} />
+                                            {!isBenchmarkMissing ? (
+                                                <LazyImage src={displayImg} alt={artist.name} />
+                                            ) : (
+                                                <div className="ph-miss">
+                                                    <span>🤖</span>
+                                                    <span>No Data</span>
+                                                </div>
+                                            )}
+                                            {(isTaskPending || isTaskRunning || isTaskFailed) && (
+                                                <div className="queue-mask">
+                                                    {isTaskRunning ? (
+                                                        <span className="is-spin">{ICONS.refresh}</span>
+                                                    ) : isTaskFailed ? (
+                                                        <Tag tone="warn">Failed</Tag>
+                                                    ) : (
+                                                        <Tag>Queue</Tag>
+                                                    )}
+                                                </div>
+                                            )}
+                                            <div className="media-actions" data-card-action onClick={e => e.stopPropagation()}>
+                                                <IconButton
+                                                    size="sm"
+                                                    label={isFav ? '取消收藏' : '收藏'}
+                                                    className={isFav ? 'is-fav' : undefined}
+                                                    onClick={(e) => toggleFav(artist.name, e)}
+                                                >
+                                                    {ICONS.star}
+                                                </IconButton>
+                                                <a
+                                                    href={`https://danbooru.donmai.us/posts?tags=${artist.name}`}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="icon-btn sm"
+                                                    aria-label={`在 Danbooru 打开 ${artist.name}`}
+                                                >
+                                                    {ICONS.ext}
+                                                </a>
+                                                <IconButton
+                                                    size="sm"
+                                                    label="查看大图"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const slot = viewMode === 'benchmark' ? activeSlot : -1;
+                                                        setLightboxState({ artistIdx: idx, slotIdx: slot });
+                                                    }}
+                                                >
+                                                    {ICONS.zoom}
+                                                </IconButton>
+                                                {isAdmin && viewMode === 'benchmark' && keyConfigured && (
+                                                    <>
+                                                        <IconButton
+                                                            size="sm"
+                                                            label={`生成当前组 (Slot ${activeSlot + 1})`}
+                                                            onClick={(e) => queueGeneration(artist, [activeSlot], e)}
+                                                        >
+                                                            {ICONS.bolt}
+                                                        </IconButton>
+                                                        <IconButton
+                                                            size="sm"
+                                                            label={`一键生成全部 ${config.slots.length} 组`}
+                                                            onClick={(e) => queueGeneration(artist, config.slots.map((_, i) => i), e)}
+                                                        >
+                                                            {ICONS.plus}
+                                                        </IconButton>
+                                                    </>
                                                 )}
                                             </div>
-                                        )}
-                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors pointer-events-none" />
-                                        <div className="absolute top-2 right-2 flex flex-col gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                                            <button onClick={(e) => toggleFav(artist.name, e)} className={`p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm ${isFav ? 'text-yellow-500' : 'text-gray-600 dark:text-white'}`}>
-                                                <svg className="w-4 h-4" fill={isFav ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.563.044.8.77.38 1.178l-4.244 4.134a.563.563 0 00-.153.476l1.24 5.376c.13.565-.487 1.01-.967.756L12 18.232l-4.894 3.08c-.48.254-1.097-.19-.967-.756l1.24-5.376a.563.563 0 00-.153-.476L2.985 10.575c-.42-.408-.183-1.134.38-1.178l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" /></svg>
-                                            </button>
-                                            <a href={`https://danbooru.donmai.us/posts?tags=${artist.name}`} target="_blank" rel="noreferrer" className="hidden md:block p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm text-blue-500 dark:text-blue-300 hover:text-blue-600 pointer-events-auto">
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                                            </a>
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    const slot = viewMode === 'benchmark' ? activeSlot : -1;
-                                                    setLightboxState({ artistIdx: idx, slotIdx: slot });
-                                                }}
-                                                className="p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm text-gray-700 dark:text-white pointer-events-auto"
-                                            >
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" /></svg>
-                                            </button>
-
-                                            {isAdmin && viewMode === 'benchmark' && keyConfigured && (
-                                                <>
-                                                    <button
-                                                        onClick={(e) => queueGeneration(artist, [activeSlot], e)}
-                                                        className="p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm pointer-events-auto text-purple-600 hover:text-purple-500"
-                                                        title={`生成当前组 (Slot ${activeSlot + 1})`}
-                                                    >
-                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                                                    </button>
-                                                    <button
-                                                        onClick={(e) => queueGeneration(artist, config.slots.map((_, i) => i), e)}
-                                                        className="p-1.5 rounded-full bg-white/90 dark:bg-black/60 backdrop-blur border border-gray-200 dark:border-white/20 shadow-sm pointer-events-auto text-green-600 hover:text-green-500"
-                                                        title={`一键生成全部 ${config.slots.length} 组`}
-                                                    >
-                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.933 12.8a1 1 0 000-1.6L6.6 7.2A1 1 0 005 8v8a1 1 0 001.6.8l5.333-4zM19.933 12.8a1 1 0 000-1.6l-5.333-4A1 1 0 0013 8v8a1 1 0 001.6.8l5.333-4z" /></svg>
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-
-                                        {isSelected && (
-                                            <div className="absolute inset-0 border-4 border-red-500/80 pointer-events-none">
-                                                <div className="absolute top-2 left-2 bg-red-500 text-white p-1 rounded-full shadow-lg">
-                                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M5 13l4 4L19 7" /></svg>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="p-2 md:p-3 bg-white dark:bg-gray-800 text-center border-t border-gray-100 dark:border-gray-700">
-                                        <div className={`text-xs md:text-sm font-bold truncate ${isSelected ? 'text-red-500' : 'text-gray-700 dark:text-gray-300'}`}>{artist.name}</div>
-                                    </div>
-                                </div>
-                            )
+                                            {isSelected && <div className="pick-mark"><i>✓</i></div>}
+                                        </>
+                                    )}
+                                    title={artist.name}
+                                />
+                            );
                         })}
                     </div>
                 ) : (
-                    /* --- EXPANDED LIST LAYOUT --- */
-                    <div className="flex flex-col gap-4 md:pr-6">
+                    <div className="arsenal-list">
                         {filteredArtists.map((artist, idx) => {
                             const isSelected = !!cart.find(c => c.name === artist.name);
                             const isFav = favorites.has(artist.name);
@@ -1066,48 +1039,48 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                                 <div
                                     key={artist.id}
                                     id={isAnchor ? `anchor-${currChar}` : undefined}
-                                    className={`bg-white dark:bg-gray-800 rounded-xl border p-4 shadow-sm ${isSelected ? 'border-red-500 dark:border-red-500 ring-1 ring-red-500' : 'border-gray-200 dark:border-gray-700'}`}
+                                    className={cx('arsenal-row', 'surface', isSelected && 'is-picked')}
                                     onClick={() => toggleCart(artist.name)}
                                 >
-                                    <div className="flex justify-between items-center mb-3">
-                                        <div className="flex items-center gap-3">
-                                            <h3
-                                                className={`font-bold text-lg md:text-xl cursor-pointer hover:underline ${isSelected ? 'text-red-500' : 'text-gray-900 dark:text-white'}`}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    toggleCart(artist.name);
-                                                }}
+                                    <div className="arsenal-row-head">
+                                        <div className="card-extra">
+                                            <h3 className={isSelected ? 'is-picked' : undefined}>{artist.name}</h3>
+                                            <IconButton
+                                                size="sm"
+                                                label={isFav ? '取消收藏' : '收藏'}
+                                                className={isFav ? 'is-fav' : undefined}
+                                                onClick={(e) => toggleFav(artist.name, e)}
                                             >
-                                                {artist.name}
-                                            </h3>
-                                            <button onClick={(e) => toggleFav(artist.name, e)} className={`${isFav ? 'text-yellow-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}>
-                                                <svg className="w-5 h-5" fill={isFav ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.563.044.8.77.38 1.178l-4.244 4.134a.563.563 0 00-.153.476l1.24 5.376c.13.565-.487 1.01-.967.756L12 18.232l-4.894 3.08c-.48.254-1.097-.19-.967-.756l1.24-5.376a.563.563 0 00-.153-.476L2.985 10.575c-.42-.408-.183-1.134.38-1.178l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" /></svg>
-                                            </button>
-                                            <a href={`https://danbooru.donmai.us/posts?tags=${artist.name}`} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-600 dark:text-blue-400">
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                                {ICONS.star}
+                                            </IconButton>
+                                            <a
+                                                href={`https://danbooru.donmai.us/posts?tags=${artist.name}`}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="icon-btn sm"
+                                                aria-label={`在 Danbooru 打开 ${artist.name}`}
+                                            >
+                                                {ICONS.ext}
                                             </a>
                                         </div>
                                         {isAdmin && keyConfigured && (
-                                            <button
+                                            <Button
+                                                size="sm"
+                                                variant="secondary"
                                                 onClick={(e) => queueGeneration(artist, config.slots.map((_, i) => i), e)}
-                                                className="text-xs bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-3 py-1 rounded hover:bg-green-100 dark:hover:bg-green-900/50 flex items-center gap-1 border border-green-200 dark:border-green-800"
                                                 title="生成所有实装"
                                             >
-                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                {ICONS.bolt}
                                                 Generate All
-                                            </button>
+                                            </Button>
                                         )}
                                     </div>
-                                    <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar flex-nowrap items-stretch">
-                                        <div
-                                            className="flex flex-col gap-1 flex-shrink-0 group relative transition-all"
-                                            style={{ width: `${listImgWidth}px` }}
-                                        >
-                                            <div className="aspect-[2/3] rounded-lg overflow-hidden relative cursor-zoom-in" onClick={() => setLightboxState({ artistIdx: idx, slotIdx: -1 })}>
+                                    <div className="arsenal-slots">
+                                        <div className="arsenal-slot" style={{ width: `${listImgWidth}px` }}>
+                                            <div className="slot-frame" onClick={(e) => { e.stopPropagation(); setLightboxState({ artistIdx: idx, slotIdx: -1 }); }}>
                                                 <LazyImage src={artist.imageUrl} alt="原图" />
-                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
                                             </div>
-                                            <span className="text-[10px] text-center font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">原图</span>
+                                            <span>原图</span>
                                         </div>
 
                                         {config.slots.map((slot, i) => {
@@ -1120,43 +1093,41 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                                             return (
                                                 <div
                                                     key={i}
-                                                    className="flex flex-col gap-1 flex-shrink-0 group relative transition-all"
+                                                    className="arsenal-slot"
                                                     style={{ width: `${listImgWidth}px` }}
                                                 >
-                                                    <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-900 rounded-lg overflow-hidden relative border border-gray-200 dark:border-gray-700">
+                                                    <div className="slot-frame">
                                                         {displayImg ? (
-                                                            <div className="w-full h-full cursor-zoom-in" onClick={() => setLightboxState({ artistIdx: idx, slotIdx: i })}>
+                                                            <div onClick={(e) => { e.stopPropagation(); setLightboxState({ artistIdx: idx, slotIdx: i }); }}>
                                                                 <LazyImage src={displayImg} alt={slot.label} />
                                                             </div>
                                                         ) : (
-                                                            <div className="absolute inset-0 flex items-center justify-center text-gray-300 dark:text-gray-600">
-                                                                <span className="text-xl">?</span>
-                                                            </div>
+                                                            <div className="ph-miss">?</div>
                                                         )}
                                                         {(taskPending || taskRunning || taskFailed) && (
-                                                            <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center z-10 pointer-events-none">
+                                                            <div className="queue-mask">
                                                                 {taskRunning ? (
-                                                                    <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-white"></div>
+                                                                    <span className="is-spin">{ICONS.refresh}</span>
                                                                 ) : taskFailed ? (
-                                                                    <span className="text-[10px] bg-red-500 text-white px-1 rounded">Failed</span>
+                                                                    <Tag tone="warn">Failed</Tag>
                                                                 ) : (
-                                                                    <span className="text-[10px] bg-indigo-500 text-white px-1 rounded">Queue</span>
+                                                                    <Tag>Queue</Tag>
                                                                 )}
                                                             </div>
                                                         )}
                                                         {isAdmin && keyConfigured && !taskRunning && !taskPending && (
-                                                            <div className="absolute bottom-1 right-1 transition-opacity opacity-0 group-hover:opacity-100 z-10">
-                                                                <button
+                                                            <div className="media-actions" style={{ bottom: 4, top: 'auto' }}>
+                                                                <IconButton
+                                                                    size="sm"
+                                                                    label={`生成 ${slot.label}`}
                                                                     onClick={(e) => queueGeneration(artist, [i], e)}
-                                                                    className="p-1.5 bg-black/60 hover:bg-black/80 backdrop-blur rounded-full text-white transition-colors shadow-sm"
-                                                                    title={`生成 ${slot.label}`}
                                                                 >
-                                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                                                </button>
+                                                                    {ICONS.bolt}
+                                                                </IconButton>
                                                             </div>
                                                         )}
                                                     </div>
-                                                    <span className="text-[11px] text-center text-gray-500 dark:text-gray-400 truncate px-1 font-medium" title={slot.label}>{slot.label}</span>
+                                                    <span title={slot.label}>{slot.label}</span>
                                                 </div>
                                             );
                                         })}
@@ -1179,120 +1150,82 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
             />
 
             {currentLightboxImage && (
-                <div className="fixed inset-0 z-50 bg-white/95 dark:bg-black/95 flex items-center justify-center backdrop-blur-sm select-none" onClick={() => setLightboxState(null)}>
-                    <div
-                        className="absolute left-0 top-0 bottom-0 w-[20%] z-20 flex items-center justify-start pl-4 hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer group"
-                        onClick={(e) => { e.stopPropagation(); navigateLightbox('prev'); }}
-                    >
-                        <div className="p-2 rounded-full bg-white/10 backdrop-blur opacity-0 group-hover:opacity-100 transition-opacity">
-                            <svg className="w-8 h-8 text-gray-800 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                        </div>
-                    </div>
-
-                    <div className="relative max-w-full max-h-full p-4 flex flex-col items-center pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+                <div className="lbx" onClick={() => setLightboxState(null)}>
+                    <button type="button" className="lbx-nav prev" onClick={(e) => { e.stopPropagation(); navigateLightbox('prev'); }} aria-label="上一张">‹</button>
+                    <div onClick={(e) => e.stopPropagation()}>
                         <img
                             src={currentLightboxImage.src}
                             alt={currentLightboxImage.name}
-                            className="max-w-full max-h-[85vh] rounded shadow-2xl object-contain cursor-pointer"
                             onClick={() => setLightboxState(null)}
                         />
-                        <div className="mt-4 text-center">
-                            <h3 className="text-lg font-bold text-gray-800 dark:text-white drop-shadow-md">{currentLightboxImage.name}</h3>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">点击图片或背景关闭 | 左右点击翻页 | 键盘 ← → 切换</p>
+                        <div style={{ textAlign: 'center', marginTop: 12 }}>
+                            <h3>{currentLightboxImage.name}</h3>
+                            <p className="hint" style={{ fontSize: 12, color: 'var(--mute)' }}>点击图片或背景关闭 · 左右翻页 · 键盘 ← →</p>
                         </div>
                     </div>
-
-                    <div
-                        className="absolute right-0 top-0 bottom-0 w-[20%] z-20 flex items-center justify-end pr-4 hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer group"
-                        onClick={(e) => { e.stopPropagation(); navigateLightbox('next'); }}
-                    >
-                        <div className="p-2 rounded-full bg-white/10 backdrop-blur opacity-0 group-hover:opacity-100 transition-opacity">
-                            <svg className="w-8 h-8 text-gray-800 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                        </div>
-                    </div>
-
-                    <button
-                        className="absolute top-4 right-4 z-30 p-2 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white bg-white/10 rounded-full backdrop-blur"
-                        onClick={() => setLightboxState(null)}
-                    >
-                        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
+                    <button type="button" className="lbx-nav next" onClick={(e) => { e.stopPropagation(); navigateLightbox('next'); }} aria-label="下一张">›</button>
+                    <IconButton className="lbx-close" label="关闭" onClick={() => setLightboxState(null)}>✕</IconButton>
                 </div>
             )}
 
-            {/* History, Logs, Import Modal rendering kept ... */}
-            <div className={`fixed top-0 right-0 w-80 h-full bg-white dark:bg-gray-800 shadow-2xl z-40 transform transition-transform duration-300 border-l border-gray-200 dark:border-gray-700 flex flex-col ${showHistory ? 'translate-x-0' : 'translate-x-full'}`}>
-                <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900">
-                    <h3 className="font-bold text-gray-800 dark:text-white">📋 复制历史</h3>
-                    <button onClick={() => setShowHistory(false)} className="text-gray-500 hover:text-gray-800 dark:hover:text-white">×</button>
+            <Sheet open={showHistory} onClose={() => setShowHistory(false)} title="复制历史">
+                {history.length === 0 ? (
+                    <Empty title="暂无历史" />
+                ) : (
+                    <div className="log-list">
+                        {history.map((h, i) => (
+                            <button
+                                type="button"
+                                key={i}
+                                className="log-item info"
+                                onClick={() => { navigator.clipboard.writeText(h.text); notify('已复制'); }}
+                            >
+                                <div className="copy-check-mono">{h.text}</div>
+                                <div className="hint" style={{ textAlign: 'right', marginTop: 6 }}>{h.time}</div>
+                            </button>
+                        ))}
+                    </div>
+                )}
+                <div className="sheet-foot">
+                    <Button variant="ghost" onClick={() => { setHistory([]); localStorage.setItem('nai_copy_history', '[]'); }}>清空历史</Button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                    {history.map((h, i) => (
-                        <div key={i} onClick={() => { navigator.clipboard.writeText(h.text); notify('已复制') }} className="p-3 bg-gray-100 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-indigo-500 cursor-pointer transition-colors">
-                            <div className="text-xs text-gray-800 dark:text-gray-200 break-all line-clamp-3 font-mono">{h.text}</div>
-                            <div className="text-[10px] text-gray-400 mt-2 text-right">{h.time}</div>
+            </Sheet>
+
+            <Sheet open={showLogs} onClose={() => setShowLogs(false)} title="任务日志">
+                {failedTasks.length > 0 && (
+                    <div className="notice danger" style={{ marginBottom: 12 }}>
+                        <div className="pref-row">
+                            <strong>{failedTasks.length} 个任务失败</strong>
+                            <Button variant="danger" size="sm" onClick={retryFailedTasks}>重试所有失败任务</Button>
+                        </div>
+                    </div>
+                )}
+                <div className="log-list">
+                    {logs.length === 0 && <Empty title="暂无日志" />}
+                    {logs.map((log, i) => (
+                        <div key={i} className={cx('log-item', log.type)}>
+                            <span className="hint">[{log.time}] </span>
+                            {log.message}
                         </div>
                     ))}
-                    {history.length === 0 && <div className="text-center text-gray-400 mt-10">暂无历史</div>}
                 </div>
-                <div className="p-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
-                    <button onClick={() => { setHistory([]); localStorage.setItem('nai_copy_history', '[]') }} className="w-full py-2 text-sm text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400">清空历史</button>
-                </div>
-            </div>
-            {showHistory && <div className="fixed inset-0 z-30 bg-black/20 dark:bg-black/50 backdrop-blur-[1px]" onClick={() => setShowHistory(false)} />}
+            </Sheet>
 
-            {showLogs && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-lg shadow-2xl border border-gray-200 dark:border-gray-700 p-6 flex flex-col max-h-[80vh]">
-                        <div className="flex justify-between items-center mb-4 border-b border-gray-200 dark:border-gray-700 pb-2">
-                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">任务日志</h3>
-                            <button onClick={() => setShowLogs(false)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white">✕</button>
-                        </div>
-                        {failedTasks.length > 0 && (
-                            <div className="mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3 rounded-lg flex justify-between items-center">
-                                <span className="text-sm text-red-700 dark:text-red-300 font-bold">{failedTasks.length} 个任务失败</span>
-                                <button
-                                    onClick={retryFailedTasks}
-                                    className="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded font-bold shadow-sm"
-                                >
-                                    重试所有失败任务
-                                </button>
-                            </div>
-                        )}
-                        <div className="flex-1 overflow-y-auto space-y-2 bg-gray-50 dark:bg-gray-950 p-2 rounded border border-gray-200 dark:border-gray-800">
-                            {logs.length === 0 && <div className="text-center text-gray-400 py-4 text-xs">暂无日志</div>}
-                            {logs.map((log, i) => (
-                                <div key={i} className={`p-2 rounded text-xs font-mono border ${log.type === 'error' ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400' :
-                                    log.type === 'success' ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-900/50 text-green-600 dark:text-green-400' :
-                                        'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'
-                                    }`}>
-                                    <span className="opacity-50 mr-2">[{log.time}]</span>
-                                    {log.message}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+            <Sheet open={showImport} onClose={() => setShowImport(false)} title="批量导入画师">
+                <p className="hint" style={{ marginTop: 0, color: 'var(--mute)', fontSize: 12.5 }}>
+                    粘贴你的画师串，支持 artist: 前缀和 {'{}'} [] 权重符号
+                </p>
+                <Textarea
+                    placeholder="例如：artist:wlop, {artist:nixeu}, [[shaluo]]"
+                    value={importText}
+                    onChange={e => setImportText(e.target.value)}
+                    rows={6}
+                />
+                <div className="sheet-foot">
+                    <Button variant="ghost" onClick={() => setShowImport(false)}>取消</Button>
+                    <Button onClick={handleImport}>导入</Button>
                 </div>
-            )}
-
-            {showImport && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-lg shadow-2xl border border-gray-200 dark:border-gray-700 p-6">
-                        <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">📥 批量导入画师</h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">粘贴你的画师串，支持 artist: 前缀和 {'{}'} [] 权重符号</p>
-                        <textarea
-                            className="w-full h-32 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
-                            placeholder="例如：artist:wlop, {artist:nixeu}, [[shaluo]]"
-                            value={importText}
-                            onChange={e => setImportText(e.target.value)}
-                        />
-                        <div className="flex justify-end gap-3 mt-4">
-                            <button onClick={() => setShowImport(false)} className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">取消</button>
-                            <button onClick={handleImport} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold shadow-lg transition-colors">导入</button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            </Sheet>
 
             <ArtistLibraryConfig
                 show={showConfig}

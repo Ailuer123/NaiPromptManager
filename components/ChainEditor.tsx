@@ -4,7 +4,7 @@ import { PromptChain, PromptModule, User, CharacterParams, NAIParams } from '../
 import { compilePrompt, compilePromptSegments, type CompiledPromptSegments } from '../services/promptUtils';
 import { generateImage } from '../services/naiService';
 import { getApiKey } from '../services/apiKeyStore';
-import { ApiKeyBadge, ApiKeySheet, useApiKeyConfigured, type CompiledSegId } from './ui';
+import { ApiKeyBadge, ApiKeySheet, Tag, useApiKeyConfigured, type CompiledSegId } from './ui';
 import { localHistory } from '../services/localHistory';
 import { compressPngToJpg } from '../services/imageCompression';
 import { api } from '../services/api';
@@ -684,9 +684,13 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                     ) : (
                         <div className="flex items-center gap-2 group cursor-pointer min-w-0 flex-1" onClick={() => isOwner && setIsEditingInfo(true)}>
                             <div className="flex flex-col md:flex-row md:items-baseline gap-0.5 md:gap-2 overflow-hidden min-w-0">
+                                {chain.id === 'playground' ? (
+                                    <Tag tone="sage">实验室 · 对比试跑</Tag>
+                                ) : (
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border flex-shrink-0 ${isCharacterMode ? 'bg-pink-100 text-pink-700 border-pink-200' : 'bg-blue-100 text-blue-700 border-blue-200'}`}>
                                     {isCharacterMode ? '角色串' : '画师串'}
                                 </span>
+                                )}
                                 <h1 className="text-base md:text-lg font-bold text-gray-900 dark:text-white truncate min-w-0">
                                     {chainName}
                                     {hasChanges && <i className="dirty-dot" title="未保存" />}

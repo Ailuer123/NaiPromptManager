@@ -1,6 +1,6 @@
 
 import React, { useRef, useState } from 'react';
-import { Button, CompiledPrompt, type CompiledSegId } from './ui';
+import { Button, CompiledPrompt, Tag, type CompiledSegId } from './ui';
 import type { CompiledPromptSegments } from '../services/promptUtils';
 
 interface ChainEditorPreviewProps {
@@ -80,6 +80,12 @@ export const ChainEditorPreview: React.FC<ChainEditorPreviewProps> = ({
     return (
         <div className="w-full lg:w-1/2 flex flex-col bg-gray-100 dark:bg-black/20 order-1 lg:order-2 border-b lg:border-b-0 border-gray-200 dark:border-gray-800 shrink-0">
             <div className="flex-1 flex flex-col p-4 md:p-6 overflow-hidden min-h-[400px]">
+                {hideCoverActions && (
+                    <div className="lab-kicker">
+                        <Tag tone="sage">实验室 · 对比试跑</Tag>
+                        <span className="hint">结果进本地历史，不改封面</span>
+                    </div>
+                )}
                 {/* Subject / Variable Input */}
                 <div className="mb-4 bg-white dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-800">
                     <h3 className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-2">3. 主体 / 变量提示词</h3>

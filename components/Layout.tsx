@@ -35,7 +35,7 @@ const PAGE_LABEL: Record<string, string> = {
   edit: '串编辑器',
   library: '军火库',
   inspiration: '灵感图库',
-  playground: '生图实验室',
+  playground: '实验室 · 对比试跑',
   history: '生成历史',
   admin: '设置与管理',
 };
