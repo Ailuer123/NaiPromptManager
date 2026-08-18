@@ -39,6 +39,15 @@ function persistThemeId(themeId: ThemeId) {
   }
 }
 
+/** Writer for nai_theme. applyTheme must not call this. */
+export function persistMode(mode: ThemeMode) {
+  try {
+    getLocalStorage()?.setItem(THEME_MODE_STORAGE_KEY, resolveMode(mode));
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
 export function applyTheme(id: string, mode: ThemeMode): ThemeVars {
   const theme = themeById(id);
   const resolvedMode = resolveMode(mode);

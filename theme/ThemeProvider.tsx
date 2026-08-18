@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useLayoutEffect, useMemo, useState } from 'react';
-import { applyTheme, readStoredTheme, resolveMode } from './applyTheme';
+import { applyTheme, persistMode, readStoredTheme, resolveMode } from './applyTheme';
 import type { ThemeMode } from './buildThemeVars';
 import { themeById, type ThemeId } from './palettes';
 
@@ -21,6 +21,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useLayoutEffect(() => {
     applyTheme(themeId, mode);
+    persistMode(mode);
+    if (typeof document === 'undefined') return;
+    document.documentElement.classList.toggle('dark', mode === 'dark');
   }, [themeId, mode]);
 
   useLayoutEffect(() => {
@@ -42,7 +45,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setMode = useCallback((next: ThemeMode) => {
-    setModeState(resolveMode(next));
+    const resolved = resolveMode(next);
+    persistMode(resolved);
+    setModeState(resolved);
   }, []);
 
   const value = useMemo(

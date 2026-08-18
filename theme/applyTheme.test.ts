@@ -3,6 +3,7 @@ import {
   THEME_ID_STORAGE_KEY,
   THEME_MODE_STORAGE_KEY,
   applyTheme,
+  persistMode,
   readStoredTheme,
 } from './applyTheme';
 
@@ -78,5 +79,14 @@ describe('applyTheme storage contract', () => {
     applyTheme('not-a-palette', 'dark');
     expect(g.localStorage!.getItem(THEME_ID_STORAGE_KEY)).toBe('oz');
     expect(g.localStorage!.getItem(THEME_MODE_STORAGE_KEY)).toBeNull();
+  });
+
+  it('persistMode 写 nai_theme，不改色板', () => {
+    g.localStorage!.setItem(THEME_ID_STORAGE_KEY, 'peach');
+    persistMode('dark');
+    expect(g.localStorage!.getItem(THEME_MODE_STORAGE_KEY)).toBe('dark');
+    expect(g.localStorage!.getItem(THEME_ID_STORAGE_KEY)).toBe('peach');
+    persistMode('light');
+    expect(g.localStorage!.getItem(THEME_MODE_STORAGE_KEY)).toBe('light');
   });
 });

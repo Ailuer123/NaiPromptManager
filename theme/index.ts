@@ -25,6 +25,7 @@ export {
   THEME_ID_STORAGE_KEY,
   THEME_MODE_STORAGE_KEY,
   applyTheme,
+  persistMode,
   readStoredTheme,
   resolveMode,
 } from './applyTheme';

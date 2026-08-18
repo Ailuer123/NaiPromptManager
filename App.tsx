@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Layout } from './components/Layout';
+import { DbSetupError, Landing } from './components/Landing';
 import { ChainList } from './components/ChainList';
 import { ChainEditor } from './components/ChainEditor';
 import { ArtistLibrary } from './components/ArtistLibrary';
@@ -8,6 +9,7 @@ import { ArtistAdmin } from './components/ArtistAdmin';
 import { InspirationGallery } from './components/InspirationGallery';
 import { GenHistory } from './components/GenHistory';
 import { db } from './services/dbService';
+import { useTheme } from './theme';
 import { PromptChain, User, Artist, Inspiration, ChainType } from './types';
 
 type ViewState = 'list' | 'characters' | 'edit' | 'library' | 'inspiration' | 'admin' | 'history' | 'playground';
@@ -48,8 +50,8 @@ const App = () => {
   const [isGuestMode, setIsGuestMode] = useState(false);
   const [guestPasscode, setGuestPasscode] = useState('');
 
-  // Theme State
-  const [isDark, setIsDark] = useState(() => localStorage.getItem('nai_theme') === 'dark');
+  const { mode, setMode } = useTheme();
+  const isDark = mode === 'dark';
 
   // Toast State
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
@@ -110,17 +112,7 @@ const App = () => {
     setLastUserFetch(Date.now());
   };
 
-  useEffect(() => {
-    if (isDark) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('nai_theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('nai_theme', 'light');
-    }
-  }, [isDark]);
-
-  const toggleTheme = () => setIsDark(!isDark);
+  const toggleTheme = () => setMode(isDark ? 'light' : 'dark');
 
   const handleNavigate = (newView: ViewState, id?: string) => {
     if (isEditorDirty) {
@@ -245,78 +237,25 @@ const App = () => {
 
   const getSelectedChain = () => chains.find(c => c.id === selectedId);
 
-  // --- Login Screen ---
   if (!currentUser) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 p-4 transition-colors">
-        <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-200 dark:border-gray-700">
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg text-2xl font-bold">N</div>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">NAI 咒语构建终端</h2>
-          </div>
-
-          <form onSubmit={handleLogin} className="space-y-4">
-
-            {/* Guest Toggle */}
-            <div className="flex bg-gray-100 dark:bg-gray-700 p-1 rounded-lg mb-4">
-              <button
-                type="button"
-                onClick={() => setIsGuestMode(false)}
-                className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-all ${!isGuestMode ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}
-              >
-                账号登录
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsGuestMode(true)}
-                className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-all ${isGuestMode ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}
-              >
-                游客参观
-              </button>
-            </div>
-
-            {!isGuestMode ? (
-              <>
-                <div>
-                  <input type="text" value={loginUser} onChange={(e) => setLoginUser(e.target.value)} className="w-full px-4 py-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white outline-none" placeholder="用户名" autoFocus />
-                </div>
-                <div>
-                  <input type="password" value={loginPass} onChange={(e) => setLoginPass(e.target.value)} className="w-full px-4 py-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white outline-none" placeholder="密码" />
-                </div>
-              </>
-            ) : (
-              <div>
-                <input type="password" value={guestPasscode} onChange={(e) => setGuestPasscode(e.target.value)} className="w-full px-4 py-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white outline-none text-center tracking-widest" placeholder="输入游客口令" autoFocus />
-                <p className="text-xs text-gray-500 text-center mt-2">游客可查看提示词，填入 API Key 后可测试生图 (数据仅存本地)</p>
-              </div>
-            )}
-
-            {loginError && <div className="text-red-500 text-sm text-center font-medium animate-pulse">{loginError}</div>}
-            <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold shadow-lg">
-              {isGuestMode ? '进入参观' : '登录'}
-            </button>
-          </form>
-
-          <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-700/50 flex justify-between items-center text-xs text-gray-400">
-            <span>v0.5.0</span>
-            <button onClick={toggleTheme} className="hover:text-gray-600 dark:hover:text-gray-200">{isDark ? '切换亮色' : '切换深色'}</button>
-          </div>
-        </div>
-      </div>
+      <Landing
+        isGuestMode={isGuestMode}
+        onGuestModeChange={setIsGuestMode}
+        loginUser={loginUser}
+        loginPass={loginPass}
+        guestPasscode={guestPasscode}
+        loginError={loginError}
+        onLoginUserChange={setLoginUser}
+        onLoginPassChange={setLoginPass}
+        onGuestPasscodeChange={setGuestPasscode}
+        onSubmit={handleLogin}
+      />
     );
   }
 
-  // --- Database Setup Guide ---
   if (dbConfigError) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4 font-sans dark:text-white">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold mb-2">数据库未连接</h2>
-          <p>请在 Cloudflare 后台绑定 D1 数据库到变量 `DB` 并重新部署。</p>
-          <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded">刷新</button>
-        </div>
-      </div>
-    );
+    return <DbSetupError />;
   }
 
   const renderContent = () => {
@@ -421,20 +360,16 @@ const App = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen">
-      <Layout
-        onNavigate={handleNavigate}
-        currentView={view}
-        isDark={isDark}
-        toggleTheme={toggleTheme}
-        currentUser={currentUser}
-        onLogout={handleLogout}
-        toast={toast}
-        hideNav={view === 'edit' || view === 'playground'}
-      >
-        {renderContent()}
-      </Layout>
-    </div>
+    <Layout
+      onNavigate={handleNavigate}
+      currentView={view}
+      currentUser={currentUser}
+      onLogout={handleLogout}
+      toast={toast}
+      hideNav={view === 'edit' || view === 'playground'}
+    >
+      {renderContent()}
+    </Layout>
   );
 };
 
