@@ -33,7 +33,17 @@ function Host(overrides: Partial<LandingProps> = {}) {
 describe('Landing', () => {
   it('展示价值句，不渲染模块清单', () => {
     render(<Host />);
-    expect(screen.getByRole('heading', { name: '把散落的灵感，收成可再咏的咒语' })).toBeInTheDocument();
+    const slogan = screen.getByRole('heading', { name: '把散落的灵感，收成可再咏的咒语' });
+    expect(slogan).toBeInTheDocument();
+    expect(slogan.closest('.lp-intro')).toBeTruthy();
+    const stage = document.querySelector('.lp-stage');
+    const intro = document.querySelector('.lp-intro');
+    const login = document.querySelector('.lp-login-col');
+    expect(stage?.contains(intro)).toBe(true);
+    expect(stage?.contains(login)).toBe(true);
+    expect(
+      intro && login && !!(intro.compareDocumentPosition(login) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
     expect(screen.queryByText('串看板')).toBeNull();
     expect(document.querySelector('.lp-modules')).toBeNull();
   });
