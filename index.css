@@ -1185,10 +1185,6 @@ a.icon-btn svg,
   gap: 12px;
 }
 
-@media (max-width: 480px) {
-  .param-grid { grid-template-columns: 1fr; }
-}
-
 .dirty-dot {
   display: inline-block;
   width: 8px;
@@ -1463,9 +1459,13 @@ html[data-theme-mode="dark"] .brand-mark {
 }
 
 .brand-text {
-  display: flex;
+  display: none;
   flex-direction: column;
   min-width: 0;
+}
+
+@media (min-width: 900px) {
+  .brand-text { display: flex; }
 }
 
 .brand-text strong {
@@ -3445,6 +3445,33 @@ svg.w-8 {
   position: relative;
   z-index: 1;
   max-height: 85vh;
+}
+
+.modal-layer.vibe-lib-layer {
+  align-items: stretch;
+  justify-content: center;
+  padding: 12px;
+  z-index: 420;
+}
+
+.modal-card.vibe-lib-card {
+  display: flex;
+  flex-direction: column;
+  width: min(52rem, 100%);
+  height: calc(100dvh - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow: hidden;
+}
+
+@media (max-width: 899px) {
+  .modal-layer.vibe-lib-layer {
+    padding: 8px 8px calc(8px + var(--nav-h) + var(--safe-b));
+  }
+  .modal-card.vibe-lib-card {
+    height: auto;
+    max-height: none;
+    flex: 1;
+  }
 }
 
 .artist-admin-grid {

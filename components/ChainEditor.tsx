@@ -14,7 +14,7 @@ import { ChainEditorParams } from './ChainEditorParams';
 import { ChainEditorPreview } from './ChainEditorPreview';
 import { ChainEditorVibePanel } from './ChainEditorVibePanel';
 import { vibeLibrary } from '../services/vibeLibrary';
-import { resolveVibeMounts, validateVibeMounts } from '../services/vibeRules';
+import { resolveVibeMounts, validateVibeMounts } from '../services/vibeResolve';
 
 interface ChainEditorProps {
     chain: PromptChain;
@@ -737,7 +737,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                                 />
                             </Field>
                             <Field label="主体">
-                                <Input
+                                <Textarea
                                     value={subjectPrompt}
                                     placeholder="1girl, looking at viewer"
                                     onChange={(e) => { setSubjectPrompt(e.target.value); markChange(); }}

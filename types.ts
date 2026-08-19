@@ -37,11 +37,22 @@ export interface VibeEncoding {
   encoding: string;
 }
 
+export interface VibeMember {
+  id: string;
+  name: string;
+  thumbnailUrl?: string;
+  encodings: VibeEncoding[];
+  defaultStrength: number;
+  defaultInformationExtracted: number;
+}
+
 export interface VibePreset {
   id: string;
   name: string;
   thumbnailUrl?: string;
   encodings: VibeEncoding[];
+  /** 来自 vibebundle / vibes[] 的组。挂载占 1 槽，生成时整组展开。 */
+  members?: VibeMember[];
   defaultStrength: number;
   defaultInformationExtracted: number;
   sourceFilename?: string;

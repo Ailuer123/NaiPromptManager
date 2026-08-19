@@ -1,17 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { NAIParams, VibeMount, VibePreset } from '../types';
-import { parseVibeFile } from '../services/vibeFile';
+import { parseVibeFile } from '../services/vibeParse';
 import { vibeLibrary, VibeLibrary } from '../services/vibeLibrary';
 import { IconWarn } from './ui/glyphs';
+import { Portal } from './ui/Portal';
 import {
   clampMountStrength,
   getMaxStrengthForMount,
   getVibeStrengthTotal,
+  isVibeGroup,
   isVibeStrengthOverRecommended,
   MAX_MOUNTED_VIBES,
   tryAppendVibeMount,
   validateVibeMounts,
-} from '../services/vibeRules';
+} from '../services/vibeResolve';
 
 interface ChainEditorVibePanelProps {
   params: NAIParams;
@@ -55,6 +57,20 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
   useEffect(() => {
     void refreshLibrary();
   }, [library]);
+
+  useEffect(() => {
+    if (!showLibrary) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowLibrary(false);
+    };
+    document.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [showLibrary]);
 
   const presetsById = useMemo(
     () => new Map(presets.map(preset => [preset.id, preset])),
@@ -103,7 +119,12 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
       }
       if (mountedCount > 0) updateMounts(nextMounts);
 
-      notify(`已导入 ${imported.length} 个 Vibe`);
+      const group = imported.find(preset => isVibeGroup(preset));
+      if (imported.length === 1 && group) {
+        notify(`已导入 Vibe 组「${group.name}」（${group.members?.length ?? 0} 个）`);
+      } else {
+        notify(`已导入 ${imported.length} 个 Vibe`);
+      }
       if (mountedCount < imported.length) {
         notify(`挂载上限为 ${MAX_MOUNTED_VIBES}，其余 Vibe 已保存到本地库`);
       }
@@ -193,6 +214,7 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
           {mounts.map((mount, index) => {
             const preset = presetsById.get(mount.vibeId);
             const missing = !loading && !preset;
+            const grouped = isVibeGroup(preset);
             const maxStrength = getMaxStrengthForMount(mounts, index);
             const informationLevels = [...new Set(
               preset?.encodings.map(encoding => encoding.informationExtracted) ?? [],
@@ -211,6 +233,7 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
                   <div className="mb-2 flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{mount.name}</p>
+                      {grouped && <p className="text-[11px] text-indigo-600 dark:text-indigo-300">组 · {preset?.members?.length} 个，按组调用</p>}
                       {missing && <p className="text-[11px] text-red-500">本地库中已不存在，请重新导入</p>}
                     </div>
                     {canEdit && (
@@ -241,16 +264,20 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
                     </label>
                     <label className="block text-[11px] text-gray-500 dark:text-gray-400">
                       <span className="mb-1 block">Information Extracted</span>
-                      <select
-                        aria-label={`${mount.name} Information Extracted`}
-                        value={mount.informationExtracted}
-                        disabled={!canEdit || missing || informationLevels.length === 0}
-                        onChange={event => updateMount(index, { informationExtracted: Number(event.target.value) })}
-                        className="w-full rounded border border-gray-300 bg-gray-50 px-2 py-1 text-xs text-gray-800 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-                      >
-                        {informationLevels.length === 0 && <option value={mount.informationExtracted}>{formatValue(mount.informationExtracted)}</option>}
-                        {informationLevels.map(level => <option key={level} value={level}>{formatValue(level)}</option>)}
-                      </select>
+                      {grouped ? (
+                        <p className="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-500 dark:border-gray-600 dark:bg-gray-800">组内各自档位</p>
+                      ) : (
+                        <select
+                          aria-label={`${mount.name} Information Extracted`}
+                          value={mount.informationExtracted}
+                          disabled={!canEdit || missing || informationLevels.length === 0}
+                          onChange={event => updateMount(index, { informationExtracted: Number(event.target.value) })}
+                          className="w-full rounded border border-gray-300 bg-gray-50 px-2 py-1 text-xs text-gray-800 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                        >
+                          {informationLevels.length === 0 && <option value={mount.informationExtracted}>{formatValue(mount.informationExtracted)}</option>}
+                          {informationLevels.map(level => <option key={level} value={level}>{formatValue(level)}</option>)}
+                        </select>
+                      )}
                     </label>
                   </div>
                 </div>
@@ -272,22 +299,23 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
       </div>
 
       {showLibrary && (
-        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/60 p-4" onMouseDown={() => setShowLibrary(false)}>
-          <div className="max-h-[85vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-900" onMouseDown={event => event.stopPropagation()}>
+        <Portal>
+        <div className="modal-layer vibe-lib-layer" onClick={() => setShowLibrary(false)}>
+          <div className="modal-card vibe-lib-card surface-strong" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="vibe-lib-title">
             <div className="flex items-center justify-between border-b border-gray-200 p-4 dark:border-gray-700">
               <div>
-                <h3 className="font-bold text-gray-900 dark:text-white">Vibe 本地库</h3>
+                <h3 id="vibe-lib-title" className="font-bold text-gray-900 dark:text-white">Vibe 本地库</h3>
               </div>
               <button type="button" aria-label="关闭 Vibe 本地库" onClick={() => setShowLibrary(false)} className="rounded p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">×</button>
             </div>
-            <div className="p-4">
+            <div className="flex min-h-0 flex-1 flex-col p-4">
               <input
                 value={search}
                 onChange={event => setSearch(event.target.value)}
                 placeholder="搜索 Vibe 名称"
                 className="mb-4 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
               />
-              <div className="max-h-[58vh] overflow-y-auto">
+              <div className="min-h-0 flex-1 overflow-y-auto">
                 {filteredPresets.length === 0 ? (
                   <p className="py-12 text-center text-sm text-gray-400">{loading ? '正在读取…' : '本地库中没有 Vibe'}</p>
                 ) : (
@@ -304,6 +332,7 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
                             <div className="flex aspect-square items-center justify-center bg-gradient-to-br from-violet-500 to-indigo-600 text-3xl font-bold text-white">{preset.name.slice(0, 1).toUpperCase()}</div>
                           )}
                           {mounted && <span className="absolute right-1 top-1 rounded bg-indigo-600 px-1.5 py-0.5 text-[10px] text-white">已挂载</span>}
+                          {isVibeGroup(preset) && <span className="absolute left-1 top-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] text-white">组 · {preset.members?.length}</span>}
                           <div className="p-2">
                             <p className="truncate text-xs font-semibold text-gray-800 dark:text-gray-100">{preset.name}</p>
                             <div className="mt-2 flex gap-1">
@@ -330,6 +359,7 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
             </div>
           </div>
         </div>
+        </Portal>
       )}
     </section>
   );
