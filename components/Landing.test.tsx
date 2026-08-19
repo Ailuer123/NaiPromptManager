@@ -50,8 +50,10 @@ describe('Landing', () => {
 
   it('提供 Discord 登录和账号密码', () => {
     render(<Host />);
-    expect(screen.getByRole('button', { name: '使用 Discord 登录' })).toBeInTheDocument();
-    expect(screen.getByText('或使用账号密码')).toBeInTheDocument();
+    const discord = screen.getByRole('button', { name: '使用 Discord 登录' });
+    expect(discord).toBeInTheDocument();
+    expect(discord.querySelector('svg.icon-fill')).toBeTruthy();
+    expect(screen.queryByText('或使用账号密码')).toBeNull();
     expect(screen.getByLabelText('用户名')).toBeInTheDocument();
     expect(screen.queryByLabelText('游客口令')).toBeNull();
     expect(screen.queryByText('Discord 登录尚未配置')).toBeNull();

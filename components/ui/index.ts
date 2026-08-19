@@ -11,6 +11,7 @@ export {
   IconClock,
   IconClose,
   IconCrown,
+  IconDiscord,
   IconEye,
   IconEyeOff,
   IconGear,

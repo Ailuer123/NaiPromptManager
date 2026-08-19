@@ -6,6 +6,7 @@ import { ModeSwitch } from './ui/ModeSwitch';
 import { Button } from './ui/Button';
 import { Empty } from './ui/Empty';
 import { Field, Input } from './ui/Field';
+import { IconDiscord } from './ui/glyphs';
 
 export type LandingProps = {
   loginUser: string;
@@ -51,18 +52,17 @@ export function Landing({
           <div className="auth-card glass-strong">
             <h2 className="auth-title">登录</h2>
             {discordEnabled ? (
-              <>
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="lg"
-                  block
-                  onClick={() => { window.location.href = '/api/auth/discord'; }}
-                >
-                  使用 Discord 登录
-                </Button>
-                <p className="hint auth-or">或使用账号密码</p>
-              </>
+              <Button
+                type="button"
+                variant="primary"
+                size="lg"
+                block
+                className="auth-discord"
+                onClick={() => { window.location.href = '/api/auth/discord'; }}
+              >
+                <IconDiscord />
+                使用 Discord 登录
+              </Button>
             ) : (
               <p className="hint">Discord 登录尚未配置</p>
             )}

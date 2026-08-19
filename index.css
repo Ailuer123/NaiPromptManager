@@ -302,6 +302,11 @@ a.icon-btn svg,
   flex-shrink: 0;
 }
 
+.btn svg.icon-fill {
+  fill: currentColor;
+  stroke: none;
+}
+
 .btn-primary {
   color: var(--btn-fg);
   background: var(--btn-grad);
@@ -519,9 +524,8 @@ a.icon-btn svg,
   color: var(--mute);
 }
 
-.auth-or {
-  text-align: center;
-  margin: 12px 0 4px;
+.auth-discord {
+  margin-bottom: 16px;
 }
 
 .field .hint.is-error { color: var(--danger); }
