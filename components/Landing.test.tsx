@@ -11,24 +11,18 @@ import { Landing, type LandingProps } from './Landing';
 afterEach(cleanup);
 
 function Host(overrides: Partial<LandingProps> = {}) {
-  const [isGuestMode, setIsGuestMode] = useState(false);
   const [loginUser, setLoginUser] = useState('');
   const [loginPass, setLoginPass] = useState('');
-  const [guestPasscode, setGuestPasscode] = useState('');
   const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault());
 
   return (
     <ThemeProvider>
       <Landing
-        isGuestMode={isGuestMode}
-        onGuestModeChange={setIsGuestMode}
         loginUser={loginUser}
         loginPass={loginPass}
-        guestPasscode={guestPasscode}
         loginError=""
         onLoginUserChange={setLoginUser}
         onLoginPassChange={setLoginPass}
-        onGuestPasscodeChange={setGuestPasscode}
         onSubmit={onSubmit}
         {...overrides}
       />
@@ -41,22 +35,14 @@ describe('Landing', () => {
     render(<Host />);
     expect(screen.getByRole('heading', { name: '把散落的灵感，收成可再咏的咒语' })).toBeInTheDocument();
     expect(screen.queryByText('串看板')).toBeNull();
-    expect(screen.queryByText('军火库')).toBeNull();
     expect(document.querySelector('.lp-modules')).toBeNull();
   });
 
-  it('游客 tab 切换出口令表单', async () => {
-    const user = userEvent.setup();
+  it('提供 Discord 登录和账号密码', () => {
     render(<Host />);
-
+    expect(screen.getByRole('button', { name: '使用 Discord 登录' })).toBeInTheDocument();
     expect(screen.getByLabelText('用户名')).toBeInTheDocument();
     expect(screen.queryByLabelText('游客口令')).toBeNull();
-
-    await user.click(screen.getByRole('tab', { name: '游客参观' }));
-
-    expect(screen.getByLabelText('游客口令')).toBeInTheDocument();
-    expect(screen.queryByLabelText('用户名')).toBeNull();
-    expect(screen.getByRole('button', { name: '进入参观' })).toBeInTheDocument();
   });
 
   it('提交走传入的 onSubmit，不自造登录', async () => {

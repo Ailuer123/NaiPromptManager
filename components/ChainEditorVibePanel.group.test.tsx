@@ -63,6 +63,26 @@ describe('ChainEditorVibePanel vibe groups', () => {
     });
   });
 
+  it('一次选择多个文件会全部写入本地库', async () => {
+    const user = userEvent.setup();
+    const library = new VibeLibrary(`NAI_Vibe_Multi_${crypto.randomUUID()}`);
+    render(<Host library={library} />);
+
+    const makeFile = (name: string, id: string) => new File([JSON.stringify({
+      id,
+      identifier: 'novelai-vibe-transfer',
+      comment: JSON.stringify({ strength: 0.6, information_extracted: 0.7 }),
+      encodings: { v4full: { normal: { encoding: `${id}_ENC`, params: { information_extracted: 0.7 } } } },
+    })], name, { type: 'application/json' });
+
+    await user.upload(
+      screen.getByLabelText('导入 Vibe 文件'),
+      [makeFile('a.naiv4vibe', 'id-a'), makeFile('b.naiv4vibe', 'id-b')],
+    );
+
+    await expect.poll(() => library.list()).toHaveLength(2);
+  });
+
   it('本地库弹层可通过关闭按钮关掉', async () => {
     const user = userEvent.setup();
     const library = new VibeLibrary(`NAI_Vibe_Lib_${crypto.randomUUID()}`);

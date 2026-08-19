@@ -3,7 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
 import { Artist, User, UsageStats, AccessLog, DailyStat } from '../types';
 import { ROLE_POLICY } from '../config/rolePolicy';
-import { ApiKeyFields, Button, Empty, Field, IconButton, IconCrown, IconEye, IconEyeOff, Input, Panel, Seg, Switch } from './ui';
+import { APP_REPO_URL, APP_VERSION } from '../app/version';
+import { ApiKeyFields, Button, Empty, Field, IconButton, IconCrown, Input, Panel, Seg, Switch } from './ui';
 import { cx } from './ui/cx';
 
 type ArtistWeightSyntax = 'numeric' | 'bracket';
@@ -26,7 +27,7 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
   const isAdmin = currentUser.role === 'admin';
   const isVip = currentUser.role === 'vip';
   const canManageArtists = ROLE_POLICY.canManageArtists(currentUser.role);
-  const [activeTab, setActiveTab] = useState<'artist' | 'users' | 'profile' | 'stats'>('profile');
+  const [activeTab, setActiveTab] = useState<'artist' | 'users' | 'profile' | 'stats' | 'about'>('profile');
   
   // Artist State (Managed via props now, filtered here if needed)
   const artists = artistsData || [];
@@ -46,10 +47,7 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
   const [editingQuotaUserId, setEditingQuotaUserId] = useState<string | null>(null);
   const [newQuotaMB, setNewQuotaMB] = useState<string>('');
 
-  // Guest Code State
-  const [guestCode, setGuestCode] = useState('');
-  const [isUpdatingGuest, setIsUpdatingGuest] = useState(false);
-  const [showGuestCode, setShowGuestCode] = useState(false); // Visibility toggle
+
 
   // Import State
   const [isImporting, setIsImporting] = useState(false);
@@ -218,13 +216,6 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
       setIsLoading(false);
   };
 
-  // Fetch Guest Code when Users Tab is active
-  useEffect(() => {
-      if (isAdmin && activeTab === 'users') {
-          db.getGuestCode().then(setGuestCode).catch(console.error);
-      }
-  }, [activeTab, isAdmin]);
-
   // Fetch Usage Stats when Stats Tab is active
   useEffect(() => {
       if (isAdmin && activeTab === 'stats') {
@@ -266,16 +257,6 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
   const formatDate = (timestamp: number | string) => {
       if (!timestamp || isNaN(Number(timestamp))) return '未知';
       return new Date(Number(timestamp)).toLocaleDateString('zh-CN');
-  };
-
-  const handleUpdateGuestCode = async () => {
-      if (!guestCode) return;
-      setIsUpdatingGuest(true);
-      try {
-          await db.updateGuestCode(guestCode);
-          alert('游客口令已更新');
-      } catch(e) { alert('更新失败'); }
-      setIsUpdatingGuest(false);
   };
 
   const handleChangePassword = async () => {
@@ -352,6 +333,7 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
 
   const tabOptions = [
       { value: 'profile' as const, label: '偏好设置' },
+      { value: 'about' as const, label: '关于' },
       ...((isAdmin || isVip) ? [{ value: 'artist' as const, label: '画师管理' }] : []),
       ...(isAdmin ? [
           { value: 'users' as const, label: '用户管理' },
@@ -375,7 +357,7 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                     </IconButton>
                 )}
             </div>
-            <Seg<'profile' | 'artist' | 'users' | 'stats'>
+            <Seg<'profile' | 'about' | 'artist' | 'users' | 'stats'>
                 aria-label="设置分区"
                 value={activeTab}
                 onChange={setActiveTab}
@@ -448,32 +430,10 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                     </div>
                 </Panel>
 
-                <Panel title="游客访问设置">
-                    <div className="pref-row">
-                        <div style={{ position: 'relative', flex: 1 }}>
-                            <Input
-                                type={showGuestCode ? "text" : "password"}
-                                value={guestCode}
-                                onChange={e => setGuestCode(e.target.value)}
-                                placeholder="游客口令"
-                            />
-                            <IconButton
-                                className="lbx-close"
-                                style={{ top: 2, right: 2 }}
-                                label={showGuestCode ? "隐藏口令" : "显示口令"}
-                                onClick={() => setShowGuestCode(!showGuestCode)}
-                            >
-                                {showGuestCode ? <IconEyeOff /> : <IconEye />}
-                            </IconButton>
-                        </div>
-                        <Button
-                            className="pref-action"
-                            onClick={handleUpdateGuestCode}
-                            disabled={isUpdatingGuest}
-                        >
-                            {isUpdatingGuest ? '更新中...' : '更新口令'}
-                        </Button>
-                    </div>
+                <Panel title="Discord 游客">
+                    <p className="hint">
+                        新 Discord 登录用户默认为游客权限组。可在下表把游客提升为正式用户。
+                    </p>
                 </Panel>
 
                 <div className="page-scroll" style={{ overflowX: 'auto' }}>
@@ -512,6 +472,7 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                                             className={ROLE_POLICY.getRoleBadgeClass(u.role as any)}
                                             disabled={u.id === currentUser.id}
                                         >
+                                            {u.role === 'guest' && <option value="guest">{ROLE_POLICY.getRoleDisplayName('guest')}</option>}
                                             <option value="user">{ROLE_POLICY.getRoleDisplayName('user')}</option>
                                             <option value="vip">{ROLE_POLICY.getRoleDisplayName('vip')}</option>
                                             <option value="admin">{ROLE_POLICY.getRoleDisplayName('admin')}</option>
@@ -663,9 +624,38 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
             </div>
         )}
 
+        {activeTab === 'about' && (
+            <div className="settings-stack wide">
+                <Panel title="关于">
+                    <div className="stack" style={{ gap: 10 }}>
+                        <div className="pref-row">
+                            <span>当前版本</span>
+                            <strong>{APP_VERSION}</strong>
+                        </div>
+                        <div className="pref-row">
+                            <span>源代码</span>
+                            <a href={APP_REPO_URL} target="_blank" rel="noreferrer">{APP_REPO_URL}</a>
+                        </div>
+                    </div>
+                </Panel>
+            </div>
+        )}
+
         {activeTab === 'profile' && (
             <div className="settings-stack wide">
                 <div className="settings-pair">
+                    <Panel title="Discord">
+                        {currentUser.discordId ? (
+                            <p className="hint">已关联：{currentUser.discordUsername || currentUser.discordId}</p>
+                        ) : (
+                            <>
+                                <p className="hint">关联后可用 Discord 登录此账号。</p>
+                                <Button onClick={() => { window.location.href = '/api/auth/discord?link=1'; }}>
+                                    关联 Discord
+                                </Button>
+                            </>
+                        )}
+                    </Panel>
                     {currentUser.role !== 'guest' && (
                         <Panel title="修改密码">
                             <Field label="新密码">

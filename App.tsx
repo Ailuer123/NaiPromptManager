@@ -53,10 +53,7 @@ const App = () => {
   const [loginUser, setLoginUser] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [loginError, setLoginError] = useState('');
-
-  // Guest Login State
-  const [isGuestMode, setIsGuestMode] = useState(false);
-  const [guestPasscode, setGuestPasscode] = useState('');
+  const [discordEnabled, setDiscordEnabled] = useState(true);
 
   // Toast State
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
@@ -68,6 +65,18 @@ const App = () => {
 
   // Check Session on Load
   useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const discordError = params.get('discord_error');
+    if (discordError) {
+      setLoginError(discordError);
+      navigate(location.pathname, { replace: true });
+    }
+    fetch(`/api/meta?_t=${Date.now()}`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((meta) => {
+        if (meta && typeof meta.discordEnabled === 'boolean') setDiscordEnabled(meta.discordEnabled);
+      })
+      .catch(() => {});
     db.getMe().then(user => {
       setCurrentUser(user);
       refreshData();
@@ -181,12 +190,7 @@ const App = () => {
     e.preventDefault();
     setLoginError('');
     try {
-      let res;
-      if (isGuestMode) {
-        res = await db.guestLogin(guestPasscode);
-      } else {
-        res = await db.login(loginUser, loginPass);
-      }
+      const res = await db.login(loginUser, loginPass);
       setCurrentUser(res.user);
       // 切换角色后丢弃旧列表，避免前一个账号的私人串短暂残留
       setChains([]);
@@ -205,8 +209,7 @@ const App = () => {
   const handleLogout = async () => {
     await db.logout();
     setCurrentUser(null);
-    setLoginUser(''); setLoginPass(''); setGuestPasscode('');
-    setIsGuestMode(false);
+    setLoginUser(''); setLoginPass('');
     // Clear all cache to prevent stale data after role switch
     setChains([]);
     setLastChainFetch(0);
@@ -254,15 +257,12 @@ const App = () => {
       <>
       <RouteProgress />
       <Landing
-        isGuestMode={isGuestMode}
-        onGuestModeChange={setIsGuestMode}
         loginUser={loginUser}
         loginPass={loginPass}
-        guestPasscode={guestPasscode}
         loginError={loginError}
+        discordEnabled={discordEnabled}
         onLoginUserChange={setLoginUser}
         onLoginPassChange={setLoginPass}
-        onGuestPasscodeChange={setGuestPasscode}
         onSubmit={handleLogin}
       />
       </>
@@ -293,11 +293,6 @@ const App = () => {
   );
 
   const renderContent = () => {
-    // Guest guard for admin view - guest should never see admin panel
-    if (view === 'admin' && currentUser?.role === 'guest') {
-      return renderChainList('style', true);
-    }
-    
     switch (view) {
       case 'list':
       case 'characters':

@@ -11,6 +11,8 @@ export interface User {
   lastLogin?: number; // 最后登录时间
   storageUsage?: number; // Bytes used
   maxStorage?: number; // 最大存储配额（字节）
+  discordId?: string | null;
+  discordUsername?: string | null;
 }
 
 export interface PromptModule {

@@ -134,7 +134,6 @@ export const Layout: React.FC<LayoutProps> = ({
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
   const moreBtnRef = useRef<HTMLButtonElement>(null);
-  const isGuest = currentUser?.role === 'guest';
 
   const getMaxStorage = () => {
     if (!currentUser) return 300 * 1024 * 1024;
@@ -236,19 +235,15 @@ export const Layout: React.FC<LayoutProps> = ({
                 {item.label}
               </NavLink>
             ))}
-            {!isGuest ? (
-              <>
-                <div className="nav-section">系统</div>
-                <NavLink
-                  to={pathFor('admin')}
-                  className={cx('nav-item', currentView === 'admin' && 'active')}
-                  onClick={closeMore}
-                >
-                  {ICONS.admin}
-                  设置与管理
-                </NavLink>
-              </>
-            ) : null}
+            <div className="nav-section">系统</div>
+            <NavLink
+              to={pathFor('admin')}
+              className={cx('nav-item', currentView === 'admin' && 'active')}
+              onClick={closeMore}
+            >
+              {ICONS.admin}
+              设置与管理
+            </NavLink>
           </nav>
 
           <div className="sidebar-foot">
@@ -339,12 +334,10 @@ export const Layout: React.FC<LayoutProps> = ({
             {ICONS.history}
             历史
           </NavLink>
-          {!isGuest ? (
-            <NavLink to={pathFor('admin')} role="menuitem" onClick={closeMore}>
-              {ICONS.admin}
-              设置
-            </NavLink>
-          ) : null}
+          <NavLink to={pathFor('admin')} role="menuitem" onClick={closeMore}>
+            {ICONS.admin}
+            设置
+          </NavLink>
           {onLogout ? (
             <button
               type="button"

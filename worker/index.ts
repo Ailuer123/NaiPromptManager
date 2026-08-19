@@ -1,5 +1,15 @@
 
 import bcrypt from 'bcryptjs';
+import { APP_REPO_URL, APP_VERSION } from '../app/version';
+import {
+  discordAuthorizeUrl,
+  exchangeDiscordCode,
+  fetchDiscordIdentity,
+  isDiscordConfigured,
+  pickDiscordUsername,
+  verifyDiscordChannelAccess,
+  type DiscordEnv,
+} from './discordOAuth';
 
 // Add missing D1 type definitions locally
 interface D1Result<T = unknown> {
@@ -43,7 +53,11 @@ interface Env {
   BUCKET?: R2Bucket; // R2 Binding
   MASTER_KEY: string; 
   R2_PUBLIC_URL?: string; // Kept for legacy compatibility if needed
-  // GUEST_PASSCODE removed, now stored in DB
+  DISCORD_CLIENT_ID?: string;
+  DISCORD_CLIENT_SECRET?: string;
+  DISCORD_BOT_TOKEN?: string;
+  DISCORD_GUILD_ID?: string;
+  DISCORD_CHANNEL_ID?: string;
 }
 
 // ==================== 角色策略配置 ====================
@@ -386,6 +400,17 @@ export default {
       try { await db.prepare("ALTER TABLE chains ADD COLUMN type TEXT DEFAULT 'style'").run(); } catch (e) {}
       try { await db.prepare("ALTER TABLE chains ADD COLUMN guest_hidden INTEGER NOT NULL DEFAULT 0").run(); } catch (e) {}
       try { await db.prepare("ALTER TABLE chains ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0").run(); } catch (e) {}
+      try { await db.prepare("ALTER TABLE users ADD COLUMN discord_id TEXT").run(); } catch (e) {}
+      try { await db.prepare("ALTER TABLE users ADD COLUMN discord_username TEXT").run(); } catch (e) {}
+      try {
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS oauth_states (
+            state TEXT PRIMARY KEY,
+            user_id TEXT,
+            expires_at INTEGER NOT NULL
+          )
+        `).run();
+      } catch (e) {}
       
 
       // 创建访问日志表
@@ -451,13 +476,13 @@ export default {
             .bind(sessionId, Date.now()).first<{user_id: string}>();
         if (!session) return null;
         try {
-            return await db.prepare('SELECT id, username, role, storage_usage, max_storage FROM users WHERE id = ?')
-                .bind(session.user_id).first<{id: string, username: string, role: string, storage_usage: number, max_storage: number}>();
+            return await db.prepare('SELECT id, username, role, storage_usage, max_storage, discord_id, discord_username FROM users WHERE id = ?')
+                .bind(session.user_id).first<{id: string, username: string, role: string, storage_usage: number, max_storage: number, discord_id?: string, discord_username?: string}>();
         } catch (e: any) {
              if (e.message && e.message.includes('no such column')) {
                  await initDB();
-                 return await db.prepare('SELECT id, username, role, storage_usage, max_storage FROM users WHERE id = ?')
-                    .bind(session.user_id).first<{id: string, username: string, role: string, storage_usage: number, max_storage: number}>();
+                 return await db.prepare('SELECT id, username, role, storage_usage, max_storage, discord_id, discord_username FROM users WHERE id = ?')
+                    .bind(session.user_id).first<{id: string, username: string, role: string, storage_usage: number, max_storage: number, discord_id?: string, discord_username?: string}>();
              }
              throw e;
         }
@@ -470,6 +495,109 @@ export default {
       if (path === '/api/config/benchmarks' && method === 'GET') {
           const res = await db.prepare('SELECT value FROM settings WHERE key = ?').bind('benchmark_config').first<{value: string}>();
           return json({ config: res ? JSON.parse(res.value) : null });
+      }
+
+      if (path === '/api/meta' && method === 'GET') {
+          return json({
+            version: APP_VERSION,
+            repo: APP_REPO_URL,
+            discordEnabled: isDiscordConfigured(env as DiscordEnv),
+          });
+      }
+
+      if (path === '/api/auth/discord' && method === 'GET') {
+          if (!isDiscordConfigured(env as DiscordEnv)) {
+            return error('Discord 登录尚未配置', 503);
+          }
+          await initDB();
+          const link = url.searchParams.get('link') === '1';
+          const sessionUser = link ? await getSessionUser() : null;
+          if (link && !sessionUser) return error('请先登录再关联 Discord', 401);
+          const state = crypto.randomUUID();
+          await db.prepare('DELETE FROM oauth_states WHERE expires_at < ?').bind(Date.now()).run();
+          await db.prepare('INSERT INTO oauth_states (state, user_id, expires_at) VALUES (?, ?, ?)')
+            .bind(state, sessionUser?.id ?? null, Date.now() + 10 * 60 * 1000).run();
+          const redirectUri = `${url.origin}/api/auth/discord/callback`;
+          return Response.redirect(discordAuthorizeUrl(env as DiscordEnv, redirectUri, state), 302);
+      }
+
+      if (path === '/api/auth/discord/callback' && method === 'GET') {
+          const fail = (message: string, dest = '/') => {
+            const next = new URL(dest, url.origin);
+            next.searchParams.set('discord_error', message);
+            return Response.redirect(next.toString(), 302);
+          };
+          if (!isDiscordConfigured(env as DiscordEnv)) return fail('Discord 登录尚未配置');
+          const code = url.searchParams.get('code');
+          const state = url.searchParams.get('state');
+          if (!code || !state) return fail('缺少 Discord 授权参数');
+          await initDB();
+          const record = await db.prepare('SELECT user_id, expires_at FROM oauth_states WHERE state = ?')
+            .bind(state).first<{ user_id?: string; expires_at: number }>();
+          await db.prepare('DELETE FROM oauth_states WHERE state = ?').bind(state).run();
+          if (!record || record.expires_at < Date.now()) return fail('登录状态已过期，请重试');
+
+          try {
+            const redirectUri = `${url.origin}/api/auth/discord/callback`;
+            const accessToken = await exchangeDiscordCode(env as DiscordEnv, code, redirectUri);
+            const identity = await fetchDiscordIdentity(accessToken);
+            const allowed = await verifyDiscordChannelAccess(env as DiscordEnv, identity.id);
+            if (!allowed) return fail('未通过频道验证，请先加入指定 Discord 频道');
+
+            const existing = await db.prepare('SELECT id, username, role, storage_usage, max_storage FROM users WHERE discord_id = ?')
+              .bind(identity.id).first<{ id: string; username: string; role: string; storage_usage: number; max_storage: number }>();
+
+            let userId = existing?.id;
+            let username = existing?.username;
+            let role = existing?.role || 'guest';
+            let storageUsage = existing?.storage_usage || 0;
+            let maxStorage = existing?.max_storage ?? ROLE_POLICY.getDefaultQuota('guest');
+
+            if (record.user_id) {
+              if (existing && existing.id !== record.user_id) return fail('该 Discord 已绑定其他账号', '/settings');
+              await db.prepare('UPDATE users SET discord_id = ?, discord_username = ? WHERE id = ?')
+                .bind(identity.id, identity.username, record.user_id).run();
+              const linked = await db.prepare('SELECT id, username, role, storage_usage, max_storage FROM users WHERE id = ?')
+                .bind(record.user_id).first<{ id: string; username: string; role: string; storage_usage: number; max_storage: number }>();
+              if (!linked) return fail('关联账号不存在', '/settings');
+              userId = linked.id;
+              username = linked.username;
+              role = linked.role;
+              storageUsage = linked.storage_usage;
+              maxStorage = linked.max_storage;
+            } else if (!existing) {
+              const taken = async (name: string) => Boolean(
+                await db.prepare('SELECT id FROM users WHERE username = ?').bind(name).first()
+              );
+              username = await pickDiscordUsername(identity, taken);
+              userId = crypto.randomUUID();
+              role = 'guest';
+              maxStorage = ROLE_POLICY.getDefaultQuota('guest');
+              const hashed = await bcrypt.hash(crypto.randomUUID(), 8);
+              await db.prepare('INSERT INTO users (id, username, password, role, created_at, last_login, storage_usage, max_storage, discord_id, discord_username) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)')
+                .bind(userId, username, hashed, role, Date.now(), Date.now(), maxStorage, identity.id, identity.username).run();
+            } else {
+              await db.prepare('UPDATE users SET last_login = ?, discord_username = ? WHERE id = ?')
+                .bind(Date.now(), identity.username, existing.id).run();
+            }
+
+            const sessionId = crypto.randomUUID();
+            const expiresAt = Date.now() + 604800000;
+            await db.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)').bind(sessionId, userId, expiresAt).run();
+            const action = record.user_id ? 'discord_link' : (existing ? 'discord_login' : 'discord_register');
+            await logAccess(db, { id: userId!, username: username!, role }, request, action);
+            await incrementDailyStat(db, role === 'guest' ? 'guest_logins' : 'user_logins');
+            const dest = record.user_id ? '/settings' : '/';
+            return new Response(null, {
+              status: 302,
+              headers: {
+                Location: dest,
+                'Set-Cookie': `session_id=${sessionId}; Expires=${new Date(expiresAt).toUTCString()}; Path=/; SameSite=Lax; HttpOnly`,
+              },
+            });
+          } catch (e: any) {
+            return fail(e?.message || 'Discord 登录失败');
+          }
       }
 
       // Guest Login & Normal Login Logic
@@ -518,7 +646,15 @@ export default {
       if (path === '/api/auth/me' && method === 'GET') {
           const user = await getSessionUser();
           if (!user) return error('Unauthorized', 401);
-          return json({ id: user.id, username: user.username, role: user.role, storageUsage: user.storage_usage || 0, maxStorage: user.max_storage || 314572800 });
+          return json({
+            id: user.id,
+            username: user.username,
+            role: user.role,
+            storageUsage: user.storage_usage || 0,
+            maxStorage: user.max_storage || 314572800,
+            discordId: (user as any).discord_id || null,
+            discordUsername: (user as any).discord_username || null,
+          });
       }
 
       // --- Authenticated Logic ---
@@ -720,7 +856,7 @@ export default {
           const total = countResult?.total || 0;
           
           // 分页查询
-          const res = await db.prepare('SELECT id, username, role, created_at, last_login, storage_usage, max_storage FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?')
+          const res = await db.prepare('SELECT id, username, role, created_at, last_login, storage_usage, max_storage, discord_id, discord_username FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?')
             .bind(pageSize, offset).all();
           
           // 将数据库字段名（下划线）映射为前端字段名（驼峰）
@@ -732,7 +868,9 @@ export default {
                   createdAt: u.created_at,
                   lastLogin: u.last_login,
                   storageUsage: u.storage_usage,
-                  maxStorage: u.max_storage
+                  maxStorage: u.max_storage,
+                  discordId: u.discord_id || null,
+                  discordUsername: u.discord_username || null,
               })),
               pagination: {
                   page,

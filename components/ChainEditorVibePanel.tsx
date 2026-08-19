@@ -102,8 +102,24 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
     event.currentTarget.blur();
     setImporting(true);
     try {
-      const imported = (await Promise.all(files.map(file => parseVibeFile(file)))).flat();
-      for (const preset of imported) await library.put(preset);
+      const imported: VibePreset[] = [];
+      const failures: string[] = [];
+      for (const file of files) {
+        try {
+          const parsed = await parseVibeFile(file);
+          for (const preset of parsed) {
+            let toSave = preset;
+            const existing = await library.get(preset.id);
+            if (existing && existing.sourceFilename !== preset.sourceFilename) {
+              toSave = { ...preset, id: crypto.randomUUID() };
+            }
+            await library.put(toSave);
+            imported.push(toSave);
+          }
+        } catch (error) {
+          failures.push(`${file.name}: ${error instanceof Error ? error.message : '导入失败'}`);
+        }
+      }
       await refreshLibrary();
 
       let nextMounts = mounts;
@@ -112,7 +128,7 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
         if (nextMounts.some(mount => mount.vibeId === preset.id)) continue;
         if (nextMounts.length >= MAX_MOUNTED_VIBES) break;
         const result = tryAppendVibeMount(nextMounts, preset);
-        if ('error' in result) break;
+        if ('error' in result) continue;
         nextMounts = result.mounts;
         mountedCount += 1;
       }
@@ -121,11 +137,14 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
       const group = imported.find(preset => isVibeGroup(preset));
       if (imported.length === 1 && group) {
         notify(`已导入 Vibe 组「${group.name}」（${group.members?.length ?? 0} 个）`);
-      } else {
+      } else if (imported.length > 0) {
         notify(`已导入 ${imported.length} 个 Vibe`);
       }
       if (mountedCount < imported.length) {
         notify(`挂载上限为 ${MAX_MOUNTED_VIBES}，其余 Vibe 已保存到本地库`);
+      }
+      if (failures.length > 0) {
+        notify(failures.slice(0, 3).join('；'), 'error');
       }
     } catch (error) {
       notify(error instanceof Error ? error.message : '导入 Vibe 失败', 'error');

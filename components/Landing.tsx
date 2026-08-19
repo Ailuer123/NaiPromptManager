@@ -4,37 +4,26 @@ import { BrandMark } from './BrandMark';
 import { ThemePicker } from './ThemePicker';
 import { ModeSwitch } from './ui/ModeSwitch';
 import { Button } from './ui/Button';
-import { Seg } from './ui/Chip';
+import { Empty } from './ui/Empty';
 import { Field, Input } from './ui/Field';
 
-const AUTH_TABS = [
-  { value: 'user', label: '账号登录' },
-  { value: 'guest', label: '游客参观' },
-] as const;
-
 export type LandingProps = {
-  isGuestMode: boolean;
-  onGuestModeChange: (guest: boolean) => void;
   loginUser: string;
   loginPass: string;
-  guestPasscode: string;
   loginError: string;
+  discordEnabled?: boolean;
   onLoginUserChange: (value: string) => void;
   onLoginPassChange: (value: string) => void;
-  onGuestPasscodeChange: (value: string) => void;
   onSubmit: (e: React.FormEvent) => void;
 };
 
 export function Landing({
-  isGuestMode,
-  onGuestModeChange,
   loginUser,
   loginPass,
-  guestPasscode,
   loginError,
+  discordEnabled = true,
   onLoginUserChange,
   onLoginPassChange,
-  onGuestPasscodeChange,
   onSubmit,
 }: LandingProps) {
   return (
@@ -61,55 +50,45 @@ export function Landing({
         <div className="lp-login-col">
           <div className="auth-card glass-strong">
             <h2 className="auth-title">登录</h2>
-            <Seg
-              fill
-              aria-label="登录方式"
-              value={isGuestMode ? 'guest' : 'user'}
-              onChange={(value) => onGuestModeChange(value === 'guest')}
-              options={AUTH_TABS}
-            />
+            {discordEnabled ? (
+              <Button
+                type="button"
+                variant="primary"
+                size="lg"
+                block
+                onClick={() => { window.location.href = '/api/auth/discord'; }}
+              >
+                使用 Discord 登录
+              </Button>
+            ) : (
+              <p className="hint">Discord 登录尚未配置，请使用账号密码。</p>
+            )}
+            <p className="hint" style={{ textAlign: 'center', margin: '12px 0 4px' }}>或使用账号密码</p>
             <form className="auth-form" onSubmit={onSubmit} autoComplete="on">
-              {!isGuestMode ? (
-                <>
-                  <Field label="用户名">
-                    <Input
-                      name="username"
-                      value={loginUser}
-                      onChange={(e) => onLoginUserChange(e.target.value)}
-                      placeholder="用户名"
-                      autoComplete="username"
-                      autoFocus
-                    />
-                  </Field>
-                  <Field label="密码">
-                    <Input
-                      name="password"
-                      type="password"
-                      value={loginPass}
-                      onChange={(e) => onLoginPassChange(e.target.value)}
-                      placeholder="密码"
-                      autoComplete="current-password"
-                    />
-                  </Field>
-                </>
-              ) : (
-                <Field label="游客口令">
-                  <Input
-                    name="guest-passcode"
-                    type="password"
-                    value={guestPasscode}
-                    onChange={(e) => onGuestPasscodeChange(e.target.value)}
-                    placeholder="输入游客口令"
-                    autoComplete="off"
-                    autoFocus
-                  />
-                </Field>
-              )}
+              <Field label="用户名">
+                <Input
+                  name="username"
+                  value={loginUser}
+                  onChange={(e) => onLoginUserChange(e.target.value)}
+                  placeholder="用户名"
+                  autoComplete="username"
+                />
+              </Field>
+              <Field label="密码">
+                <Input
+                  name="password"
+                  type="password"
+                  value={loginPass}
+                  onChange={(e) => onLoginPassChange(e.target.value)}
+                  placeholder="密码"
+                  autoComplete="current-password"
+                />
+              </Field>
               {loginError ? (
                 <p className="auth-error" aria-live="polite">{loginError}</p>
               ) : null}
-              <Button type="submit" variant="primary" size="lg" block>
-                {isGuestMode ? '进入参观' : '登录'}
+              <Button type="submit" variant="secondary" size="lg" block>
+                登录
               </Button>
             </form>
           </div>

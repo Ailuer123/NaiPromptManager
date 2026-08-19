@@ -55,11 +55,11 @@ describe('Layout', () => {
     const user = userEvent.setup();
     const { onLogout } = renderLayout(guest);
 
-    expect(screen.queryByRole('link', { name: '设置与管理' })).toBeNull();
+    expect(screen.getByRole('link', { name: '设置与管理' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '更多' }));
     expect(screen.getByRole('menuitem', { name: '历史' })).toBeInTheDocument();
-    expect(screen.queryByRole('menuitem', { name: '设置' })).toBeNull();
+    expect(screen.getByRole('menuitem', { name: '设置' })).toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: '实验室' })).toBeNull();
 
     await user.click(screen.getByText('看板内容'));

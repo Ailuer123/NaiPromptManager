@@ -35,5 +35,6 @@ local-data/
 
 # Wrangler 本地缓存
 .wrangler/
+.dev.vars
 
 docs/db-field-addition-guide.md
