@@ -5,9 +5,9 @@ import { Seg } from './ui/Chip';
 import { Field, Input, Textarea } from './ui/Field';
 import { Sheet } from './ui/Sheet';
 
-const TYPE_OPTIONS = [
-  { value: 'style' as const, label: '画师串' },
-  { value: 'character' as const, label: '角色串' },
+const TYPE_OPTIONS: { value: ChainType; label: string }[] = [
+  { value: 'style', label: '画师串' },
+  { value: 'character', label: '角色串' },
 ];
 
 export type SaveAsChainSheetProps = {
@@ -63,7 +63,7 @@ export const SaveAsChainSheet: React.FC<SaveAsChainSheetProps> = ({
           />
         </Field>
         <Field label="类型">
-          <Seg
+          <Seg<ChainType>
             aria-label="串类型"
             fill
             value={type}
