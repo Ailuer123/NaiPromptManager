@@ -14,7 +14,6 @@ const AUTH_TABS = [
 const MODULES = [
   {
     title: '串看板',
-    desc: '画师串与角色串分栏，标签筛选后进入编辑。',
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M4 7h16M4 12h10M4 17h14" />
@@ -23,7 +22,6 @@ const MODULES = [
   },
   {
     title: '提示词结构',
-    desc: '模块按前置 / 后置插入，编译结果分段可检。',
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M12 20h9" />
@@ -33,7 +31,6 @@ const MODULES = [
   },
   {
     title: '军火库',
-    desc: '画师组合进购物车，按权重插入当前串。',
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <rect x="3" y="4" width="18" height="16" rx="2" />
@@ -44,7 +41,6 @@ const MODULES = [
   },
   {
     title: '生图实验室',
-    desc: '同一提示词试跑，对比采样与强度。',
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M9 3h6l1 4H8l1-4z" />
@@ -55,7 +51,6 @@ const MODULES = [
   },
   {
     title: '生成历史',
-    desc: '本地留图，可复用参数或发布到灵感库。',
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <circle cx="12" cy="12" r="9" />
@@ -106,16 +101,12 @@ export function Landing({
       <div className="lp-stage">
         <section className="lp-intro" aria-label="产品介绍">
           <h1>把画师、模块与参数，编译成可复用的咒语</h1>
-          <p className="lp-intro-lead">
-            一条流水线：基础画风 → 前置模块 → 主体 → 后置模块。看板管串，实验室做对比。
-          </p>
           <ul className="lp-modules">
             {MODULES.map((mod) => (
               <li key={mod.title} className="lp-mod">
                 <div className="lp-mod-icon" aria-hidden="true">{mod.icon}</div>
                 <div className="lp-mod-body">
                   <strong>{mod.title}</strong>
-                  <span>{mod.desc}</span>
                 </div>
               </li>
             ))}
@@ -157,10 +148,7 @@ export function Landing({
                   </Field>
                 </>
               ) : (
-                <Field
-                  label="游客口令"
-                  hint="游客可查看提示词。进入后点「未配置」徽标即可填写 API Key，数据仅存本地"
-                >
+                <Field label="游客口令">
                   <Input
                     name="guest-passcode"
                     type="password"

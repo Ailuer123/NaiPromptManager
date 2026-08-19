@@ -273,7 +273,6 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onTypeChange
       });
   }, [chains, type, searchTerm, favOnly, favorites, selectedTags, sortOption]);
 
-  const subtitle = type === 'character' ? '管理角色外观、服装与特征预设。' : '管理并迭代你的 NovelAI 提示词风格组合。';
   const createLabel = type === 'character' ? '新建角色串' : '新建画师串';
   const segType: ChainType = type === 'character' ? 'character' : 'style';
 
@@ -294,7 +293,6 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onTypeChange
         <div className="board-head-top">
           <div>
             <h1>串看板</h1>
-            <p>{subtitle}</p>
           </div>
           <Seg
             aria-label="串类型"

@@ -378,7 +378,6 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
             <div className="board-head-top">
                 <div>
                     <h1>设置</h1>
-                    <p>偏好、画师库与系统管理。</p>
                 </div>
                 {canManageArtists && activeTab !== 'profile' && (
                     <IconButton label="刷新列表" onClick={handleRefresh}>
@@ -462,7 +461,6 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                 </Panel>
 
                 <Panel title="游客访问设置">
-                    <p className="hint">设置游客登录时使用的全局口令。下方显示的是当前生效的口令。</p>
                     <div className="pref-row">
                         <div style={{ position: 'relative', flex: 1 }}>
                             <Input
@@ -693,20 +691,9 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                     </Panel>
                 )}
 
-                {currentUser.role === 'guest' && (
-                    <div className="notice warn">
-                        <h3>游客模式提示</h3>
-                        <p>您正以游客身份浏览，密码修改功能已禁用。游客使用共享口令登录，无法更改个人密码。</p>
-                    </div>
-                )}
-
                 <Panel title="图片压缩">
-                    <p className="hint">控制「自动 JPG 保存」和「历史压缩」共享的 JPG 质量与开关。仅作用于本地历史记录，不影响云端。</p>
                     <div className="pref-row">
-                        <div>
-                            <div>自动 JPG 保存</div>
-                            <div className="hint">新生成的图片在入库前先转码为 JPG，节省本地空间</div>
-                        </div>
+                        <div>自动 JPG 保存</div>
                         <Switch
                             checked={autoJpg}
                             onCheckedChange={handleAutoJpgChange}
@@ -731,7 +718,6 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                 </Panel>
 
                 <Panel title="军火库">
-                    <p className="hint">控制军火库底部已选画师复制时的 NovelAI 权重语法。默认使用 V4+ 数字权重。</p>
                     <Seg
                         aria-label="权重语法"
                         value={artistWeightSyntax}
@@ -741,10 +727,6 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                             { value: 'bracket', label: '括号权重' },
                         ]}
                     />
-                    <div className="hint" style={{ marginTop: 8 }}>
-                        <p>数字：每次 +/- 调整 0.1，例如 <code>1.3::artist:name::</code></p>
-                        <p>括号：每次 +/- 调整一层，例如 <code>{'{artist:name}'}</code></p>
-                    </div>
                 </Panel>
 
                 <Panel title="应用设置">

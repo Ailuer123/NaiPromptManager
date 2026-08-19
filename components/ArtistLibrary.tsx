@@ -770,7 +770,6 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                 <div className="board-head-top">
                     <div>
                         <h1>军火库</h1>
-                        <p>挑选画师、组合权重，复制到剪贴板。</p>
                     </div>
                     <div className="board-tools">
                         {canManageArtists && (
@@ -1157,7 +1156,6 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                         />
                         <div style={{ textAlign: 'center', marginTop: 12 }}>
                             <h3>{currentLightboxImage.name}</h3>
-                            <p className="hint" style={{ fontSize: 12, color: 'var(--mute)' }}>点击图片或背景关闭 · 左右翻页 · 键盘 ← →</p>
                         </div>
                     </div>
                     <button type="button" className="lbx-nav next" onClick={(e) => { e.stopPropagation(); navigateLightbox('next'); }} aria-label="下一张">›</button>
@@ -1209,9 +1207,6 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
             </Sheet>
 
             <Sheet open={showImport} onClose={() => setShowImport(false)} title="批量导入画师">
-                <p className="hint" style={{ marginTop: 0, color: 'var(--mute)', fontSize: 12.5 }}>
-                    粘贴你的画师串，支持 artist: 前缀和 {'{}'} [] 权重符号
-                </p>
                 <Textarea
                     placeholder="例如：artist:wlop, {artist:nixeu}, [[shaluo]]"
                     value={importText}

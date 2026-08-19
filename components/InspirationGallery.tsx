@@ -273,7 +273,6 @@ export const InspirationGallery: React.FC<InspirationGalleryProps> = ({ currentU
           <div className="board-head-top">
              <div>
                  <h1>灵感图库</h1>
-                 <p>收藏优秀的生成结果与 Prompt</p>
              </div>
             <IconButton label="刷新灵感库" onClick={handleRefresh}>
                 <span className={isLoading ? 'is-spin' : undefined}>
@@ -309,7 +308,7 @@ export const InspirationGallery: React.FC<InspirationGalleryProps> = ({ currentU
              {filtered.length === 0 ? (
                  <Empty
                     title="暂无灵感"
-                    description={searchTerm ? '没有匹配的图片。' : '上传一张生成图，或从历史发布到这里。'}
+                    description={searchTerm ? '没有匹配的图片。' : undefined}
                     action={!searchTerm ? <Button variant="ghost" onClick={() => setUploadMode(true)}>上传</Button> : undefined}
                  />
              ) : (

@@ -584,7 +584,6 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
                 <div className="board-head-top">
                     <div>
                         <h1>本地生图历史</h1>
-                        <p>仅存储在您的浏览器中</p>
                     </div>
                     <div className="board-tools">
                         <span className="hint">共 {totalCount} 张</span>
@@ -678,10 +677,7 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
                 {isLoading ? (
                     <Empty title="加载中..." />
                 ) : items.length === 0 ? (
-                    <Empty
-                        title="暂无生成记录"
-                        description="在编辑器或实验室中生成图片会自动保存到这里"
-                    />
+                    <Empty title="暂无生成记录" />
                 ) : (
                     <>
                         <div className="hist-grid">

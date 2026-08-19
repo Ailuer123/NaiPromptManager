@@ -46,7 +46,6 @@ export function ThemePicker({ compact, side, className }: ThemePickerProps) {
         <div className="setting-row" style={{ paddingTop: 0 }}>
           <label className="s-label" htmlFor={darkId} style={{ cursor: 'pointer' }}>
             暗色模式
-            <small>刷新后仍保留</small>
           </label>
           <Switch
             id={darkId}

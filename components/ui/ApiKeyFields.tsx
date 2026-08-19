@@ -39,9 +39,6 @@ export function ApiKeyFields({ className }: { className?: string }) {
 
   return (
     <div className={className}>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-        仅保存在本机。本次会话刷新后丢失；本机记住写入 localStorage。
-      </p>
       <Seg<'session' | 'local'>
         value={scope}
         onChange={setScope}
@@ -54,7 +51,7 @@ export function ApiKeyFields({ className }: { className?: string }) {
       <Field
         label="NAI API Key"
         className="mt-4"
-        hint={status || (scope === 'local' ? '关闭浏览器后仍保留，请确保设备安全。' : '仅存在内存，刷新页面后清除。')}
+        hint={status || undefined}
       >
         <Input
           type="password"

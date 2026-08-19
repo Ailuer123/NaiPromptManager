@@ -83,13 +83,11 @@ export const ChainEditorPreview: React.FC<ChainEditorPreviewProps> = ({
                 {hideCoverActions && (
                     <div className="lab-kicker">
                         <Tag tone="sage">实验室 · 对比试跑</Tag>
-                        <span className="hint">结果进本地历史，不改封面</span>
                     </div>
                 )}
                 {/* Subject / Variable Input */}
                 <div className="mb-4 bg-white dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-800">
                     <h3 className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-2">3. 主体 / 变量提示词</h3>
-                    <p className="text-[10px] text-gray-400 mb-2">放置画师串固定提示词以外的内容，比如人物、场景。</p>
                     <textarea
                         className="w-full h-24 md:h-32 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-3 text-sm outline-none focus:border-indigo-500 font-mono resize-none"
                         placeholder="输入动态主体描述，例如：1girl, blue hair, sitting..."

@@ -147,7 +147,6 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
               已挂载 {mounts.length}/{MAX_MOUNTED_VIBES}
             </span>
           </div>
-          <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">支持 NovelAI / 智绘姬导出的预编码文件</p>
         </div>
         {canEdit && (
           <div className="flex gap-2">
@@ -187,7 +186,6 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
       {mounts.length === 0 ? (
         <div className="rounded-lg border border-dashed border-gray-300 px-4 py-7 text-center dark:border-gray-600">
           <p className="text-sm font-medium text-gray-600 dark:text-gray-300">尚未使用 Vibe</p>
-          <p className="mt-1 text-xs text-gray-400">导入 `.naiv4vibe`，或从本地库选择</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -278,7 +276,6 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
             <div className="flex items-center justify-between border-b border-gray-200 p-4 dark:border-gray-700">
               <div>
                 <h3 className="font-bold text-gray-900 dark:text-white">Vibe 本地库</h3>
-                <p className="text-xs text-gray-500">数据仅保存在当前浏览器</p>
               </div>
               <button type="button" aria-label="关闭 Vibe 本地库" onClick={() => setShowLibrary(false)} className="rounded p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">×</button>
             </div>

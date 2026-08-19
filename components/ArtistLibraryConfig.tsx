@@ -70,10 +70,7 @@ export const ArtistLibraryConfig: React.FC<ArtistLibraryConfigProps> = ({
 
     return (
         <Sheet open={show} onClose={onClose} title="实装测试配置">
-            <div className="pref-row" style={{ marginBottom: 8 }}>
-                <p className="hint" style={{ margin: 0, fontSize: 12.5, color: 'var(--mute)' }}>
-                    配置生成实装图时的参数。系统会自动添加 <code>artist:NAME</code>。
-                </p>
+            <div className="pref-row" style={{ marginBottom: 8, justifyContent: 'flex-end' }}>
                 <Tag tone="mist">编辑模式</Tag>
             </div>
 
