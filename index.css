@@ -519,6 +519,11 @@ a.icon-btn svg,
   color: var(--mute);
 }
 
+.auth-or {
+  text-align: center;
+  margin: 12px 0 4px;
+}
+
 .field .hint.is-error { color: var(--danger); }
 
 .input, .select, .textarea {

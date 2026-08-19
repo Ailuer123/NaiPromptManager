@@ -51,19 +51,21 @@ export function Landing({
           <div className="auth-card glass-strong">
             <h2 className="auth-title">登录</h2>
             {discordEnabled ? (
-              <Button
-                type="button"
-                variant="primary"
-                size="lg"
-                block
-                onClick={() => { window.location.href = '/api/auth/discord'; }}
-              >
-                使用 Discord 登录
-              </Button>
+              <>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="lg"
+                  block
+                  onClick={() => { window.location.href = '/api/auth/discord'; }}
+                >
+                  使用 Discord 登录
+                </Button>
+                <p className="hint auth-or">或使用账号密码</p>
+              </>
             ) : (
-              <p className="hint">Discord 登录尚未配置，请使用账号密码。</p>
+              <p className="hint">Discord 登录尚未配置</p>
             )}
-            <p className="hint" style={{ textAlign: 'center', margin: '12px 0 4px' }}>或使用账号密码</p>
             <form className="auth-form" onSubmit={onSubmit} autoComplete="on">
               <Field label="用户名">
                 <Input

@@ -51,8 +51,19 @@ describe('Landing', () => {
   it('提供 Discord 登录和账号密码', () => {
     render(<Host />);
     expect(screen.getByRole('button', { name: '使用 Discord 登录' })).toBeInTheDocument();
+    expect(screen.getByText('或使用账号密码')).toBeInTheDocument();
     expect(screen.getByLabelText('用户名')).toBeInTheDocument();
     expect(screen.queryByLabelText('游客口令')).toBeNull();
+    expect(screen.queryByText('Discord 登录尚未配置')).toBeNull();
+  });
+
+  it('未配置 Discord 时只提示一次，不再重复账号密码', () => {
+    render(<Host discordEnabled={false} />);
+    expect(screen.queryByRole('button', { name: '使用 Discord 登录' })).toBeNull();
+    expect(screen.getByText('Discord 登录尚未配置')).toBeInTheDocument();
+    expect(screen.queryByText('或使用账号密码')).toBeNull();
+    expect(screen.queryByText(/请使用账号密码/)).toBeNull();
+    expect(screen.getByLabelText('用户名')).toBeInTheDocument();
   });
 
   it('提交走传入的 onSubmit，不自造登录', async () => {

@@ -500,6 +500,11 @@ export default {
             version: APP_VERSION,
             repo: APP_REPO_URL,
             discordEnabled: isDiscordConfigured(env as DiscordEnv),
+            discord: {
+              clientId: Boolean(env.DISCORD_CLIENT_ID),
+              clientSecret: Boolean(env.DISCORD_CLIENT_SECRET),
+              guildId: Boolean(env.DISCORD_GUILD_ID),
+            },
           });
       }
 
