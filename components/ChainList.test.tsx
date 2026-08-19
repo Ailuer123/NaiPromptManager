@@ -84,9 +84,11 @@ describe('ChainList', () => {
     expect(root).not.toHaveAttribute('role', 'button');
     expect(screen.queryByRole('button', { name: '雾霾玫瑰' })).toBeNull();
 
-    const link = screen.getByRole('link', { name: /雾霾玫瑰/ });
+    const link = screen.getByRole('link', { name: '雾霾玫瑰' });
     expect(link).toHaveClass('card-link');
-    expect(within(link).getByLabelText('私人串')).toBeInTheDocument();
+    const privateFlag = within(root as HTMLElement).getByLabelText('私人串');
+    expect(privateFlag).toHaveClass('board-flag', 'is-private');
+    expect(privateFlag.closest('.card-media')).toBeTruthy();
 
     rerender(
       <ChainList
@@ -105,10 +107,13 @@ describe('ChainList', () => {
       />,
     );
 
-    const charLink = screen.getByRole('link', { name: /角色乙/ });
+    const charLink = screen.getByRole('link', { name: '角色乙' });
     expect(charLink).toHaveClass('card-link');
-    expect(within(charLink).getByLabelText('游客不可见')).toBeInTheDocument();
-    expect(container.querySelector('article.card')).not.toHaveAttribute('role', 'button');
+    const charCard = container.querySelector('article.card');
+    const hiddenFlag = within(charCard as HTMLElement).getByLabelText('游客不可见');
+    expect(hiddenFlag).toHaveClass('board-flag', 'is-hidden');
+    expect(hiddenFlag.closest('.card-media')).toBeTruthy();
+    expect(charCard).not.toHaveAttribute('role', 'button');
   });
 
   it('更多按钮打开复制/删除，不进入编辑', async () => {

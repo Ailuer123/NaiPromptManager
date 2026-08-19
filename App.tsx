@@ -229,9 +229,10 @@ const App = () => {
 
   const handleForkChain = async (chain: PromptChain, targetType?: ChainType) => {
     const finalType = targetType || chain.type;
-    const name = chain.name + (chain.id === 'playground' ? '' : ' (Fork)');
+    const fromPlayground = chain.id === 'playground';
+    const name = fromPlayground ? chain.name : `${chain.name} (Fork)`;
     await db.createChain(name, chain.description, chain, finalType); // Persist type on fork
-    notify('Fork 成功！已保存到您的列表');
+    notify(fromPlayground ? '已保存为串' : 'Fork 成功！已保存到您的列表');
     await refreshData(true);
     // Return to appropriate list based on type
     navigate(pathFor(finalType === 'character' ? 'characters' : 'list'));

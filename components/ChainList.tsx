@@ -372,22 +372,26 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onTypeChange
                 key={chain.id}
                 mediaRatio="sq"
                 onOpen={() => onSelect(chain.id)}
-                media={chain.previewImage ? (
-                  <img className="board-cover" src={chain.previewImage} alt={chain.name} />
-                ) : (
-                  <div className="board-ph">{type === 'character' ? ICONS.person : ICONS.image}</div>
-                )}
-                title={(
+                media={(
                   <>
-                    {chain.isPrivate && (
-                      <span className="card-lock" title="私人串：仅 VIP 本人和管理员可见" aria-label="私人串"><IconLock /></span>
+                    {chain.previewImage ? (
+                      <img className="board-cover" src={chain.previewImage} alt={chain.name} />
+                    ) : (
+                      <div className="board-ph">{type === 'character' ? ICONS.person : ICONS.image}</div>
                     )}
-                    {chain.guestHidden && (
-                      <span className="card-lock" title="游客不可见" aria-label="游客不可见"><IconEyeOff /></span>
+                    {(chain.isPrivate || chain.guestHidden) && (
+                      <div className="board-flags">
+                        {chain.isPrivate && (
+                          <span className="board-flag is-private" title="私人串：仅 VIP 本人和管理员可见" aria-label="私人串"><IconLock /></span>
+                        )}
+                        {chain.guestHidden && (
+                          <span className="board-flag is-hidden" title="游客不可见" aria-label="游客不可见"><IconEyeOff /></span>
+                        )}
+                      </div>
                     )}
-                    {chain.name}
                   </>
                 )}
+                title={chain.name}
                 extra={(
                   <div className="card-extra" data-card-action>
                     <IconButton

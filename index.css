@@ -2778,6 +2778,44 @@ svg.w-8 {
 
 .card-lock { margin-right: 4px; }
 
+.board-flags {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  display: flex;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.board-flag {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(20, 16, 12, 0.28);
+}
+
+.board-flag svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.board-flag.is-private {
+  background: #e59a12;
+}
+
+.board-flag.is-hidden {
+  background: #e04b6b;
+}
+
 .card-extra {
   display: flex;
   align-items: center;

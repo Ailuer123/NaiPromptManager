@@ -13,6 +13,7 @@ import { extractMetadata, parseNovelAIMetadata, IMPORT_SESSION_KEY } from '../se
 import { ChainEditorParams } from './ChainEditorParams';
 import { ChainEditorPreview } from './ChainEditorPreview';
 import { ChainEditorVibePanel } from './ChainEditorVibePanel';
+import { SaveAsChainSheet } from './SaveAsChainSheet';
 import { vibeLibrary } from '../services/vibeLibrary';
 import { resolveVibeMounts, validateVibeMounts } from '../services/vibeResolve';
 
@@ -482,13 +483,15 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         notify('实验室已重置');
     };
 
-    const confirmFork = (targetType: 'style' | 'character') => {
+    const confirmFork = (targetType: 'style' | 'character', name?: string, description?: string) => {
         const updatedModules = modules.map(m => ({
             ...m,
             isActive: activeModules[m.id] ?? true
         }));
         onFork({
             ...chain,
+            name: name ?? chain.name,
+            description: description ?? chain.description,
             tags: chainTags,
             basePrompt,
             negativePrompt,
@@ -1134,8 +1137,13 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                 </div>
                 </Portal>
             )}
-            {/* Fork Type Selection Modal */}
-            {showForkModal && (
+            {chain.id === 'playground' ? (
+                <SaveAsChainSheet
+                    open={showForkModal}
+                    onClose={() => setShowForkModal(false)}
+                    onConfirm={(name, description, type) => confirmFork(type, name, description)}
+                />
+            ) : showForkModal && (
                 <Portal>
                 <div className="modal-layer" onClick={() => setShowForkModal(false)}>
                     <div className="modal-card bg-white dark:bg-gray-800 rounded-xl w-full max-w-sm shadow-2xl border border-gray-200 dark:border-gray-700 p-6" onClick={(e) => e.stopPropagation()}>
