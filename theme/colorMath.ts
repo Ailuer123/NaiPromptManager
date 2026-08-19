@@ -26,10 +26,23 @@ export function lighten(hex: string, t: number): string {
   return mix(hex, '#ffffff', t);
 }
 
-/** Naive sRGB luminance — used only to pick the darkest swatch, not for WCAG contrast. */
+/** Naive sRGB luminance — used only to sort swatches, not for WCAG contrast. */
 export function luminance(hex: string): number {
   const { r, g, b } = hexToRgb(hex);
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+}
+
+/** Channel spread. Higher = more identity color, lower = gray. */
+export function chroma(hex: string): number {
+  const { r, g, b } = hexToRgb(hex);
+  return Math.max(r, g, b) - Math.min(r, g, b);
+}
+
+/** Identity hue: most chromatic swatch that is not near-white paper. */
+export function pickHueAccent(colors: readonly string[]): string {
+  const pool = colors.filter((c) => luminance(c) < 0.85);
+  const src = pool.length > 0 ? pool : colors;
+  return [...src].sort((a, b) => chroma(b) - chroma(a))[0];
 }
 
 export function relLuminance(hex: string): number {

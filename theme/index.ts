@@ -7,6 +7,7 @@ export {
   type ThemePalette,
 } from './palettes';
 export {
+  chroma,
   contrastRatio,
   darken,
   ensureContrast,
@@ -15,6 +16,7 @@ export {
   lighten,
   luminance,
   mix,
+  pickHueAccent,
   relLuminance,
   rgbToHex,
   rgba,

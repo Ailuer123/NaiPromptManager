@@ -213,30 +213,30 @@ a.icon-btn svg,
    容器：.surface 半透明描边，无 blur
    浮层：.glass 真毛玻璃，仅 topbar / bottom-nav / sheet / fab / toast */
 .surface {
-  background: color-mix(in srgb, var(--cream) 82%, transparent);
+  background: color-mix(in srgb, var(--c4) 26%, var(--cream));
   border: 1px solid var(--line);
   box-shadow: none;
 }
 
 .surface-strong {
-  background: var(--cream);
+  background: color-mix(in srgb, var(--c3) 16%, var(--cream));
   border: 1px solid var(--line);
   box-shadow: none;
 }
 
 .glass {
-  background: var(--glass);
+  background: color-mix(in srgb, var(--c4) 22%, var(--glass));
   backdrop-filter: blur(var(--blur)) saturate(1.25);
   -webkit-backdrop-filter: blur(var(--blur)) saturate(1.25);
-  border: 1px solid color-mix(in srgb, var(--cream) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--cream));
   box-shadow: var(--sh-1), var(--sh-inset);
 }
 
 .glass-strong {
-  background: var(--glass-strong);
+  background: color-mix(in srgb, var(--c3) 14%, var(--glass-strong));
   backdrop-filter: blur(calc(var(--blur) + 6px)) saturate(1.3);
   -webkit-backdrop-filter: blur(calc(var(--blur) + 6px)) saturate(1.3);
-  border: 1px solid color-mix(in srgb, var(--cream) 65%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--cream));
   box-shadow: var(--sh-2), var(--sh-inset);
 }
 
@@ -321,26 +321,26 @@ a.icon-btn svg,
 
 .btn-secondary {
   color: var(--ink);
-  background: color-mix(in srgb, var(--cream) 86%, transparent);
-  border-color: color-mix(in srgb, var(--ink) 12%, transparent);
+  background: color-mix(in srgb, var(--c3) 24%, var(--cream));
+  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
   box-shadow: none;
 }
 
 .btn-secondary:hover {
-  background: color-mix(in srgb, var(--cream) 88%, transparent);
+  background: color-mix(in srgb, var(--c3) 34%, var(--cream));
 }
 
 .btn-ghost {
   color: var(--mute);
   background: transparent;
-  border-color: color-mix(in srgb, var(--ink) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 20%, transparent);
   box-shadow: none;
 }
 
 .btn-ghost:hover {
-  color: var(--ink);
-  background: color-mix(in srgb, var(--cream) 35%, transparent);
-  border-color: color-mix(in srgb, var(--ink) 26%, transparent);
+  color: var(--accent-2);
+  background: color-mix(in srgb, var(--c2) 18%, var(--cream));
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
 }
 
 .btn-danger {
@@ -393,8 +393,8 @@ a.icon-btn svg,
   font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
   color: var(--ink-soft);
-  background: color-mix(in srgb, var(--ink) 5%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
+  background: color-mix(in srgb, var(--c2) 14%, var(--cream));
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
   box-shadow: none;
   transition:
     background var(--dur) var(--ease),
@@ -407,17 +407,17 @@ a.icon-btn svg,
 }
 
 .chip:hover {
-  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  background: color-mix(in srgb, var(--c2) 24%, var(--cream));
   color: var(--ink);
-  border-color: color-mix(in srgb, var(--ink) 16%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .chip:active { transform: scale(0.97); }
 
 .chip.active {
   color: var(--accent-2);
-  background: var(--accent-wash);
-  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+  background: color-mix(in srgb, var(--c2) 38%, var(--cream));
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
   box-shadow: none;
   font-weight: var(--fw-semibold);
 }
@@ -441,8 +441,8 @@ a.icon-btn svg,
   display: inline-flex;
   padding: 3px;
   border-radius: var(--r-pill);
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+  background: color-mix(in srgb, var(--c4) 28%, var(--cream));
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
   gap: 2px;
   flex-shrink: 0;
   box-shadow: none;
@@ -469,7 +469,7 @@ a.icon-btn svg,
 }
 
 .seg button.active {
-  background: var(--accent-wash);
+  background: color-mix(in srgb, var(--c2) 36%, var(--cream));
   color: var(--accent-2);
   font-weight: var(--fw-semibold);
   box-shadow: none;
@@ -514,8 +514,8 @@ a.icon-btn svg,
   min-height: 44px;
   padding: 10px 14px;
   border-radius: var(--r-sm);
-  border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
-  background: color-mix(in srgb, var(--cream) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--c4) 22%, var(--cream));
   box-shadow: none;
   color: var(--ink);
   backdrop-filter: none;
@@ -538,8 +538,8 @@ a.icon-btn svg,
 .input:focus, .select:focus, .textarea:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: none;
-  background: color-mix(in srgb, var(--cream) 85%, transparent);
+  box-shadow: 0 0 0 3px var(--accent-wash);
+  background: color-mix(in srgb, var(--c3) 18%, var(--cream));
 }
 
 .textarea {
@@ -590,7 +590,7 @@ a.icon-btn svg,
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease), transform 0.14s var(--ease);
 }
 
-.icon-btn:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--ink); }
+.icon-btn:hover { background: color-mix(in srgb, var(--c2) 20%, var(--cream)); color: var(--accent-2); }
 .icon-btn:active { transform: scale(0.97); }
 .icon-btn.sm { width: 28px; height: 28px; }
 .icon-btn.sm svg { width: 17px; height: 17px; }
@@ -824,7 +824,7 @@ a.icon-btn svg,
   width: 40px;
   height: 24px;
   border-radius: var(--r-pill);
-  background: color-mix(in srgb, var(--ink) 16%, transparent);
+  background: color-mix(in srgb, var(--c1) 28%, var(--cream));
   transition: background var(--dur) var(--ease);
   flex-shrink: 0;
   box-shadow: none;
@@ -846,7 +846,7 @@ a.icon-btn svg,
 }
 
 .toggle.on {
-  background: var(--accent);
+  background: var(--accent-2);
 }
 
 .toggle.on::after { transform: translateX(16px); }
@@ -873,7 +873,7 @@ a.icon-btn svg,
   width: 44px;
   height: 26px;
   border-radius: var(--r-pill);
-  background: color-mix(in srgb, var(--ink) 14%, transparent);
+  background: color-mix(in srgb, var(--c1) 26%, var(--cream));
   position: relative;
   transition: background 0.2s var(--ease);
   cursor: pointer;
@@ -893,7 +893,7 @@ a.icon-btn svg,
   transition: transform 0.22s var(--ease);
 }
 
-.switch input:checked + i { background: var(--accent); }
+.switch input:checked + i { background: var(--accent-2); }
 .switch input:checked + i::after { transform: translateX(18px); }
 .switch input:focus-visible + i {
   outline: 2px solid var(--accent-2);
@@ -944,7 +944,7 @@ a.icon-btn svg,
   width: 40px;
   height: 4px;
   border-radius: 99px;
-  background: color-mix(in srgb, var(--ink) 18%, transparent);
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
   margin: 4px auto 14px;
   flex-shrink: 0;
 }
@@ -1073,7 +1073,7 @@ a.icon-btn svg,
   overflow: auto;
   padding: 8px;
   border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--ink) 4%, var(--cream));
+  background: color-mix(in srgb, var(--c4) 26%, var(--cream));
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1251,7 +1251,7 @@ a.icon-btn svg,
   content: "";
   position: absolute;
   border-radius: 50%;
-  opacity: 0.55;
+  opacity: 0.78;
   animation: drift 22s var(--ease) infinite alternate;
 }
 
@@ -1275,7 +1275,7 @@ a.icon-btn svg,
 .orb {
   position: absolute;
   border-radius: 50%;
-  opacity: 0.4;
+  opacity: 0.62;
   animation: drift 26s var(--ease) infinite alternate;
 }
 
@@ -1373,9 +1373,9 @@ a.icon-btn svg,
   font-weight: 700;
   font-size: 12.5px;
   letter-spacing: 0.04em;
-  color: var(--accent-2);
-  background: var(--accent-wash);
-  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--btn-fg);
+  background: var(--accent-2);
+  border: 1px solid transparent;
   flex-shrink: 0;
 }
 
@@ -1468,16 +1468,16 @@ a.icon-btn svg,
   }
 
   .nav-item:hover {
-    background: color-mix(in srgb, var(--ink) 6%, transparent);
+    background: color-mix(in srgb, var(--c2) 16%, var(--cream));
     color: var(--ink);
   }
 
   .nav-item.active {
-    background: var(--accent-wash);
+    background: color-mix(in srgb, var(--c2) 32%, var(--cream));
     color: var(--accent-2);
     font-weight: 600;
     box-shadow: none;
-    border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 36%, transparent);
   }
 
   .nav-item.active svg { opacity: 1; }
@@ -1825,8 +1825,8 @@ a.icon-btn svg,
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  background: color-mix(in srgb, var(--c2) 28%, white);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--c2) 42%, var(--cream));
+  color: var(--accent-2);
 }
 
 .lp-mod-icon svg {
@@ -1924,7 +1924,7 @@ a.icon-btn svg,
 }
 
 .theme-picker-btn:hover {
-  background: rgba(255, 255, 255, 0.45);
+  background: color-mix(in srgb, var(--c2) 18%, var(--cream));
 }
 
 .theme-picker-btn .swatches {
@@ -1996,16 +1996,16 @@ a.icon-btn svg,
   text-align: left;
   padding: 12px 12px 10px;
   border-radius: 16px;
-  border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
-  background: color-mix(in srgb, var(--cream) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
+  background: color-mix(in srgb, var(--c4) 22%, var(--cream));
   box-shadow: none;
   transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
   cursor: pointer;
 }
 
 .palette-card:hover {
-  background: color-mix(in srgb, var(--cream) 75%, transparent);
-  border-color: color-mix(in srgb, var(--ink) 16%, transparent);
+  background: color-mix(in srgb, var(--c3) 28%, var(--cream));
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .palette-card.active {
@@ -2379,7 +2379,7 @@ a.icon-btn svg,
 .copy-neg-body {
   padding: 8px 10px;
   border-radius: var(--r-xs);
-  background: color-mix(in srgb, var(--ink) 4%, var(--cream));
+  background: color-mix(in srgb, var(--c4) 22%, var(--cream));
   max-height: 80px;
   overflow-y: auto;
 }
@@ -2511,7 +2511,7 @@ a.icon-btn svg,
   height: 100%;
   position: relative;
   overflow: hidden;
-  background: color-mix(in srgb, var(--ink) 6%, var(--paper-deep));
+  background: color-mix(in srgb, var(--c3) 22%, var(--paper-deep));
 }
 
 .ph-media img {
@@ -2642,7 +2642,7 @@ a.icon-btn svg,
   overflow: hidden;
   position: relative;
   border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--ink) 5%, var(--paper-deep));
+  background: color-mix(in srgb, var(--c3) 20%, var(--paper-deep));
 }
 
 .arsenal-slot span {
@@ -2951,7 +2951,7 @@ a.icon-btn svg,
 .role-admin { background: color-mix(in srgb, var(--danger) 18%, var(--cream)); color: var(--danger); }
 .role-vip { background: color-mix(in srgb, var(--warn) 22%, var(--cream)); color: var(--ink); }
 .role-user { background: color-mix(in srgb, var(--ok) 18%, var(--cream)); color: var(--ok); }
-.role-guest { background: color-mix(in srgb, var(--ink) 8%, var(--cream)); color: var(--mute); }
+.role-guest { background: color-mix(in srgb, var(--c4) 32%, var(--cream)); color: var(--mute); }
 
 .quota-bar,
 .usage-bar {
@@ -2959,7 +2959,7 @@ a.icon-btn svg,
   height: 6px;
   border-radius: 99px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  background: color-mix(in srgb, var(--c1) 22%, var(--cream));
 }
 
 .quota-bar i,
@@ -2982,7 +2982,7 @@ a.icon-btn svg,
   overflow-y: auto;
   padding: 8px 10px;
   border-radius: var(--r-xs);
-  background: color-mix(in srgb, var(--ink) 4%, var(--cream));
+  background: color-mix(in srgb, var(--c4) 24%, var(--cream));
   color: var(--mute);
 }
 
@@ -3069,7 +3069,7 @@ a.icon-btn svg,
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: color-mix(in srgb, var(--ink) 6%, var(--paper-deep));
+  background: color-mix(in srgb, var(--c1) 18%, var(--paper-deep));
   position: relative;
   overflow: hidden;
 }
@@ -3202,7 +3202,7 @@ a.icon-btn svg,
   color: var(--ink);
 }
 
-.hist-menu button:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.hist-menu button:hover { background: color-mix(in srgb, var(--c2) 18%, var(--cream)); }
 .hist-menu button:disabled { color: var(--faint); }
 
 .lab-kicker {

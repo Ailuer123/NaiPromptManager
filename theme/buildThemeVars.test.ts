@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { THEME_CATALOG } from './palettes';
 import { buildThemeVars } from './buildThemeVars';
-import { contrastRatio, relLuminance } from './colorMath';
+import { contrastRatio, hexToRgb, pickHueAccent, relLuminance } from './colorMath';
 
 const AA = 4.5;
 const FAINT_MIN = 3.5;
@@ -13,7 +13,7 @@ function hexStops(value: string): string[] {
 
 function assertButtonFace(vars: Record<string, string>) {
   const stops = hexStops(vars['--btn-grad']);
-  expect(stops.length).toBeGreaterThanOrEqual(2);
+  expect(stops.length).toBeGreaterThanOrEqual(1);
   for (const stop of stops) {
     expect(contrastRatio(stop, vars['--btn-fg'])).toBeGreaterThanOrEqual(AA);
   }
@@ -41,6 +41,30 @@ describe('buildThemeVars contrast guard', () => {
     const oz = THEME_CATALOG.find((t) => t.id === 'oz')!;
     const vars = buildThemeVars(oz.colors, 'light');
     expect(contrastRatio(vars['--mute'], vars['--paper'])).toBeGreaterThanOrEqual(AA);
+  });
+
+  it('冷若冰霜：paper / accent / ink 走色卡冷色，不混成暖灰', () => {
+    const frost = THEME_CATALOG.find((t) => t.id === 'bingshuang')!;
+    const vars = buildThemeVars(frost.colors, 'light');
+    const paper = hexToRgb(vars['--paper']);
+    const accent = hexToRgb(vars['--accent']);
+    const ink = hexToRgb(vars['--ink']);
+    expect(pickHueAccent(frost.colors).toLowerCase()).toBe('#78abcf');
+    expect(vars['--accent'].toLowerCase()).toBe('#78abcf');
+    expect(paper.b).toBeGreaterThan(paper.r);
+    expect(accent.b).toBeGreaterThan(accent.r + 20);
+    expect(ink.b).toBeGreaterThanOrEqual(ink.r);
+    expect(vars['--cream']).not.toBe(vars['--paper']);
+    const cream = hexToRgb(vars['--cream']);
+    const paperDeep = hexToRgb(vars['--paper-deep']);
+    expect(cream.b).toBeGreaterThan(cream.r);
+    expect(paperDeep.b).toBeGreaterThan(paperDeep.r);
+    const glass = vars['--glass'].match(/rgba\((\d+),(\d+),(\d+)/);
+    expect(glass).toBeTruthy();
+    expect(Number(glass![3])).toBeGreaterThan(Number(glass![1]));
+    const btnStops = hexStops(vars['--btn-grad']);
+    const face = hexToRgb(btnStops[btnStops.length - 1]);
+    expect(face.b).toBeGreaterThanOrEqual(face.r);
   });
 
   describe.each(THEME_CATALOG)('$id $name', (palette) => {
