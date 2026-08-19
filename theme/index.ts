@@ -27,8 +27,12 @@ export {
   THEME_ID_STORAGE_KEY,
   THEME_MODE_STORAGE_KEY,
   applyTheme,
+  parsePreference,
   persistMode,
   readStoredTheme,
+  readSystemDark,
   resolveMode,
+  subscribeSystemDark,
+  type ThemePreference,
 } from './applyTheme';
 export { ThemeProvider, useTheme } from './ThemeProvider';

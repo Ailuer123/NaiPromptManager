@@ -4,7 +4,7 @@ import { db } from '../services/dbService';
 import { Inspiration, User, NAIParams } from '../types';
 import { extractMetadata, parseNovelAIMetadata, ParsedNAIData, IMPORT_SESSION_KEY } from '../services/metadataService';
 import { ParamsViewer } from './ParamsViewer';
-import { Button, Card, Empty, Field, IconButton, Input, Sheet, Tag, Textarea } from './ui';
+import { Button, Card, Empty, Field, IconButton, IconClose, Input, Portal, Sheet, Tag, Textarea } from './ui';
 import { cx } from './ui/cx';
 
 interface InspirationGalleryProps {
@@ -91,6 +91,7 @@ const InspirationLightbox: React.FC<InspirationLightboxProps> = ({
     }, [lightboxImg.item.prompt, lightboxImg.item.params]);
 
     return (
+      <Portal>
         <div className="lbx" onClick={() => setLightboxImg(null)}>
             <div className="lbx-split glass-strong" onClick={e => e.stopPropagation()}>
                 <div className="lbx-media">
@@ -106,7 +107,7 @@ const InspirationLightbox: React.FC<InspirationLightboxProps> = ({
                                 <p className="hint">by {lightboxImg.item.username || 'Unknown'}</p>
                             </div>
                         )}
-                        <IconButton label="关闭" onClick={() => setLightboxImg(null)}>✕</IconButton>
+                        <IconButton label="关闭" onClick={() => setLightboxImg(null)}><IconClose /></IconButton>
                     </div>
 
                     <div className="page-scroll" style={{ flex: 1, marginBottom: 12 }}>
@@ -158,6 +159,7 @@ const InspirationLightbox: React.FC<InspirationLightboxProps> = ({
                 </div>
             </div>
         </div>
+      </Portal>
     );
 };
 

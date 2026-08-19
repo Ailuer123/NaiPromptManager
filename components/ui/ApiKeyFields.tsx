@@ -40,6 +40,7 @@ export function ApiKeyFields({ className }: { className?: string }) {
   return (
     <div className={className}>
       <Seg<'session' | 'local'>
+        fill
         value={scope}
         onChange={setScope}
         aria-label="API Key 存储范围"

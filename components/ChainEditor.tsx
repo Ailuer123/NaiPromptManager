@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { PromptChain, PromptModule, User, CharacterParams, NAIParams } from '../types';
-import { compilePrompt, compilePromptSegments, type CompiledPromptSegments } from '../services/promptUtils';
+import { compilePrompt } from '../services/promptUtils';
 import { generateImage } from '../services/naiService';
 import { getApiKey } from '../services/apiKeyStore';
-import { ApiKeyBadge, ApiKeySheet, Tag, useApiKeyConfigured, type CompiledSegId } from './ui';
+import { ApiKeySheet, Button, Chip, Collapse, Field, IconButton, IconClose, IconPalette, IconUser, Input, Portal, Select, Tag, Textarea, Toggle, useApiKeyConfigured } from './ui';
+import { cx } from './ui/cx';
 import { localHistory } from '../services/localHistory';
 import { compressPngToJpg } from '../services/imageCompression';
 import { api } from '../services/api';
@@ -14,8 +15,6 @@ import { ChainEditorPreview } from './ChainEditorPreview';
 import { ChainEditorVibePanel } from './ChainEditorVibePanel';
 import { vibeLibrary } from '../services/vibeLibrary';
 import { resolveVibeMounts, validateVibeMounts } from '../services/vibeRules';
-
-const EMPTY_SEGMENTS: CompiledPromptSegments = { base: '', pre: '', subject: '', post: '' };
 
 interface ChainEditorProps {
     chain: PromptChain;
@@ -109,14 +108,13 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
     const keyConfigured = useApiKeyConfigured();
     const [keySheetOpen, setKeySheetOpen] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
-    const [hoveredSeg, setHoveredSeg] = useState<CompiledSegId | null>(null);
     const [hoveredModuleId, setHoveredModuleId] = useState<string | null>(null);
-    const [segments, setSegments] = useState<CompiledPromptSegments>(EMPTY_SEGMENTS);
     const [isUploading, setIsUploading] = useState(false);
     const [generatedImage, setGeneratedImage] = useState<string | null>(null);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const importInputRef = useRef<HTMLInputElement>(null);
     const [showForkModal, setShowForkModal] = useState(false);
+    const [charsOpen, setCharsOpen] = useState(() => (chain.params?.characters?.length ?? 0) > 0);
 
     // --- Initialization ---
 
@@ -164,6 +162,8 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         }
         setActiveModules(initialModules);
         setHasChanges(false);
+        setGeneratedImage(null);
+        setErrorMsg(null);
 
     }, [chain.id, chain.basePrompt, chain.negativePrompt, chain.modules, chain.params, chain.name, chain.description, chain.variableValues, chain.guestHidden, chain.isPrivate]);
     // Dependency note: we still list props to satisfy linter, but the guard 'if (prevChainId === chain.id) return' blocks re-execution.
@@ -197,7 +197,6 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         } as any;
 
         setFinalPrompt(compilePrompt(tempChain, subjectPrompt));
-        setSegments(compilePromptSegments(tempChain, subjectPrompt));
     }, [basePrompt, modules, activeModules, subjectPrompt]);
 
     const getDownloadFilename = () => {
@@ -221,14 +220,14 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         markChange();
     };
 
-    const addModule = () => {
+    const addModule = (position: 'pre' | 'post' = 'post') => {
         if (!canEdit) return;
         const newModule: PromptModule = {
             id: crypto.randomUUID(),
             name: '新模块',
             content: '',
             isActive: true,
-            position: 'post'
+            position
         };
         setModules([...modules, newModule]);
         setActiveModules(prev => ({ ...prev, [newModule.id]: true }));
@@ -248,6 +247,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         if (!canEdit) return;
         const newChar: CharacterParams = { id: crypto.randomUUID(), prompt: '', x: 0.5, y: 0.5 };
         setParams({ ...params, characters: [...(params.characters || []), newChar] });
+        setCharsOpen(true);
         markChange();
     };
 
@@ -468,7 +468,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
     const handleReset = () => {
         if (!confirm('确定要重置实验室吗？所有当前输入都将丢失。')) return;
         setChainName('生图实验室');
-        setChainDesc('临时生图实验，点击 Fork 可保存到库');
+        setChainDesc('临时生图实验，点击保存为串可写入列表');
         setBasePrompt('');
         setNegativePrompt(''); // keep empty for playground
         // Reset params to defaults
@@ -611,396 +611,250 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
     };
 
     return (
-        <div className="flex-1 flex flex-col h-full bg-gray-50 dark:bg-gray-900 transition-colors">
-            {/* Top Bar */}
-            <header className="flex-shrink-0 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-3 flex items-center justify-between gap-2 md:gap-4 overflow-x-hidden">
-                <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0">
-                    <button onClick={onBack} className="text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white transition-colors flex-shrink-0">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7 7-7m-7 7h18" /></svg>
-                    </button>
-
-                    {isEditingInfo && isOwner ? (
-                        <div className="flex flex-col md:flex-row gap-2 flex-1 w-full max-w-2xl min-w-0">
-                            <input type="text" value={chainName} onChange={e => { setChainName(e.target.value); markChange() }} className="w-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-gray-900 dark:text-white text-sm focus:border-indigo-500 outline-none font-bold min-w-0" placeholder="名称" />
-                            <div className="flex gap-2">
-                                <input type="text" value={chainDesc} onChange={e => { setChainDesc(e.target.value); markChange() }} className="flex-1 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-gray-700 dark:text-gray-300 text-sm focus:border-indigo-500 outline-none min-w-0" placeholder="描述" />
-                                <button
-                                    onClick={() => setIsEditingInfo(false)}
-                                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-sm font-medium flex-shrink-0 whitespace-nowrap"
-                                >
-                                    确定
-                                </button>
-                            </div>
-                            {/* Tags Input */}
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {chainTags.map((tag, idx) => (
-                                <span key={idx} className="px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 flex items-center gap-1">
-                                  {tag}
-                                  {canEdit && (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setChainTags(chainTags.filter((_, i) => i !== idx));
-                                        markChange();
-                                      }}
-                                      className="text-indigo-500 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
-                                    >
-                                      ✕
-                                    </button>
-                                  )}
-                                </span>
-                              ))}
-                              {canEdit && (
-                                <input
-                                  type="text"
-                                  placeholder="添加标签..."
-                                  className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded-full bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                                      const newTag = e.currentTarget.value.trim();
-                                      if (!chainTags.includes(newTag)) {
-                                        setChainTags([...chainTags, newTag]);
-                                        markChange();
-                                      }
-                                      e.currentTarget.value = '';
-                                    }
-                                  }}
-                                  onBlur={(e) => {
-                                    if (e.target.value.trim()) {
-                                      const newTag = e.target.value.trim();
-                                      if (!chainTags.includes(newTag)) {
-                                        setChainTags([...chainTags, newTag]);
-                                        markChange();
-                                      }
-                                      e.target.value = '';
-                                    }
-                                  }}
-                                />
-                              )}
-                            </div>
-
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-2 group cursor-pointer min-w-0 flex-1" onClick={() => isOwner && setIsEditingInfo(true)}>
-                            <div className="flex flex-col md:flex-row md:items-baseline gap-0.5 md:gap-2 overflow-hidden min-w-0">
-                                {chain.id === 'playground' ? (
-                                    <Tag tone="sage">实验室 · 对比试跑</Tag>
-                                ) : (
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border flex-shrink-0 ${isCharacterMode ? 'bg-pink-100 text-pink-700 border-pink-200' : 'bg-blue-100 text-blue-700 border-blue-200'}`}>
-                                    {isCharacterMode ? '角色串' : '画师串'}
-                                </span>
-                                )}
-                                <h1 className="text-base md:text-lg font-bold text-gray-900 dark:text-white truncate min-w-0">
-                                    {chainName}
-                                    {hasChanges && <i className="dirty-dot" title="未保存" />}
-                                </h1>
-                                <span className="text-xs text-gray-500 dark:text-gray-500 truncate block max-w-full md:max-w-xs min-w-0">{chainDesc}</span>
-                            </div>
-                            {isOwner && <svg className="w-4 h-4 text-gray-400 opacity-50 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>}
-                        </div>
-                    )}
+        <div className="editor-shell">
+            <header className="page-head">
+                <div className="page-head-title">
+                    <IconButton label="返回看板" onClick={onBack}>
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
+                    </IconButton>
+                    <h1>
+                        {chain.id === 'playground' ? '生图实验室' : '串编辑器'}
+                        {hasChanges && <i className="dirty-dot" title="未保存" />}
+                    </h1>
                 </div>
-
-                <div className="flex items-center gap-1 md:gap-4 flex-shrink-0 ml-auto">
-                    <div className="flex gap-1">
-                        <button
-                            onClick={() => copyPromptToClipboard(false)}
-                            className="p-1.5 rounded text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-900/30"
-                            title="复制完整正面提示词"
-                        >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
-                        </button>
-                        <button
-                            onClick={() => copyPromptToClipboard(true)}
-                            className="p-1.5 rounded text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30"
-                            title="复制负面提示词"
-                        >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
-                        </button>
-                    </div>
-
-                    <ApiKeyBadge configured={keyConfigured} onClick={() => setKeySheetOpen(true)} />
-
-                    {/* Fork / Save to Library Button */}
-                    {((!isOwner && !isGuest) || chain.id === 'playground') && (
-                        <button
-                            onClick={handleFork}
-                            className="px-2 md:px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded text-sm font-medium shadow-lg shadow-green-500/20 flex items-center"
-                        >
-                            <svg className="w-4 h-4 md:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
-                            <span className="hidden md:inline">{chain.id === 'playground' ? '保存到库' : 'Fork'}</span>
-                        </button>
-                    )}
-
-                    {/* Reset Button (Playground Only) */}
+                <div className="head-actions">
                     {chain.id === 'playground' && (
-                        <button
-                            onClick={handleReset}
-                            className="px-2 md:px-4 py-1.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 rounded text-sm font-medium transition-colors"
-                            title="重置"
-                        >
-                            <svg className="w-5 h-5 bg-transparent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                        </button>
+                        <Button size="sm" onClick={handleFork}>保存为串</Button>
                     )}
+                    {!isOwner && !isGuest && chain.id !== 'playground' && (
+                        <Button variant="secondary" size="sm" onClick={handleFork}>Fork</Button>
+                    )}
+                    {chain.id === 'playground' && (
+                        <Button variant="ghost" size="sm" onClick={handleReset}>重置</Button>
+                    )}
+                    {isOwner && chain.id !== 'playground' && (
+                        <Button size="sm" disabled={!hasChanges} onClick={handleSaveAll}>保存</Button>
+                    )}
+                    <Button variant="ghost" size="sm" onClick={() => setKeySheetOpen(true)}>
+                        {keyConfigured ? 'API Key' : '设置 API Key'}
+                    </Button>
                 </div>
             </header>
 
-            {/* Editor Content */}
-            <div className={`flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden ${isOwner ? 'pb-20 lg:pb-0' : ''}`}>
-                {/* Left Panel - Editor */}
-                <div className="w-full lg:w-1/2 flex flex-col border-b lg:border-b-0 lg:border-r border-gray-200 dark:border-gray-800 lg:overflow-y-auto bg-white dark:bg-gray-900 relative order-2 lg:order-1 lg:flex-1 shrink-0">
-                    <div className="p-4 md:p-6 space-y-6 max-w-3xl mx-auto w-full pb-32 md:pb-24">
-                        {!isOwner && (
-                            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 p-3 rounded mb-4 text-sm text-yellow-700 dark:text-yellow-400">
-                                {isGuest
-                                    ? '您正在以游客身份浏览。您可以自由修改 Prompt 进行测试，但无法保存更改。'
-                                    : '您正在查看他人的串，无法直接修改。您可以调整参数进行测试，或点击右上角“Fork”保存到您的列表。'
-                                }
-                            </div>
-                        )}
+            {!isOwner && (
+                <p className="hint">
+                    {isGuest
+                        ? '游客可以改 Prompt 试跑，但不能保存。'
+                        : '正在查看他人的串。可试跑，或 Fork 到自己的列表。'}
+                </p>
+            )}
 
-                        {/* Base Prompt */}
-                        <section>
-                            <div className="flex justify-between items-end mb-2">
-                                <label className="block text-sm font-semibold text-indigo-500 dark:text-indigo-400">
-                                    基础画风（画师串）
-                                </label>
-
-                                {/* Import & Load Preset Buttons */}
-                                <div className="flex items-center gap-2">
-                                    {loadedPreset && (
-                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 border border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800/50 flex items-center gap-1 font-mono">
-                                            <span className="opacity-50">PRESET:</span> {loadedPreset}
-                                        </span>
-                                    )}
-
-                                    {canEdit && (
-                                        <div className="flex gap-2">
-                                            <button
-                                                onClick={() => setShowImportPreset(true)}
-                                                className="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-1 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900/50 flex items-center gap-1"
-                                            >
-                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
-                                                引用预设
-                                            </button>
-
-                                            <input
-                                                type="file"
-                                                ref={importInputRef}
-                                                className="hidden"
-                                                accept="image/png"
-                                                onChange={handleImportImage}
-                                            />
-                                            <button
-                                                onClick={() => importInputRef.current?.click()}
-                                                className="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-1 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900/50 flex items-center gap-1"
-                                            >
-                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                                                导入图片配置
-                                            </button>
+            <div className="editor-layout">
+                <div className="stack">
+                    {chain.id !== 'playground' && (
+                    <Collapse title="基础信息" defaultOpen={Math.abs((chain.updatedAt ?? 0) - (chain.createdAt ?? 0)) < 2000}>
+                        <div className="stack">
+                            <Field label="名称">
+                                <Input value={chainName} disabled={!canEdit} onChange={(e) => { setChainName(e.target.value); markChange(); }} />
+                            </Field>
+                            <Field label="描述">
+                                <Input value={chainDesc} disabled={!canEdit} onChange={(e) => { setChainDesc(e.target.value); markChange(); }} />
+                            </Field>
+                            <Field label="类型">
+                                <Select disabled value={isCharacterMode ? 'character' : 'style'}>
+                                    <option value="style">画师串</option>
+                                    <option value="character">角色串</option>
+                                </Select>
+                            </Field>
+                            {isOwner && chain.id !== 'playground' && (
+                                <Field label="可见性">
+                                    <div className="vis-rows surface">
+                                        <div className="vis-row">
+                                            <span>游客不可见</span>
+                                            <Toggle pressed={guestHidden} onPressedChange={(on) => { setGuestHidden(on); markChange(); }} aria-label="游客不可见" />
                                         </div>
-                                    )}
-                                </div>
-                            </div>
-                            <textarea
-                                disabled={!canEdit}
-                                className={`w-full border rounded-lg p-3 outline-none font-mono text-sm leading-relaxed min-h-[100px] ${!canEdit ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 cursor-not-allowed' : 'bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-200 focus:ring-1 focus:ring-indigo-500'}`}
-                                value={basePrompt}
-                                placeholder="画风标签，如 masterpiece、best quality、画师tag等，英文逗号分隔"
-                                onChange={(e) => { setBasePrompt(e.target.value); markChange() }}
-                            />
-                        </section>
-
-                        {/* Modules */}
-                        <section>
-                            <div className="flex justify-between items-center mb-3">
-                                <label className="block text-sm font-semibold text-indigo-500 dark:text-indigo-400">
-                                    2. 模块
-                                </label>
+                                        {(currentUser.role === 'vip' || currentUser.role === 'admin') && (
+                                            <div className="vis-row">
+                                                <span>私人串</span>
+                                                <Toggle pressed={isPrivate} onPressedChange={(on) => { setIsPrivate(on); markChange(); }} aria-label="私人串" />
+                                            </div>
+                                        )}
+                                    </div>
+                                </Field>
+                            )}
+                            <div className="chips">
+                                {chainTags.map((tag, idx) => (
+                                    <span key={tag + idx} className="chip chip-soft">
+                                        {tag}
+                                        {canEdit && (
+                                            <button type="button" className="icon-btn sm" aria-label={`移除标签 ${tag}`} onClick={() => { setChainTags(chainTags.filter((_, i) => i !== idx)); markChange(); }}>
+                                                <IconClose className="icon-xs" />
+                                            </button>
+                                        )}
+                                    </span>
+                                ))}
                                 {canEdit && (
-                                    <button onClick={addModule} className="text-xs flex items-center bg-gray-200 dark:bg-gray-800 px-2 py-1 rounded hover:bg-gray-300 dark:hover:bg-gray-700">
-                                        添加
-                                    </button>
+                                    <input
+                                        className="chip"
+                                        placeholder="+ 标签"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                                                const next = e.currentTarget.value.trim();
+                                                if (!chainTags.includes(next)) {
+                                                    setChainTags([...chainTags, next]);
+                                                    markChange();
+                                                }
+                                                e.currentTarget.value = '';
+                                            }
+                                        }}
+                                    />
                                 )}
                             </div>
-                            <div className="space-y-3">
-                                {(modules || []).map((mod, idx) => (
-                                    <div
-                                        key={mod.id}
-                                        data-pos={mod.position === 'pre' ? 'pre' : 'post'}
-                                        onMouseEnter={() => {
-                                            setHoveredSeg(mod.position === 'pre' ? 'pre' : 'post');
-                                            setHoveredModuleId(mod.id);
-                                        }}
-                                        onMouseLeave={() => {
-                                            setHoveredSeg(null);
-                                            setHoveredModuleId(null);
-                                        }}
-                                        className={`module-item bg-gray-50 dark:bg-gray-800/40 border rounded-lg p-3 ${activeModules[mod.id] !== false ? 'border-gray-300 dark:border-gray-700' : 'border-gray-200 dark:border-gray-800 opacity-60'} ${hoveredSeg === (mod.position === 'pre' ? 'pre' : 'post') && (!hoveredModuleId || hoveredModuleId === mod.id) ? 'lit' : ''}`}
-                                    >
-                                        <div className="flex flex-wrap gap-2 mb-2 items-center">
-                                            <input type="checkbox" checked={activeModules[mod.id] !== false} onChange={() => toggleModuleActive(mod.id)} className="rounded bg-gray-100 dark:bg-gray-900 text-indigo-600 focus:ring-0 flex-shrink-0" />
-                                            <input
-                                                type="text"
-                                                disabled={!canEdit}
-                                                className="bg-transparent border-b border-transparent focus:border-indigo-500 text-indigo-600 dark:text-indigo-300 font-medium text-sm outline-none px-1 flex-1 min-w-[120px]"
-                                                value={mod.name}
-                                                onChange={(e) => handleModuleChange(idx, 'name', e.target.value)}
+                        </div>
+                    </Collapse>
+                    )}
+
+                    <Collapse
+                        title="提示词结构"
+                        defaultOpen
+                        extra={canEdit ? (
+                            <>
+                                {loadedPreset && <Tag tone="sage">PRESET {loadedPreset}</Tag>}
+                                <Button variant="ghost" size="sm" onClick={() => setShowImportPreset(true)}>引用预设</Button>
+                                <Button variant="ghost" size="sm" onClick={() => importInputRef.current?.click()}>导入图片</Button>
+                                <Button variant="ghost" size="sm" onClick={() => addModule('post')}>+ 模块</Button>
+                                <input type="file" ref={importInputRef} className="hidden" accept="image/png" onChange={handleImportImage} />
+                            </>
+                        ) : null}
+                    >
+                        <div className="stack">
+                            <Field label="基础画风">
+                                <Textarea
+                                    disabled={!canEdit}
+                                    value={basePrompt}
+                                    placeholder="画风标签，英文逗号分隔"
+                                    onChange={(e) => { setBasePrompt(e.target.value); markChange(); }}
+                                />
+                            </Field>
+                            <Field label="主体">
+                                <Input
+                                    value={subjectPrompt}
+                                    placeholder="1girl, looking at viewer"
+                                    onChange={(e) => { setSubjectPrompt(e.target.value); markChange(); }}
+                                />
+                            </Field>
+                            <p className="param-group-label">前置模块</p>
+                            <div className="module-list">
+                                {(modules || []).filter((m) => m.position === 'pre').map((mod) => {
+                                    const idx = modules.findIndex((m) => m.id === mod.id);
+                                    return (
+                                        <div key={mod.id} className={`module-item${hoveredModuleId === mod.id ? ' lit' : ''}${activeModules[mod.id] === false ? ' opacity-60' : ''}`}>
+                                            <Toggle
+                                                pressed={activeModules[mod.id] !== false}
+                                                onPressedChange={() => toggleModuleActive(mod.id)}
+                                                aria-label={`启用 ${mod.name}`}
                                             />
-                                            {/* Mobile optimized: Group Input and Position Toggles together on right */}
-                                            <div className="flex items-center gap-1.5 ml-auto flex-shrink-0">
-                                                <input
-                                                    type="text"
-                                                    placeholder="分组"
-                                                    disabled={!canEdit}
-                                                    className="bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-indigo-500 text-gray-500 dark:text-gray-400 text-xs outline-none px-1 w-12 text-center"
-                                                    value={mod.group || ''}
-                                                    onChange={(e) => handleModuleChange(idx, 'group', e.target.value)}
-                                                    title="分组 (Group)"
-                                                />
-                                                <div className="flex bg-gray-200 dark:bg-gray-700 rounded p-0.5">
-                                                    <button
-                                                        onClick={() => handleModuleChange(idx, 'position', 'pre')}
-                                                        disabled={!canEdit}
-                                                        className={`px-2 py-0.5 text-[10px] rounded transition-colors ${mod.position === 'pre' ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-indigo-300 font-bold' : 'text-gray-500'}`}
-                                                    >
-                                                        前
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleModuleChange(idx, 'position', 'post')}
-                                                        disabled={!canEdit}
-                                                        className={`px-2 py-0.5 text-[10px] rounded transition-colors ${(mod.position === 'post' || !mod.position) ? 'bg-white dark:bg-gray-600 shadow text-indigo-600 dark:text-indigo-300 font-bold' : 'text-gray-500'}`}
-                                                    >
-                                                        后
-                                                    </button>
+                                            <div className="mod-body">
+                                                <div className="mod-title">
+                                                    <Input className="mod-name" disabled={!canEdit} value={mod.name} onChange={(e) => handleModuleChange(idx, 'name', e.target.value)} />
+                                                    <Input className="mod-group" disabled={!canEdit} placeholder="分组" value={mod.group || ''} onChange={(e) => handleModuleChange(idx, 'group', e.target.value)} />
                                                 </div>
-                                                {canEdit && (
-                                                    <button onClick={() => removeModule(idx)} className="text-gray-400 hover:text-red-500 ml-1">
-                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                                                    </button>
-                                                )}
+                                                <Textarea disabled={!canEdit} value={mod.content} onChange={(e) => handleModuleChange(idx, 'content', e.target.value)} />
+                                            </div>
+                                            <div className="mod-actions">
+                                                <Chip active onClick={() => handleModuleChange(idx, 'position', 'post')} disabled={!canEdit}>转后置</Chip>
+                                                {canEdit && <IconButton size="sm" label="删除模块" onClick={() => removeModule(idx)}><IconClose /></IconButton>}
                                             </div>
                                         </div>
-                                        <textarea
-                                            disabled={!canEdit}
-                                            className={`w-full rounded p-2 outline-none font-mono text-xs h-16 resize-none ${!canEdit ? 'bg-transparent text-gray-500' : 'bg-white dark:bg-gray-900/50 border border-gray-300 dark:border-gray-700/30 text-gray-800 dark:text-gray-300 focus:ring-1 focus:ring-indigo-500/50'}`}
-                                            value={mod.content}
-                                            onChange={(e) => handleModuleChange(idx, 'content', e.target.value)}
-                                        />
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
-                        </section>
+                            <p className="param-group-label">后置模块</p>
+                            <div className="module-list">
+                                {(modules || []).filter((m) => m.position !== 'pre').map((mod) => {
+                                    const idx = modules.findIndex((m) => m.id === mod.id);
+                                    return (
+                                        <div key={mod.id} className={`module-item${hoveredModuleId === mod.id ? ' lit' : ''}${activeModules[mod.id] === false ? ' opacity-60' : ''}`}>
+                                            <Toggle
+                                                pressed={activeModules[mod.id] !== false}
+                                                onPressedChange={() => toggleModuleActive(mod.id)}
+                                                aria-label={`启用 ${mod.name}`}
+                                            />
+                                            <div className="mod-body">
+                                                <div className="mod-title">
+                                                    <Input className="mod-name" disabled={!canEdit} value={mod.name} onChange={(e) => handleModuleChange(idx, 'name', e.target.value)} />
+                                                    <Input className="mod-group" disabled={!canEdit} placeholder="分组" value={mod.group || ''} onChange={(e) => handleModuleChange(idx, 'group', e.target.value)} />
+                                                </div>
+                                                <Textarea disabled={!canEdit} value={mod.content} onChange={(e) => handleModuleChange(idx, 'content', e.target.value)} />
+                                            </div>
+                                            <div className="mod-actions">
+                                                <Chip active={false} onClick={() => handleModuleChange(idx, 'position', 'pre')} disabled={!canEdit}>转前置</Chip>
+                                                {canEdit && <IconButton size="sm" label="删除模块" onClick={() => removeModule(idx)}><IconClose /></IconButton>}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <Field label="全局负面提示词">
+                                <Textarea
+                                    disabled={!canEdit}
+                                    value={negativePrompt}
+                                    onChange={(e) => { setNegativePrompt(e.target.value); markChange(); }}
+                                />
+                            </Field>
+                        </div>
+                    </Collapse>
 
-                        {/* Character Management (New V4.5) */}
-                        <section className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-4 border border-indigo-100 dark:border-indigo-800/50">
-                            <div className="flex justify-between items-center mb-3">
-                                <label className="block text-sm font-semibold text-indigo-600 dark:text-indigo-300">3. 多角色管理</label>
-                                <div className="flex gap-2 items-center">
-                                    {/* AI Choice Toggle */}
-                                    <label className="flex items-center gap-1.5 cursor-pointer bg-white dark:bg-gray-700 px-2 py-1 rounded shadow-sm hover:bg-gray-100 dark:hover:bg-gray-600 border border-transparent dark:border-gray-600">
-                                        <input
-                                            type="checkbox"
-                                            disabled={!canEdit}
-                                            checked={!(params.useCoords ?? true)}
-                                            onChange={(e) => {
-                                                setParams({ ...params, useCoords: !e.target.checked });
-                                                markChange();
-                                            }}
-                                            className="w-3.5 h-3.5 text-indigo-600 rounded focus:ring-0"
-                                        />
-                                        <span className="text-xs font-medium text-gray-700 dark:text-gray-200">AI 自动构图</span>
-                                    </label>
-
-                                    {canEdit && (
-                                        <button onClick={addCharacter} className="text-xs flex items-center bg-white dark:bg-gray-700 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-600 shadow-sm text-indigo-600 dark:text-indigo-200">
-                                            + 添加角色
-                                        </button>
-                                    )}
+                    <Collapse
+                        title="多角色 / 坐标"
+                        open={charsOpen}
+                        onOpenChange={setCharsOpen}
+                        extra={(
+                            <>
+                                <Chip
+                                    active={params.useCoords ?? true}
+                                    disabled={!canEdit}
+                                    onClick={() => { setParams({ ...params, useCoords: !(params.useCoords ?? true) }); markChange(); }}
+                                >
+                                    手动坐标
+                                </Chip>
+                                {canEdit && <Button variant="ghost" size="sm" onClick={addCharacter}>+ 角色</Button>}
+                            </>
+                        )}
+                    >
+                        <div className="stack">
+                            {(params.characters || []).length === 0 && (
+                                <p className="hint">暂无角色定义，提示词将作为整体处理。</p>
+                            )}
+                            {(params.characters || []).map((char, idx) => (
+                                <div key={char.id} className="module-item char-item">
+                                    <div className="mod-body stack" style={{ gap: 8 }}>
+                                        <Field label={`角色 ${idx + 1} 提示词`}>
+                                            <Textarea disabled={!canEdit} value={char.prompt} onChange={(e) => updateCharacter(idx, { prompt: e.target.value })} />
+                                        </Field>
+                                        <Field label="专属负面">
+                                            <Textarea disabled={!canEdit} value={char.negativePrompt || ''} onChange={(e) => updateCharacter(idx, { negativePrompt: e.target.value })} />
+                                        </Field>
+                                        <div className={cx('param-grid', 'coord-fields', !(params.useCoords ?? true) && 'is-off')}>
+                                            <Field label="Center X">
+                                                <Input type="number" step="0.1" min={0} max={1} disabled={!canEdit || !(params.useCoords ?? true)} value={char.x} onChange={(e) => updateCharacter(idx, { x: parseFloat(e.target.value) })} />
+                                            </Field>
+                                            <Field label="Center Y">
+                                                <Input type="number" step="0.1" min={0} max={1} disabled={!canEdit || !(params.useCoords ?? true)} value={char.y} onChange={(e) => updateCharacter(idx, { y: parseFloat(e.target.value) })} />
+                                            </Field>
+                                        </div>
+                                    </div>
+                                    {canEdit && <IconButton size="sm" label="删除角色" onClick={() => removeCharacter(idx)}><IconClose /></IconButton>}
                                 </div>
-                            </div>
+                            ))}
+                        </div>
+                    </Collapse>
 
-                            <div className="space-y-3">
-                                {(params.characters || []).length === 0 && (
-                                    <div className="text-xs text-gray-400 text-center py-2">暂无角色定义，提示词将作为整体处理。</div>
-                                )}
-                                {(params.characters || []).map((char, idx) => (
-                                    <div key={char.id} className="bg-white dark:bg-gray-800 rounded p-3 border border-gray-200 dark:border-gray-700 shadow-sm relative">
-                                        <div className="flex gap-3 items-start">
-                                            <div className="flex-1 space-y-2">
-                                                <div>
-                                                    <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">人物描述</label>
-                                                    <textarea
-                                                        disabled={!canEdit}
-                                                        value={char.prompt}
-                                                        onChange={(e) => updateCharacter(idx, { prompt: e.target.value })}
-                                                        className="w-full text-xs p-2 border border-gray-300 dark:border-gray-600 rounded bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 h-16 resize-none focus:ring-1 focus:ring-indigo-500 outline-none"
-                                                        placeholder="人物描述"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">专属负面</label>
-                                                    <textarea
-                                                        disabled={!canEdit}
-                                                        value={char.negativePrompt || ''}
-                                                        onChange={(e) => updateCharacter(idx, { negativePrompt: e.target.value })}
-                                                        className="w-full text-xs p-2 border border-gray-300 dark:border-gray-600 rounded bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 h-10 resize-none focus:ring-1 focus:ring-indigo-500 outline-none placeholder-gray-400"
-                                                        placeholder="选填"
-                                                    />
-                                                </div>
-                                            </div>
-                                            <div className="w-24 flex flex-col gap-2">
-                                                <div className={!(params.useCoords ?? true) ? "opacity-40 pointer-events-none grayscale" : ""}>
-                                                    <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">Center X</label>
-                                                    <input
-                                                        type="number" step="0.1" min="0" max="1"
-                                                        disabled={!canEdit}
-                                                        value={char.x}
-                                                        onChange={(e) => updateCharacter(idx, { x: parseFloat(e.target.value) })}
-                                                        className="w-full text-xs p-1 border rounded bg-gray-50 dark:bg-gray-900 dark:border-gray-600 dark:text-white"
-                                                    />
-                                                </div>
-                                                <div className={!(params.useCoords ?? true) ? "opacity-40 pointer-events-none grayscale" : ""}>
-                                                    <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">Center Y</label>
-                                                    <input
-                                                        type="number" step="0.1" min="0" max="1"
-                                                        disabled={!canEdit}
-                                                        value={char.y}
-                                                        onChange={(e) => updateCharacter(idx, { y: parseFloat(e.target.value) })}
-                                                        className="w-full text-xs p-1 border rounded bg-gray-50 dark:bg-gray-900 dark:border-gray-600 dark:text-white"
-                                                    />
-                                                </div>
-                                            </div>
-                                            {canEdit && (
-                                                <button onClick={() => removeCharacter(idx)} className="text-gray-400 hover:text-red-500 mt-6">
-                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </section>
+                    <Collapse title="生成参数" defaultOpen>
+                        <ChainEditorParams params={params} setParams={setParams} canEdit={canEdit} markChange={markChange} />
+                    </Collapse>
 
-                        {/* Negative Prompt */}
-                        <section className="mb-8">
-                            <label className="block text-sm font-semibold text-red-500 dark:text-red-400 mb-2">全局负面提示词</label>
-                            <textarea
-                                disabled={!canEdit}
-                                className={`w-full border rounded-lg p-3 outline-none font-mono text-sm leading-relaxed min-h-[80px] ${!canEdit ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 cursor-not-allowed' : 'bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-red-900 dark:text-red-100/80 focus:ring-1 focus:ring-red-500/50'}`}
-                                value={negativePrompt}
-                                onChange={(e) => { setNegativePrompt(e.target.value); markChange() }}
-                            />
-                        </section>
-
-                        {/* Params Component */}
-                        <ChainEditorParams
-                            params={params}
-                            setParams={setParams}
-                            canEdit={canEdit}
-                            markChange={markChange}
-                        />
+                    <Collapse title="参考风格" defaultOpen>
                         <ChainEditorVibePanel
                             params={params}
                             setParams={setParams}
@@ -1008,59 +862,10 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                             markChange={markChange}
                             notify={notify}
                         />
-                    </div>
-
-                    {/* Save Footer: fixed on mobile so always visible, sticky in left panel on lg */}
-                    {isOwner && chain.id !== 'playground' && (
-                        <div className="fixed bottom-0 left-0 right-0 lg:sticky lg:left-auto lg:right-auto lg:bottom-0 z-[999] w-full p-2 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-800 flex justify-between items-center shadow-lg transition-transform duration-300">
-                            <div className="text-xs text-gray-500 ml-2">
-                                {hasChanges ? <span className="text-yellow-600 dark:text-yellow-500 font-medium">⚠️ 未保存</span> : <span className="text-green-600 dark:text-green-500">✅ 已保存</span>}
-                            </div>
-                            <div className="flex flex-1 min-w-0 items-center flex-wrap justify-end gap-1 md:gap-3">
-                                {/* 游客不可见 Checkbox */}
-                                <button
-                                    type="button"
-                                    role="switch"
-                                    aria-checked={guestHidden}
-                                    onClick={() => { setGuestHidden(!guestHidden); markChange(); }}
-                                    className={`min-h-10 px-2 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-colors ${guestHidden ? 'text-red-600 bg-red-50 dark:text-red-300 dark:bg-red-900/20' : 'text-gray-600 bg-gray-100 dark:text-gray-300 dark:bg-gray-800'}`}
-                                    title="开启后游客无法查看此预设"
-                                >
-                                    <span className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${guestHidden ? 'bg-red-500' : 'bg-gray-300 dark:bg-gray-600'}`}><span className={`inline-block h-4 w-4 mt-0.5 rounded-full bg-white shadow transition-transform ${guestHidden ? 'translate-x-4' : 'translate-x-0.5'}`} /></span>
-                                    <span>游客不可见</span>
-                                </button>
-                                {(currentUser.role === 'vip' || currentUser.role === 'admin') && (
-                                    <button
-                                        type="button"
-                                        role="switch"
-                                        aria-checked={isPrivate}
-                                        onClick={() => { setIsPrivate(!isPrivate); markChange(); }}
-                                        className={`min-h-10 px-2 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-colors ${isPrivate ? 'text-indigo-700 bg-indigo-50 dark:text-indigo-300 dark:bg-indigo-900/30' : 'text-gray-600 bg-gray-100 dark:text-gray-300 dark:bg-gray-800'}`}
-                                        title="开启后仅您本人（VIP）或管理员可以查看"
-                                    >
-                                        <span className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${isPrivate ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'}`}><span className={`inline-block h-4 w-4 mt-0.5 rounded-full bg-white shadow transition-transform ${isPrivate ? 'translate-x-4' : 'translate-x-0.5'}`} /></span>
-                                        <span>🔒 私人串</span>
-                                    </button>
-                                )}
-                                <button
-                                    onClick={handleSaveAll}
-                                    disabled={!hasChanges}
-                                    className={`px-6 py-1.5 rounded-md font-bold text-sm shadow-md transition-all transform active:scale-95 ${hasChanges
-                                        ? 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 text-white shadow-indigo-500/30'
-                                        : 'bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
-                                        }`}
-                                >
-                                    保存
-                                </button>
-                            </div>
-                        </div>
-                    )}
+                    </Collapse>
                 </div>
 
-                {/* Right Panel - Preview (Testing) - Extracted Component */}
                 <ChainEditorPreview
-                    subjectPrompt={subjectPrompt}
-                    setSubjectPrompt={(s) => { setSubjectPrompt(s); markChange(); }}
                     isGenerating={isGenerating}
                     handleGenerate={handleGenerate}
                     errorMsg={errorMsg}
@@ -1073,31 +878,25 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                     handleUploadCover={handleUploadCover}
                     getDownloadFilename={getDownloadFilename}
                     hideCoverActions={chain.id === 'playground'}
-                    segments={segments}
-                    negativePrompt={negativePrompt}
-                    highlightSeg={hoveredSeg}
-                    onHighlightSeg={(seg) => {
-                        setHoveredSeg(seg);
-                        setHoveredModuleId(null);
-                    }}
-                    onCopySegment={(label) => notify(`已复制${label}`)}
                 />
             </div>
 
-            {/* Lightbox Modal */}
             {lightboxImg && (
-                <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setLightboxImg(null)}>
-                    <img src={lightboxImg} className="max-w-full max-h-full object-contain rounded shadow-2xl" onClick={e => e.stopPropagation()} />
-                    <button className="absolute top-4 right-4 text-white hover:text-gray-300" onClick={() => setLightboxImg(null)}>
-                        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
-                </div>
+                <Portal>
+                    <div className="lbx" onClick={() => setLightboxImg(null)}>
+                        <img src={lightboxImg} alt="" onClick={e => e.stopPropagation()} />
+                        <button type="button" className="lbx-close icon-btn" aria-label="关闭" onClick={() => setLightboxImg(null)}>
+                            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                        </button>
+                    </div>
+                </Portal>
             )}
 
             {/* Import Preset List Modal */}
             {showImportPreset && !importCandidate && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-4xl md:max-w-5xl lg:max-w-6xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[85vh]">
+                <Portal>
+                <div className="modal-layer" onClick={() => setShowImportPreset(false)}>
+                    <div className="modal-card bg-white dark:bg-gray-800 rounded-xl w-full max-w-4xl md:max-w-5xl lg:max-w-6xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
                         <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center flex-shrink-0 gap-4 flex-wrap">
                             <h3 className="font-bold dark:text-white flex-shrink-0">引用预设</h3>
 
@@ -1139,7 +938,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                                 </button>
                             </div>
 
-                            <button onClick={() => setShowImportPreset(false)} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">✕</button>
+                            <button onClick={() => setShowImportPreset(false)} className="icon-btn" aria-label="关闭"><IconClose /></button>
                         </div>
                         <div className="flex-1 overflow-y-auto p-4 min-h-0">
                             {/* Extract all unique tags from the filtered list for this modal */}
@@ -1241,12 +1040,14 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                         </div>
                     </div>
                 </div>
+                </Portal>
             )}
 
             {/* Import Detail/Confirm Modal */}
             {importCandidate && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-sm shadow-2xl border border-gray-200 dark:border-gray-700">
+                <Portal>
+                <div className="modal-layer" onClick={() => setImportCandidate(null)}>
+                    <div className="modal-card bg-white dark:bg-gray-800 rounded-xl w-full max-w-sm shadow-2xl border border-gray-200 dark:border-gray-700" onClick={(e) => e.stopPropagation()}>
                         <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 rounded-t-xl">
                             <h3 className="font-bold text-gray-900 dark:text-white truncate" title={importCandidate.name}>
                                 导入: {importCandidate.name}
@@ -1331,25 +1132,27 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                         </div>
                     </div>
                 </div>
+                </Portal>
             )}
             {/* Fork Type Selection Modal */}
             {showForkModal && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-sm shadow-2xl border border-gray-200 dark:border-gray-700 p-6">
+                <Portal>
+                <div className="modal-layer" onClick={() => setShowForkModal(false)}>
+                    <div className="modal-card bg-white dark:bg-gray-800 rounded-xl w-full max-w-sm shadow-2xl border border-gray-200 dark:border-gray-700 p-6" onClick={(e) => e.stopPropagation()}>
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 text-center">选择保存类型</h3>
                         <div className="grid grid-cols-2 gap-4">
                             <button
                                 onClick={() => confirmFork('style')}
-                                className="flex flex-col items-center justify-center p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors gap-2"
+                                className="fork-type flex flex-col items-center justify-center p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors gap-2"
                             >
-                                <span className="text-2xl">🎨</span>
+                                <IconPalette className="w-8 h-8" />
                                 <span className="font-bold text-blue-700 dark:text-blue-300">画师/风格串</span>
                             </button>
                             <button
                                 onClick={() => confirmFork('character')}
-                                className="flex flex-col items-center justify-center p-4 rounded-lg bg-pink-50 dark:bg-pink-900/20 border-2 border-pink-200 dark:border-pink-800 hover:bg-pink-100 dark:hover:bg-pink-900/40 transition-colors gap-2"
+                                className="fork-type flex flex-col items-center justify-center p-4 rounded-lg bg-pink-50 dark:bg-pink-900/20 border-2 border-pink-200 dark:border-pink-800 hover:bg-pink-100 dark:hover:bg-pink-900/40 transition-colors gap-2"
                             >
-                                <span className="text-2xl">👤</span>
+                                <IconUser className="w-8 h-8" />
                                 <span className="font-bold text-pink-700 dark:text-pink-300">角色串</span>
                             </button>
                         </div>
@@ -1361,6 +1164,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                         </button>
                     </div>
                 </div>
+                </Portal>
             )}
             <ApiKeySheet open={keySheetOpen} onClose={() => setKeySheetOpen(false)} />
         </div>

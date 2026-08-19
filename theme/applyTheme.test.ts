@@ -5,6 +5,7 @@ import {
   applyTheme,
   persistMode,
   readStoredTheme,
+  resolveMode,
 } from './applyTheme';
 
 function createMemoryStorage(): Storage {
@@ -42,42 +43,54 @@ describe('applyTheme storage contract', () => {
     delete g.localStorage;
   });
 
-  it('缺省为 oz + light', () => {
-    expect(readStoredTheme()).toEqual({ themeId: 'oz', mode: 'light' });
+  it('缺省为 bingshuang + light', () => {
+    expect(readStoredTheme()).toEqual({ themeId: 'bingshuang', preference: 'light', mode: 'light' });
   });
 
   it('readStoredTheme 读取 nai_atelier_theme + nai_theme', () => {
     g.localStorage!.setItem(THEME_ID_STORAGE_KEY, 'peach');
     g.localStorage!.setItem(THEME_MODE_STORAGE_KEY, 'dark');
-    expect(readStoredTheme()).toEqual({ themeId: 'peach', mode: 'dark' });
+    expect(readStoredTheme()).toEqual({ themeId: 'peach', preference: 'dark', mode: 'dark' });
   });
 
-  it('未知色板 id 回落到 oz', () => {
+  it('未知色板 id 回落到冷若冰霜', () => {
     g.localStorage!.setItem(THEME_ID_STORAGE_KEY, 'not-a-palette');
-    expect(readStoredTheme().themeId).toBe('oz');
+    expect(readStoredTheme().themeId).toBe('bingshuang');
+    g.localStorage!.setItem(THEME_ID_STORAGE_KEY, 'oz');
+    expect(readStoredTheme().themeId).toBe('bingshuang');
   });
 
-  it("nai_theme 只有 'dark' 才是暗色", () => {
+  it("nai_theme 只有 dark / system 才不是 light", () => {
     g.localStorage!.setItem(THEME_MODE_STORAGE_KEY, 'DARK');
+    expect(readStoredTheme().preference).toBe('light');
     expect(readStoredTheme().mode).toBe('light');
     g.localStorage!.setItem(THEME_MODE_STORAGE_KEY, 'light');
-    expect(readStoredTheme().mode).toBe('light');
+    expect(readStoredTheme().preference).toBe('light');
     g.localStorage!.removeItem(THEME_MODE_STORAGE_KEY);
-    expect(readStoredTheme().mode).toBe('light');
+    expect(readStoredTheme().preference).toBe('light');
     g.localStorage!.setItem(THEME_MODE_STORAGE_KEY, 'dark');
-    expect(readStoredTheme().mode).toBe('dark');
+    expect(readStoredTheme()).toMatchObject({ preference: 'dark', mode: 'dark' });
+    g.localStorage!.setItem(THEME_MODE_STORAGE_KEY, 'system');
+    expect(readStoredTheme().preference).toBe('system');
+  });
+
+  it('system 偏好按 matchMedia 解析', () => {
+    expect(resolveMode('system', true)).toBe('dark');
+    expect(resolveMode('system', false)).toBe('light');
+    expect(resolveMode('dark', false)).toBe('dark');
+    expect(resolveMode('light', true)).toBe('light');
   });
 
   it('applyTheme 只写 nai_atelier_theme，不改 nai_theme', () => {
     g.localStorage!.setItem(THEME_MODE_STORAGE_KEY, 'dark');
-    applyTheme('nainai', 'light');
-    expect(g.localStorage!.getItem(THEME_ID_STORAGE_KEY)).toBe('nainai');
+    applyTheme('emerald', 'light');
+    expect(g.localStorage!.getItem(THEME_ID_STORAGE_KEY)).toBe('emerald');
     expect(g.localStorage!.getItem(THEME_MODE_STORAGE_KEY)).toBe('dark');
   });
 
-  it('applyTheme 未知 id 写入 oz，且不创建 nai_theme', () => {
+  it('applyTheme 未知 id 写入冷若冰霜，且不创建 nai_theme', () => {
     applyTheme('not-a-palette', 'dark');
-    expect(g.localStorage!.getItem(THEME_ID_STORAGE_KEY)).toBe('oz');
+    expect(g.localStorage!.getItem(THEME_ID_STORAGE_KEY)).toBe('bingshuang');
     expect(g.localStorage!.getItem(THEME_MODE_STORAGE_KEY)).toBeNull();
   });
 
@@ -88,5 +101,8 @@ describe('applyTheme storage contract', () => {
     expect(g.localStorage!.getItem(THEME_ID_STORAGE_KEY)).toBe('peach');
     persistMode('light');
     expect(g.localStorage!.getItem(THEME_MODE_STORAGE_KEY)).toBe('light');
+    persistMode('system');
+    expect(g.localStorage!.getItem(THEME_MODE_STORAGE_KEY)).toBe('system');
+    expect(g.localStorage!.getItem(THEME_ID_STORAGE_KEY)).toBe('peach');
   });
 });

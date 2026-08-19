@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
 import { Artist, User, UsageStats, AccessLog, DailyStat } from '../types';
 import { ROLE_POLICY } from '../config/rolePolicy';
-import { ApiKeyFields, Button, Empty, Field, IconButton, Input, Panel, Seg, Switch } from './ui';
+import { ApiKeyFields, Button, Empty, Field, IconButton, IconCrown, IconEye, IconEyeOff, Input, Panel, Seg, Switch } from './ui';
 import { cx } from './ui/cx';
 
 type ArtistWeightSyntax = 'numeric' | 'bracket';
@@ -17,14 +17,10 @@ interface ExtendedArtistAdminProps {
     usersData: User[] | null;
     onRefreshArtists: () => Promise<void>;
     onRefreshUsers: () => Promise<void>;
-    isDark?: boolean;
-    toggleTheme?: () => void;
-    onLogout?: () => void;
 }
 
 export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
     currentUser, artistsData, usersData, onRefreshArtists, onRefreshUsers,
-    isDark, toggleTheme, onLogout
 }) => {
   // 使用统一的角色策略
   const isAdmin = currentUser.role === 'admin';
@@ -100,17 +96,9 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
   const [clearingLogs, setClearingLogs] = useState(false);
 
   // Storage calculation helpers - 使用统一的角色策略
-  const getMaxStorage = () => {
-    if (ROLE_POLICY.isUnlimitedStorage(currentUser.role)) return Infinity;
-    return currentUser?.maxStorage || ROLE_POLICY.getDefaultQuota(currentUser.role) || 300 * 1024 * 1024;
-  };
   const formatBytes = (bytes?: number) => {
       if (!bytes) return '0 MB';
       return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  };
-  const getUsagePercentage = () => {
-      if (!currentUser || !currentUser.storageUsage) return 0;
-      return Math.min(100, (currentUser.storageUsage / getMaxStorage()) * 100);
   };
 
   const handleRefresh = async () => {
@@ -456,7 +444,7 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                     <div className="pref-row">
                         <Input value={newUsername} onChange={e => setNewUsername(e.target.value)} placeholder="用户名" />
                         <Input value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="密码" />
-                        <Button onClick={handleCreateUser}>创建</Button>
+                        <Button className="pref-action" onClick={handleCreateUser}>创建</Button>
                     </div>
                 </Panel>
 
@@ -475,10 +463,11 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                                 label={showGuestCode ? "隐藏口令" : "显示口令"}
                                 onClick={() => setShowGuestCode(!showGuestCode)}
                             >
-                                {showGuestCode ? '🙈' : '👁'}
+                                {showGuestCode ? <IconEyeOff /> : <IconEye />}
                             </IconButton>
                         </div>
                         <Button
+                            className="pref-action"
                             onClick={handleUpdateGuestCode}
                             disabled={isUpdatingGuest}
                         >
@@ -506,7 +495,7 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                                 <tr key={u.id} className={u.role === 'vip' ? 'vip-row' : undefined}>
                                     <td>
                                         <span className={u.role === 'vip' ? 'vip-username' : undefined}>{u.username}</span>
-                                        {u.role === 'vip' && <span className="vip-crown" title="VIP">👑</span>}
+                                        {u.role === 'vip' && <span className="vip-crown" title="VIP"><IconCrown /></span>}
                                     </td>
                                     <td>
                                         <select
@@ -675,82 +664,62 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
         )}
 
         {activeTab === 'profile' && (
-            <div className="settings-stack">
-                <Panel title="API Key">
-                    <ApiKeyFields />
-                </Panel>
+            <div className="settings-stack wide">
+                <div className="settings-pair">
+                    {currentUser.role !== 'guest' && (
+                        <Panel title="修改密码">
+                            <Field label="新密码">
+                                <Input type="password" value={myNewPassword} onChange={e => setMyNewPassword(e.target.value)} placeholder="新密码" />
+                            </Field>
+                            <div className="sheet-foot">
+                                <Button onClick={handleChangePassword}>更新密码</Button>
+                            </div>
+                        </Panel>
+                    )}
+                    <Panel title="API Key">
+                        <ApiKeyFields />
+                    </Panel>
+                </div>
 
-                {currentUser.role !== 'guest' && (
-                    <Panel title="修改密码">
-                        <Field label="新密码">
-                            <Input type="password" value={myNewPassword} onChange={e => setMyNewPassword(e.target.value)} placeholder="新密码" />
+                <div className="settings-pair">
+                    <Panel title="图片压缩">
+                        <div className="pref-row">
+                            <div>自动 JPG 保存</div>
+                            <Switch
+                                checked={autoJpg}
+                                onCheckedChange={handleAutoJpgChange}
+                                aria-label="自动 JPG 保存"
+                            />
+                        </div>
+                        <Field label={`JPG 质量 ${jpgQuality.toFixed(2)}`}>
+                            <input
+                                type="range"
+                                className="range"
+                                min="0.1"
+                                max="1"
+                                step="0.01"
+                                value={jpgQuality}
+                                onChange={e => handleQualityChange(parseFloat(e.target.value))}
+                            />
                         </Field>
-                        <div className="sheet-foot">
-                            <Button onClick={handleChangePassword}>更新密码</Button>
+                        <div className="pref-row hint">
+                            <span>更小（0.10）</span>
+                            <span>更清晰（1.00）</span>
                         </div>
                     </Panel>
-                )}
-
-                <Panel title="图片压缩">
-                    <div className="pref-row">
-                        <div>自动 JPG 保存</div>
-                        <Switch
-                            checked={autoJpg}
-                            onCheckedChange={handleAutoJpgChange}
-                            aria-label="自动 JPG 保存"
+                    <Panel title="军火库">
+                        <Seg
+                            fill
+                            aria-label="权重语法"
+                            value={artistWeightSyntax}
+                            onChange={handleArtistWeightSyntaxChange}
+                            options={[
+                                { value: 'numeric', label: '数字权重' },
+                                { value: 'bracket', label: '括号权重' },
+                            ]}
                         />
-                    </div>
-                    <Field label={`JPG 质量 ${jpgQuality.toFixed(2)}`}>
-                        <input
-                            type="range"
-                            className="range"
-                            min="0.1"
-                            max="1"
-                            step="0.01"
-                            value={jpgQuality}
-                            onChange={e => handleQualityChange(parseFloat(e.target.value))}
-                        />
-                    </Field>
-                    <div className="pref-row hint">
-                        <span>更小（0.10）</span>
-                        <span>更清晰（1.00）</span>
-                    </div>
-                </Panel>
-
-                <Panel title="军火库">
-                    <Seg
-                        aria-label="权重语法"
-                        value={artistWeightSyntax}
-                        onChange={handleArtistWeightSyntaxChange}
-                        options={[
-                            { value: 'numeric', label: '数字权重' },
-                            { value: 'bracket', label: '括号权重' },
-                        ]}
-                    />
-                </Panel>
-
-                <Panel title="应用设置">
-                        {currentUser.role !== 'admin' && currentUser.role !== 'guest' && (
-                            <div className="notice">
-                                <div className="pref-row hint">
-                                    <span>云端存储空间</span>
-                                    <span>{formatBytes(currentUser.storageUsage)} / 300MB</span>
-                                </div>
-                                <div className={cx('usage-bar', getUsagePercentage() > 90 && 'hot')}>
-                                    <i style={{ width: `${getUsagePercentage()}%` }} />
-                                </div>
-                            </div>
-                        )}
-
-                        {toggleTheme && (
-                            <Button variant="secondary" block onClick={toggleTheme}>
-                                {isDark ? '🌙 深色模式' : '☀️ 亮色模式'}
-                            </Button>
-                        )}
-                        {onLogout && (
-                            <Button variant="danger" block onClick={onLogout}>退出登录</Button>
-                        )}
-                </Panel>
+                    </Panel>
+                </div>
             </div>
         )}
       </div>

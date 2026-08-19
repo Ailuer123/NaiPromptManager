@@ -1126,6 +1126,10 @@ export default {
       }
 
       if (path.startsWith('/api/')) return error('Not Found', 404);
+      const looksLikeFile = /\.[a-zA-Z0-9]+$/.test(path);
+      if (!looksLikeFile) {
+        return env.ASSETS.fetch(new Request(new URL('/index.html', request.url), { method: 'GET' }));
+      }
       return env.ASSETS.fetch(request);
 
     } catch (e: any) {

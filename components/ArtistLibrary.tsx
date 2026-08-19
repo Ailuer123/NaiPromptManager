@@ -5,7 +5,7 @@ import { generateImage } from '../services/naiService'; // Import generation ser
 import { api } from '../services/api'; // Import api for updating
 import { db } from '../services/dbService'; // Import DB to fetch config
 import { getApiKey, hasApiKey } from '../services/apiKeyStore';
-import { ApiKeyBadge, ApiKeySheet, Button, Card, Chip, Empty, IconButton, Input, Seg, Sheet, Tag, Textarea, useApiKeyConfigured } from './ui';
+import { ApiKeyBadge, ApiKeySheet, Button, Card, Chip, Empty, IconButton, IconClock, IconClose, IconGear, IconInbox, IconPause, IconPlay, IconRobot, Input, Portal, Seg, Sheet, Tag, Textarea, useApiKeyConfigured } from './ui';
 import { ArtistLibraryConfig } from './ArtistLibraryConfig';
 import { ArtistLibraryCart } from './ArtistLibraryCart';
 import { cx } from './ui/cx';
@@ -105,9 +105,6 @@ const parseNumericWeightedArtistTag = (raw: string): { name: string; step: numbe
 };
 
 interface ArtistLibraryProps {
-    isDark: boolean;
-    toggleTheme: () => void;
-    // New props for caching
     artistsData: Artist[] | null;
     onRefresh: () => Promise<void>;
     notify: (msg: string, type?: 'success' | 'error') => void;
@@ -235,7 +232,7 @@ interface LogEntry {
     type: 'success' | 'error' | 'info';
 }
 
-export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleTheme, artistsData, onRefresh, notify, currentUser }) => {
+export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ artistsData, onRefresh, notify, currentUser }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [cart, setCart] = useState<CartItem[]>([]);
     const [favorites, setFavorites] = useState<Set<string>>(new Set());
@@ -831,7 +828,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                         />
                     )}
                     <ApiKeyBadge configured={keyConfigured} onClick={() => setKeySheetOpen(true)} />
-                    <IconButton label="配置分组" onClick={() => setShowConfig(true)}>⚙️</IconButton>
+                    <IconButton label="配置分组" onClick={() => setShowConfig(true)}><IconGear /></IconButton>
                     {layoutMode === 'grid' && viewMode === 'benchmark' && config.slots.map((slot, index) => (
                         <Chip
                             key={index}
@@ -871,13 +868,13 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                                 label={isPaused ? '恢复队列' : '暂停队列'}
                                 onClick={(e) => { e.stopPropagation(); setIsPaused(!isPaused); }}
                             >
-                                {isPaused ? '▶' : '❚❚'}
+                                {isPaused ? <IconPlay /> : <IconPause />}
                             </IconButton>
                             {isProcessing && !isPaused && <i className="dot-live" />}
                         </div>
                     )}
-                    <Chip onClick={() => setShowImport(true)} title="批量导入">📥</Chip>
-                    <Chip active={showHistory} onClick={() => setShowHistory(!showHistory)} title="历史记录">🕒</Chip>
+                    <Chip onClick={() => setShowImport(true)} title="批量导入" aria-label="批量导入"><IconInbox /></Chip>
+                    <Chip active={showHistory} onClick={() => setShowHistory(!showHistory)} title="历史记录" aria-label="历史记录"><IconClock /></Chip>
                     <Chip
                         active={showFavOnly}
                         onClick={() => setShowFavOnly(!showFavOnly)}
@@ -951,7 +948,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                                                 <LazyImage src={displayImg} alt={artist.name} />
                                             ) : (
                                                 <div className="ph-miss">
-                                                    <span>🤖</span>
+                                                    <IconRobot />
                                                     <span>No Data</span>
                                                 </div>
                                             )}
@@ -1146,6 +1143,7 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
             />
 
             {currentLightboxImage && (
+              <Portal>
                 <div className="lbx" onClick={() => setLightboxState(null)}>
                     <button type="button" className="lbx-nav prev" onClick={(e) => { e.stopPropagation(); navigateLightbox('prev'); }} aria-label="上一张">‹</button>
                     <div onClick={(e) => e.stopPropagation()}>
@@ -1159,8 +1157,9 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ isDark, toggleThem
                         </div>
                     </div>
                     <button type="button" className="lbx-nav next" onClick={(e) => { e.stopPropagation(); navigateLightbox('next'); }} aria-label="下一张">›</button>
-                    <IconButton className="lbx-close" label="关闭" onClick={() => setLightboxState(null)}>✕</IconButton>
+                    <IconButton className="lbx-close" label="关闭" onClick={() => setLightboxState(null)}><IconClose /></IconButton>
                 </div>
+              </Portal>
             )}
 
             <Sheet open={showHistory} onClose={() => setShowHistory(false)} title="复制历史">

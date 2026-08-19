@@ -132,7 +132,7 @@ export const ParamsViewer: React.FC<ParamsViewerProps> = ({
                     <ParamItem label="Seed" value={params.seed ?? 'Random'} />
                     <ParamItem
                         label="Quality Tags"
-                        value={params.qualityToggle ? '✅ On' : '❌ Off'}
+                        value={params.qualityToggle ? 'On' : 'Off'}
                     />
                     <ParamItem
                         label="UC Preset"
@@ -144,7 +144,7 @@ export const ParamsViewer: React.FC<ParamsViewerProps> = ({
                     />
                     <ParamItem
                         label="Variety+"
-                        value={params.variety ? '✅ On' : '❌ Off'}
+                        value={params.variety ? 'On' : 'Off'}
                     />
                     {/* CFG Rescale 仅在非零时展示 */}
                     {(params.cfgRescale !== undefined && params.cfgRescale > 0) && (

@@ -1,6 +1,6 @@
-
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NAIParams } from '../types';
+import { Chip, Field, Input, Select } from './ui';
 
 interface ChainEditorParamsProps {
     params: NAIParams;
@@ -10,13 +10,12 @@ interface ChainEditorParamsProps {
 }
 
 const RESOLUTIONS = {
-    Portrait: { width: 832, height: 1216, label: "竖屏 (832x1216)" },
-    Landscape: { width: 1216, height: 832, label: "横屏 (1216x832)" },
-    Square: { width: 1024, height: 1024, label: "方形 (1024x1024)" },
+    Portrait: { width: 832, height: 1216, label: '832×1216' },
+    Landscape: { width: 1216, height: 832, label: '1216×832' },
+    Square: { width: 1024, height: 1024, label: '1024×1024' },
 };
 
 export const ChainEditorParams: React.FC<ChainEditorParamsProps> = ({ params, setParams, canEdit, markChange }) => {
-
     const handleResolutionChange = (mode: string) => {
         if (!canEdit && mode !== 'Custom') return;
         if (canEdit && mode !== 'Custom') {
@@ -35,170 +34,117 @@ export const ChainEditorParams: React.FC<ChainEditorParamsProps> = ({ params, se
         return 'Custom';
     };
 
-    return (
-        <section className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">参数设置</h3>
+    const mode = getCurrentResolutionMode();
+    useEffect(() => {
+        if (mode === 'Custom' && canEdit) handleResolutionChange('Portrait');
+        // snap leftover custom sizes to a preset
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    const patch = (next: Partial<NAIParams>) => {
+        if (!canEdit) return;
+        setParams({ ...params, ...next });
+        markChange();
+    };
 
+    return (
+        <div className="stack">
             <div className="param-group">
                 <p className="param-group-label">尺寸</p>
-                <div className="flex flex-col gap-1">
-                    <label className="text-xs text-gray-500 dark:text-gray-500 block">图片尺寸</label>
-                    <select
-                        disabled={!canEdit}
-                        className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm outline-none"
-                        value={getCurrentResolutionMode()}
-                        onChange={(e) => handleResolutionChange(e.target.value)}
-                    >
-                        {Object.entries(RESOLUTIONS).map(([key, val]) => (
-                            <option key={key} value={key}>{val.label}</option>
-                        ))}
-                    </select>
+                <div className="chips">
+                    {Object.entries(RESOLUTIONS).map(([key, val]) => (
+                        <Chip key={key} active={mode === key || (mode === 'Custom' && key === 'Portrait')} disabled={!canEdit} onClick={() => handleResolutionChange(key)}>
+                            {val.label}
+                        </Chip>
+                    ))}
                 </div>
             </div>
 
             <div className="param-group">
-                <p className="param-group-label">采样</p>
                 <div className="param-grid">
-                    <div className="flex flex-col gap-1">
-                        <label className="text-xs text-gray-500 dark:text-gray-500 block">采样器</label>
-                        <select
-                            disabled={!canEdit}
-                            className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm outline-none"
-                            value={params.sampler || 'k_euler_ancestral'}
-                            onChange={(e) => {
-                                setParams({ ...params, sampler: e.target.value });
-                                markChange();
-                            }}
-                        >
-                            <option value="k_euler_ancestral">Euler Ancestral</option>
-                            <option value="k_euler">Euler</option>
-                            <option value="k_dpmpp_2s_ancestral">DPM++ 2S Ancestral</option>
-                            <option value="k_dpmpp_2m_sde">DPM++ 2M SDE</option>
-                            <option value="k_dpmpp_2m">DPM++ 2M</option>
-                            <option value="k_dpmpp_sde">DPM++ SDE</option>
-                        </select>
-                    </div>
-
-                    <div className="flex flex-col gap-1">
-                        <label className="text-xs text-gray-500 dark:text-gray-500 block">步数 (Max 28)</label>
-                        <input type="number" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm outline-none"
-                            disabled={!canEdit}
-                            value={params.steps}
-                            max={28}
-                            onChange={(e) => {
-                                const val = Math.min(28, parseInt(e.target.value) || 0);
-                                setParams({ ...params, steps: val });
-                                markChange();
-                            }}
-                        />
-                    </div>
-
-                    <div className="flex flex-col gap-1">
-                        <label className="text-xs text-gray-500 dark:text-gray-500 block">Seed (空=随机)</label>
-                        <input
+                    <Field label="步数">
+                        <Input
                             type="number"
-                            className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm outline-none"
+                            disabled={!canEdit}
+                            max={28}
+                            value={params.steps}
+                            onChange={(e) => patch({ steps: Math.min(28, parseInt(e.target.value) || 0) })}
+                        />
+                    </Field>
+                    <Field label="采样器">
+                        <Select
+                            disabled={!canEdit}
+                            value={params.sampler || 'k_euler_ancestral'}
+                            onChange={(e) => patch({ sampler: e.target.value })}
+                        >
+                            <option value="k_euler_ancestral">k_euler_ancestral</option>
+                            <option value="k_euler">k_euler</option>
+                            <option value="k_dpmpp_2s_ancestral">k_dpmpp_2s_ancestral</option>
+                            <option value="k_dpmpp_2m_sde">k_dpmpp_2m_sde</option>
+                            <option value="k_dpmpp_2m">k_dpmpp_2m</option>
+                            <option value="k_dpmpp_sde">k_dpmpp_sde</option>
+                        </Select>
+                    </Field>
+                    <Field label="种子">
+                        <Input
+                            type="number"
                             disabled={!canEdit}
                             placeholder="随机"
                             value={params.seed === undefined || params.seed === null ? '' : params.seed}
                             onChange={(e) => {
                                 const val = e.target.value;
-                                if (val === '') {
-                                    setParams({ ...params, seed: undefined });
-                                } else {
-                                    setParams({ ...params, seed: parseInt(val) });
-                                }
-                                markChange();
+                                patch({ seed: val === '' ? undefined : parseInt(val) });
                             }}
                         />
-                    </div>
-
-                    <div className="flex flex-col gap-1">
-                        <label className="text-xs text-gray-500 dark:text-gray-500 block">负面预设</label>
-                        <select
+                    </Field>
+                    <Field label="负面预设">
+                        <Select
                             disabled={!canEdit}
-                            className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-sm outline-none"
                             value={params.ucPreset ?? 0}
-                            onChange={(e) => {
-                                setParams({ ...params, ucPreset: parseInt(e.target.value) });
-                                markChange();
-                            }}
+                            onChange={(e) => patch({ ucPreset: parseInt(e.target.value) })}
                         >
-                            <option value={0}>Heavy (Default)</option>
+                            <option value={0}>Heavy</option>
                             <option value={1}>Light</option>
-                            <option value={2}>Furry Focus</option>
+                            <option value={2}>Furry</option>
                             <option value={3}>Human Focus</option>
                             <option value={4}>None</option>
-                        </select>
-                    </div>
+                        </Select>
+                    </Field>
                 </div>
             </div>
 
             <div className="param-group">
-                <p className="param-group-label">强度</p>
-                <div className="flex flex-wrap gap-4 mb-1">
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="checkbox"
-                            id="qualityToggle"
-                            disabled={!canEdit}
-                            checked={params.qualityToggle ?? true}
-                            onChange={(e) => {
-                                setParams({ ...params, qualityToggle: e.target.checked });
-                                markChange();
-                            }}
-                            className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
-                        />
-                        <label htmlFor="qualityToggle" className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer select-none">
-                            正面质量预设
-                        </label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="checkbox"
-                            id="variety"
-                            disabled={!canEdit}
-                            checked={params.variety ?? false}
-                            onChange={(e) => {
-                                setParams({ ...params, variety: e.target.checked });
-                                markChange();
-                            }}
-                            className="w-4 h-4 text-pink-600 rounded focus:ring-pink-500"
-                        />
-                        <label htmlFor="variety" className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer select-none flex items-center gap-1">
-                            <span>Variety+ (多样性)</span>
-                        </label>
-                    </div>
-                </div>
                 <div className="param-grid">
-                    <div>
-                        <div className="flex justify-between items-center mb-1">
-                            <label className="text-xs text-gray-500 dark:text-gray-500 block">CFG Scale</label>
-                            <span className="text-xs font-mono text-indigo-600 dark:text-indigo-400">{params.scale}</span>
-                        </div>
-                        <input
-                            type="range" min="0" max="10" step="0.1"
+                    <Field label="CFG Scale">
+                        <Input
+                            type="number"
+                            step="0.1"
                             disabled={!canEdit}
                             value={params.scale}
-                            onChange={(e) => { setParams({ ...params, scale: parseFloat(e.target.value) }); markChange(); }}
-                            className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-indigo-600"
+                            onChange={(e) => patch({ scale: parseFloat(e.target.value) })}
                         />
-                    </div>
-                    <div>
-                        <div className="flex justify-between items-center mb-1">
-                            <label className="text-xs text-gray-500 dark:text-gray-500 block">CFG Rescale</label>
-                            <span className="text-xs font-mono text-pink-600 dark:text-pink-400">{params.cfgRescale ?? 0}</span>
-                        </div>
-                        <input
-                            type="range" min="0" max="1" step="0.05"
+                    </Field>
+                    <Field label="CFG Rescale">
+                        <Input
+                            type="number"
+                            min={0}
+                            max={1}
+                            step="0.05"
                             disabled={!canEdit}
                             value={params.cfgRescale ?? 0}
-                            onChange={(e) => { setParams({ ...params, cfgRescale: parseFloat(e.target.value) }); markChange(); }}
-                            className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-pink-600"
+                            onChange={(e) => patch({ cfgRescale: parseFloat(e.target.value) })}
                         />
-                    </div>
+                    </Field>
                 </div>
             </div>
-        </section>
+
+            <div className="chips">
+                <Chip active={params.qualityToggle ?? true} disabled={!canEdit} onClick={() => patch({ qualityToggle: !(params.qualityToggle ?? true) })}>
+                    画质增强
+                </Chip>
+                <Chip active={!!params.variety} disabled={!canEdit} onClick={() => patch({ variety: !params.variety })}>
+                    多样性
+                </Chip>
+            </div>
+        </div>
     );
 };

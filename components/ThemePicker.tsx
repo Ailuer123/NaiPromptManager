@@ -1,8 +1,8 @@
-import React, { useId, useState } from 'react';
+import React, { useState } from 'react';
 import { THEME_CATALOG, themeById, useTheme } from '../theme';
 import { cx } from './ui/cx';
+import { ModeSwitch } from './ui/ModeSwitch';
 import { Sheet } from './ui/Sheet';
-import { Switch } from './ui/Toggle';
 
 type ThemePickerProps = {
   compact?: boolean;
@@ -21,9 +21,8 @@ function Swatches({ colors }: { colors: readonly string[] }) {
 }
 
 export function ThemePicker({ compact, side, className }: ThemePickerProps) {
-  const { themeId, setTheme, mode, setMode } = useTheme();
+  const { themeId, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
-  const darkId = useId();
   const current = themeById(themeId);
 
   return (
@@ -43,15 +42,8 @@ export function ThemePicker({ compact, side, className }: ThemePickerProps) {
         </svg>
       </button>
       <Sheet open={open} onClose={() => setOpen(false)} title="主题配色">
-        <div className="setting-row" style={{ paddingTop: 0 }}>
-          <label className="s-label" htmlFor={darkId} style={{ cursor: 'pointer' }}>
-            暗色模式
-          </label>
-          <Switch
-            id={darkId}
-            checked={mode === 'dark'}
-            onCheckedChange={(on) => setMode(on ? 'dark' : 'light')}
-          />
+        <div className="setting-row" style={{ paddingTop: 0, justifyContent: 'flex-end' }}>
+          <ModeSwitch />
         </div>
         <div className="palette-grid">
           {THEME_CATALOG.map((theme) => {

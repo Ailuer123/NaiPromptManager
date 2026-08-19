@@ -32,26 +32,35 @@ export function Collapse({
   };
 
   return (
-    <div className={cx('collapse', 'surface', open && 'open', className)}>
-      <div className="collapse-head-row">
+    <div className={cx('fold', 'surface', open && 'open', className)}>
+      <div className="fold-head-row">
         <button
           type="button"
-          className="collapse-head"
+          className="fold-head"
           aria-expanded={open}
           aria-controls={panelId}
           onClick={() => setOpen(!open)}
         >
-          <span className="collapse-head-main">
+          <span className="fold-head-main">
             {title}
             {meta != null && <span className="meta">{meta}</span>}
           </span>
+        </button>
+        {extra != null && <div className="fold-head-extra">{extra}</div>}
+        <button
+          type="button"
+          className="fold-chev"
+          aria-expanded={open}
+          aria-controls={panelId}
+          aria-label={open ? '收起' : '展开'}
+          onClick={() => setOpen(!open)}
+        >
           <svg className="chev" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M6 9l6 6 6-6" />
           </svg>
         </button>
-        {extra != null && <div className="collapse-head-extra">{extra}</div>}
       </div>
-      <div id={panelId} className="collapse-body" aria-hidden={!open}>
+      <div id={panelId} className="fold-body" aria-hidden={!open}>
         {children}
       </div>
     </div>

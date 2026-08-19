@@ -9,6 +9,7 @@ import { Field, Input, Select, Textarea } from './ui/Field';
 import { IconButton } from './ui/IconButton';
 import { Sheet } from './ui/Sheet';
 import { Tag } from './ui/Tag';
+import { IconEyeOff, IconLock } from './ui/glyphs';
 
 interface ChainListProps {
   chains: PromptChain[];
@@ -243,7 +244,8 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onTypeChange
       .filter(c =>
         (c.type === type || (!c.type && type === 'style')) && // Backward compat: default to style if no type
         (c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-         c.description.toLowerCase().includes(searchTerm.toLowerCase()))
+         c.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+         (c.tags || []).some((tag) => tag.toLowerCase().includes(searchTerm.toLowerCase())))
       )
       .filter(c => !favOnly || favorites.has(c.id))
       .filter(c => {
@@ -275,6 +277,9 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onTypeChange
 
   const createLabel = type === 'character' ? '新建角色串' : '新建画师串';
   const segType: ChainType = type === 'character' ? 'character' : 'style';
+  const [filterOpen, setFilterOpen] = useState(false);
+  const styleCount = chains.filter((c) => c.type === 'style' || !c.type).length;
+  const charCount = chains.filter((c) => c.type === 'character').length;
 
   const openCopy = (chain: PromptChain) => {
     setMenuChain(null);
@@ -289,72 +294,59 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onTypeChange
 
   return (
     <div className="board">
-      <header className="board-head">
-        <div className="board-head-top">
-          <div>
-            <h1>串看板</h1>
-          </div>
-          <Seg
-            aria-label="串类型"
-            value={segType}
-            onChange={onTypeChange}
-            options={CHAIN_TYPE_OPTIONS}
-          />
+      <header className="page-head">
+        <div>
+          <h1>串看板</h1>
         </div>
-        <div className="board-tools">
-          <IconButton label="刷新列表" onClick={onRefresh}>
-            <span className={isLoading ? 'is-spin' : undefined}>{ICONS.refresh}</span>
-          </IconButton>
-          <Input
-            type="text"
-            className="board-search"
-            placeholder="搜索..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            aria-label="搜索串"
-          />
-          <Select
-            className="board-sort"
-            value={sortOption}
-            aria-label="排序"
-            onChange={(e) => setSortOption(e.target.value as typeof sortOption)}
-          >
-            <option value="updated_desc">按最近更新</option>
-            <option value="updated_asc">按最早更新</option>
-            <option value="created_desc">按最近创建</option>
-            <option value="created_asc">按最早创建</option>
-          </Select>
-          <Chip
-            active={favOnly}
-            onClick={() => setFavOnly(!favOnly)}
-            title="仅显示收藏的串"
-            aria-label="仅显示收藏的串"
-          >
-            {ICONS.star}
-            <span className="board-fav-label">收藏</span>
-          </Chip>
+        <div className="head-actions">
+          <div className="search">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3-3" /></svg>
+            <Input
+              type="search"
+              placeholder="搜索名称、标签…"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              aria-label="搜索串"
+            />
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => setFilterOpen(true)}>筛选</Button>
           {!isGuest && (
-            <Button onClick={() => setIsModalOpen(true)}>
+            <Button size="sm" onClick={() => setIsModalOpen(true)}>
               {ICONS.plus}
-              {createLabel}
+              新建串
             </Button>
           )}
         </div>
+      </header>
+
+      <div className="chain-toolbar">
+        <Seg
+          aria-label="串类型"
+          value={segType}
+          onChange={onTypeChange}
+          options={[
+            { value: 'style', label: '画师串', count: styleCount },
+            { value: 'character', label: '角色串', count: charCount },
+          ]}
+        />
         {allTags.length > 0 && (
-          <div className="board-tags">
-            {allTags.map(tag => (
+          <div className="chips">
+            <Chip
+              active={selectedTags.size === 0}
+              onClick={() => setSelectedTags(new Set())}
+            >
+              全部
+            </Chip>
+            {allTags.map((tag) => (
               <Chip
                 key={tag}
                 active={selectedTags.has(tag)}
                 aria-pressed={selectedTags.has(tag)}
                 onClick={() => {
-                  const newSelected = new Set(selectedTags);
-                  if (newSelected.has(tag)) {
-                    newSelected.delete(tag);
-                  } else {
-                    newSelected.add(tag);
-                  }
-                  setSelectedTags(newSelected);
+                  const next = new Set(selectedTags);
+                  if (next.has(tag)) next.delete(tag);
+                  else next.add(tag);
+                  setSelectedTags(next);
                 }}
               >
                 {tag}
@@ -362,14 +354,13 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onTypeChange
             ))}
           </div>
         )}
-      </header>
+      </div>
 
       {filteredChains.length === 0 ? (
         <Empty
-          title="暂无数据"
-          description={type === 'character' ? '还没有角色串。' : '还没有画师串。'}
+          title="还没有这类串"
           action={!isGuest ? (
-            <Button variant="ghost" onClick={() => setIsModalOpen(true)}>{createLabel}</Button>
+            <Button size="sm" onClick={() => setIsModalOpen(true)}>新建串</Button>
           ) : undefined}
         />
       ) : (
@@ -389,10 +380,10 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onTypeChange
                 title={(
                   <>
                     {chain.isPrivate && (
-                      <span className="card-lock" title="私人串：仅 VIP 本人和管理员可见" aria-label="私人串">🔒</span>
+                      <span className="card-lock" title="私人串：仅 VIP 本人和管理员可见" aria-label="私人串"><IconLock /></span>
                     )}
                     {chain.guestHidden && (
-                      <span className="card-lock" title="游客不可见" aria-label="游客不可见">👁‍🗨</span>
+                      <span className="card-lock" title="游客不可见" aria-label="游客不可见"><IconEyeOff /></span>
                     )}
                     {chain.name}
                   </>
@@ -443,6 +434,37 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onTypeChange
           })}
         </div>
       )}
+
+      <Sheet open={filterOpen} onClose={() => setFilterOpen(false)} title="筛选">
+        <div className="stack">
+          <Field label="排序">
+            <Select
+              className="board-sort"
+              value={sortOption}
+              aria-label="排序"
+              onChange={(e) => setSortOption(e.target.value as typeof sortOption)}
+            >
+              <option value="updated_desc">按最近更新</option>
+              <option value="updated_asc">按最早更新</option>
+              <option value="created_desc">按最近创建</option>
+              <option value="created_asc">按最早创建</option>
+            </Select>
+          </Field>
+          <Chip
+            active={favOnly}
+            onClick={() => setFavOnly(!favOnly)}
+            title="仅显示收藏的串"
+            aria-label="仅显示收藏的串"
+          >
+            {ICONS.star}
+            仅收藏
+          </Chip>
+          <Button variant="secondary" onClick={onRefresh}>
+            <span className={isLoading ? 'is-spin' : undefined}>{ICONS.refresh}</span>
+            刷新列表
+          </Button>
+        </div>
+      </Sheet>
 
       <Sheet open={isModalOpen} onClose={() => setIsModalOpen(false)} title={createLabel}>
         <div className="create-form">

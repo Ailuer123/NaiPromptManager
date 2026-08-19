@@ -1,6 +1,8 @@
 import React from 'react';
 import { Atmosphere } from './Atmosphere';
+import { BrandMark } from './BrandMark';
 import { ThemePicker } from './ThemePicker';
+import { ModeSwitch } from './ui/ModeSwitch';
 import { Button } from './ui/Button';
 import { Seg } from './ui/Chip';
 import { Empty } from './ui/Empty';
@@ -90,12 +92,15 @@ export function Landing({
       <Atmosphere />
       <div className="lp-top">
         <div className="brand">
-          <div className="brand-mark">NA</div>
+          <BrandMark />
           <div className="brand-text">
             <strong>NAI 咒语构建终端</strong>
           </div>
         </div>
-        <ThemePicker />
+        <div className="top-actions">
+          <ModeSwitch />
+          <ThemePicker />
+        </div>
       </div>
 
       <div className="lp-stage">
@@ -180,12 +185,15 @@ export function DbSetupError() {
       <Atmosphere />
       <div className="lp-top">
         <div className="brand">
-          <div className="brand-mark">NA</div>
+          <BrandMark />
           <div className="brand-text">
             <strong>NAI 咒语构建终端</strong>
           </div>
         </div>
-        <ThemePicker />
+        <div className="top-actions">
+          <ModeSwitch />
+          <ThemePicker />
+        </div>
       </div>
       <div className="lp-stage db-error-stage">
         <div className="auth-card glass-strong">

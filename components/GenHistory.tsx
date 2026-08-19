@@ -10,7 +10,7 @@ import {
     compressPngToJpg,
     isJpgDataUri,
 } from '../services/imageCompression';
-import { Button, Card, Empty, Field, IconButton, Input, Sheet } from './ui';
+import { Button, Card, Empty, Field, IconButton, IconChart, IconClock, IconClose, IconPackage, IconTrash, Input, Portal, Sheet } from './ui';
 
 interface GenHistoryProps {
     currentUser: User;
@@ -593,16 +593,16 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
                             </Button>
                             {showCleanMenu && (
                                 <div className="hist-menu surface-strong">
-                                    <button type="button" onClick={handleClearAll}>🗑️ 清空全部</button>
-                                    <button type="button" onClick={() => handleCleanMenuClick('days')}>⏰ 删除 X 天前的...</button>
-                                    <button type="button" onClick={() => handleCleanMenuClick('count')}>📊 只保留最近 N 张...</button>
+                                    <button type="button" onClick={handleClearAll}><IconTrash /> 清空全部</button>
+                                    <button type="button" onClick={() => handleCleanMenuClick('days')}><IconClock /> 删除 X 天前的...</button>
+                                    <button type="button" onClick={() => handleCleanMenuClick('count')}><IconChart /> 只保留最近 N 张...</button>
                                     <button
                                         type="button"
                                         onClick={pendingPngCount === 0 ? undefined : handleStartBatchCompact}
                                         disabled={pendingPngCount === 0}
                                         title={pendingPngCount === 0 ? '无需压缩' : `压缩 ${pendingPngCount} 张 PNG 为 JPG`}
                                     >
-                                        📦 压缩 PNG... {pendingPngCount > 0 && <span className="hint">（{pendingPngCount} 张）</span>}
+                                        <IconPackage /> 压缩 PNG... {pendingPngCount > 0 && <span className="hint">（{pendingPngCount} 张）</span>}
                                     </button>
                                 </div>
                             )}
@@ -615,7 +615,7 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
                             disabled={pendingPngCount === 0}
                             title={pendingPngCount === 0 ? '无需压缩' : `压缩 ${pendingPngCount} 张 PNG 为 JPG`}
                         >
-                            📦 压缩
+                            <span className="inline-ico"><IconPackage />压缩</span>
                             {pendingPngCount > 0 && <span className="hint">{pendingPngCount}</span>}
                         </Button>
                         <Button variant="ghost" size="sm" onClick={() => goToPage(currentPage)}>刷新</Button>
@@ -691,7 +691,7 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
                                             <img src={item.imageUrl} alt="" loading="lazy" />
                                             {isJpgDataUri(item.imageUrl) && <span className="jpg-mark">JPG</span>}
                                             <div className="card-hover-del" data-card-action>
-                                                <IconButton size="sm" danger label="删除" onClick={(e) => handleDelete(item.id, e)}>✕</IconButton>
+                                                <IconButton size="sm" danger label="删除" onClick={(e) => handleDelete(item.id, e)}><IconClose /></IconButton>
                                             </div>
                                             <div className="card-hover-time">{new Date(item.createdAt).toLocaleString()}</div>
                                         </>
@@ -714,6 +714,7 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
             </div>
 
             {lightbox && (
+              <Portal>
                 <div className="lbx" onClick={() => setLightbox(null)}>
                     <div className="lbx-split glass-strong" onClick={e => e.stopPropagation()}>
                         <div className="lbx-media">
@@ -744,7 +745,7 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
                         <div className="lbx-side">
                             <div className="pref-row" style={{ marginBottom: 12 }}>
                                 <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>图片详情</h2>
-                                <IconButton label="关闭" onClick={() => setLightbox(null)}>✕</IconButton>
+                                <IconButton label="关闭" onClick={() => setLightbox(null)}><IconClose /></IconButton>
                             </div>
 
                             <div className="page-scroll" style={{ flex: 1 }}>
@@ -827,6 +828,7 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
                         </div>
                     </div>
                 </div>
+              </Portal>
             )}
 
 

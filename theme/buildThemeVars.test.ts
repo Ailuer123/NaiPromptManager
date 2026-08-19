@@ -5,7 +5,7 @@ import { contrastRatio, hexToRgb, pickHueAccent, relLuminance } from './colorMat
 
 const AA = 4.5;
 const FAINT_MIN = 3.5;
-const LIGHT_IDS = ['peach', 'nainai'] as const;
+const LIGHT_IDS = ['peach', 'provence'] as const;
 
 function hexStops(value: string): string[] {
   return value.match(/#[0-9a-fA-F]{6}/g) ?? [];
@@ -20,13 +20,13 @@ function assertButtonFace(vars: Record<string, string>) {
 }
 
 describe('THEME_CATALOG', () => {
-  it('有 17 套色板且默认 oz', () => {
-    expect(THEME_CATALOG).toHaveLength(17);
+  it('有 8 套色板且默认冷若冰霜', () => {
+    expect(THEME_CATALOG).toHaveLength(8);
     expect(THEME_CATALOG.map((t) => t.id)).toEqual([
-      'yunding', 'lianrong', 'bingshuang', 'naika', 'nainai',
-      'wumei', 'oz', 'emerald', 'mizhi', 'peach', 'cheese',
-      'ximei', 'jihan', 'jiaotang', 'provence', 'cappuccino', 'luan',
+      'bingshuang', 'emerald', 'yunding', 'ximei', 'jiaotang', 'provence', 'peach', 'classic',
     ]);
+    expect(THEME_CATALOG[0].id).toBe('bingshuang');
+    expect(THEME_CATALOG.find((t) => t.id === 'peach')?.name).toBe('白桃气泡');
   });
 });
 
@@ -37,10 +37,61 @@ describe('buildThemeVars contrast guard', () => {
     assertButtonFace(buildThemeVars(palette!.colors, 'light'));
   });
 
-  it('oz 默认 mute 对 paper ≥ 4.5', () => {
-    const oz = THEME_CATALOG.find((t) => t.id === 'oz')!;
-    const vars = buildThemeVars(oz.colors, 'light');
+  it('默认冷若冰霜 mute 对 paper ≥ 4.5', () => {
+    const frost = THEME_CATALOG.find((t) => t.id === 'bingshuang')!;
+    const vars = buildThemeVars(frost.colors, 'light');
     expect(contrastRatio(vars['--mute'], vars['--paper'])).toBeGreaterThanOrEqual(AA);
+  });
+
+  it('白桃气泡：accent 是嫩粉，不是大红', () => {
+    const peach = THEME_CATALOG.find((t) => t.id === 'peach')!;
+    const vars = buildThemeVars(peach.colors, 'light');
+    const accent = hexToRgb(vars['--accent']);
+    const paper = hexToRgb(vars['--paper']);
+    expect(accent.r).toBeGreaterThan(accent.g);
+    expect(accent.b).toBeGreaterThan(accent.g);
+    expect(accent.r - Math.min(accent.g, accent.b)).toBeLessThan(80);
+    expect(paper.r).toBeGreaterThan(paper.b);
+    expect(paper.r).toBeGreaterThan(paper.g);
+  });
+
+  it('普罗旺斯：accent 是雾薰衣草，不是褐灰', () => {
+    const provence = THEME_CATALOG.find((t) => t.id === 'provence')!;
+    const vars = buildThemeVars(provence.colors, 'light');
+    const accent = hexToRgb(vars['--accent']);
+    const paper = hexToRgb(vars['--paper']);
+    expect(accent.b).toBeGreaterThan(accent.r);
+    expect(accent.b).toBeGreaterThan(accent.g);
+    expect(accent.b - Math.min(accent.r, accent.g)).toBeLessThan(80);
+    expect(paper.b).toBeGreaterThanOrEqual(paper.r);
+  });
+
+  it('经典靛蓝：accent 走重构前 indigo，亮色纸面是白', () => {
+    const classic = THEME_CATALOG.find((t) => t.id === 'classic')!;
+    expect(classic.name).toBe('经典靛蓝');
+    expect(classic.flat).toBe(true);
+    expect(pickHueAccent(classic.colors).toLowerCase()).toBe('#4f46e5');
+    const vars = buildThemeVars(classic.colors, 'light', { flat: true });
+    const accent = hexToRgb(vars['--accent']);
+    expect(vars['--accent'].toLowerCase()).toBe('#4f46e5');
+    expect(vars['--paper'].toLowerCase()).toBe('#ffffff');
+    expect(vars['--cream'].toLowerCase()).toBe('#ffffff');
+    expect(vars['--atm-base'].toLowerCase()).toBe('#ffffff');
+    expect(relLuminance(vars['--paper'])).toBeGreaterThan(0.95);
+    expect(accent.b).toBeGreaterThan(accent.r);
+    expect(accent.b).toBeGreaterThan(accent.g);
+  });
+
+  it('绿野仙踪：accent 是初音青绿，不是荧光绿', () => {
+    const emerald = THEME_CATALOG.find((t) => t.id === 'emerald')!;
+    const vars = buildThemeVars(emerald.colors, 'light');
+    const accent = hexToRgb(vars['--accent']);
+    const paper = hexToRgb(vars['--paper']);
+    expect(accent.g).toBeGreaterThan(accent.r);
+    expect(accent.b).toBeGreaterThan(accent.r);
+    expect(Math.abs(accent.g - accent.b)).toBeLessThan(30);
+    expect(Math.max(accent.r, accent.g, accent.b) - Math.min(accent.r, accent.g, accent.b)).toBeLessThan(80);
+    expect(paper.g).toBeGreaterThan(paper.r);
   });
 
   it('冷若冰霜：paper / accent / ink 走色卡冷色，不混成暖灰', () => {
@@ -67,9 +118,25 @@ describe('buildThemeVars contrast guard', () => {
     expect(face.b).toBeGreaterThanOrEqual(face.r);
   });
 
+  it('冷若冰霜暗色：纸面够暗，焦点色不是一片浅灰', () => {
+    const frost = THEME_CATALOG.find((t) => t.id === 'bingshuang')!;
+    const vars = buildThemeVars(frost.colors, 'dark');
+    const paper = hexToRgb(vars['--paper']);
+    const ink = hexToRgb(vars['--ink']);
+    const accent2 = hexToRgb(vars['--accent-2']);
+    expect(relLuminance(vars['--paper'])).toBeLessThan(0.08);
+    expect(paper.b).toBeGreaterThan(paper.r);
+    expect(relLuminance(vars['--ink'])).toBeLessThan(0.85);
+    expect(contrastRatio(vars['--ink'], vars['--paper'])).toBeGreaterThanOrEqual(5.5);
+    expect(Math.max(accent2.r, accent2.g, accent2.b) - Math.min(accent2.r, accent2.g, accent2.b)).toBeGreaterThan(30);
+    expect(ink.b).toBeGreaterThanOrEqual(ink.r);
+    const atm = hexToRgb(vars['--atm-1']);
+    expect((atm.r + atm.g + atm.b) / 3).toBeLessThan(80);
+  });
+
   describe.each(THEME_CATALOG)('$id $name', (palette) => {
-    const light = buildThemeVars(palette.colors, 'light');
-    const dark = buildThemeVars(palette.colors, 'dark');
+    const light = buildThemeVars(palette.colors, 'light', { flat: palette.flat });
+    const dark = buildThemeVars(palette.colors, 'dark', { flat: palette.flat });
 
     it('light：按钮最亮端 / mute / faint 过门槛', () => {
       assertButtonFace(light);
@@ -82,8 +149,15 @@ describe('buildThemeVars contrast guard', () => {
       assertButtonFace(dark);
       expect(contrastRatio(dark['--mute'], dark['--paper'])).toBeGreaterThanOrEqual(AA);
       expect(contrastRatio(dark['--faint'], dark['--paper'])).toBeGreaterThanOrEqual(FAINT_MIN);
-      expect(contrastRatio(dark['--ink'], dark['--paper'])).toBeGreaterThanOrEqual(AA);
+      expect(contrastRatio(dark['--ink'], dark['--paper'])).toBeGreaterThanOrEqual(5);
       expect(relLuminance(dark['--ink'])).toBeGreaterThan(relLuminance(dark['--paper']));
+      expect(relLuminance(dark['--paper'])).toBeLessThan(0.14);
+      expect(relLuminance(dark['--ink'])).toBeLessThan(0.88);
+    });
+
+    it('accent 用色卡 identity，不兑成暖灰', () => {
+      expect(light['--accent'].toLowerCase()).toBe(pickHueAccent(palette.colors).toLowerCase());
+      expect(dark['--accent'].toLowerCase()).toBe(pickHueAccent(palette.colors).toLowerCase());
     });
 
     it('导出 --g1…--g6 为 CSS 渐变字符串', () => {

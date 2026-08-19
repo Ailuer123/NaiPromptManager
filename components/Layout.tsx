@@ -1,8 +1,12 @@
 import React, { ReactNode, useEffect, useRef, useState } from 'react';
+import { NavLink } from 'react-router-dom';
+import { pathFor } from '../app/paths';
 import { ROLE_POLICY } from '../config/rolePolicy';
 import { User } from '../types';
 import { Atmosphere } from './Atmosphere';
+import { BrandMark } from './BrandMark';
 import { ThemePicker } from './ThemePicker';
+import { ModeSwitch } from './ui/ModeSwitch';
 import { Avatar } from './ui/Avatar';
 import { IconButton } from './ui/IconButton';
 import { Tag } from './ui/Tag';
@@ -21,7 +25,6 @@ export type LayoutView =
 
 interface LayoutProps {
   children: ReactNode;
-  onNavigate: (view: LayoutView, id?: string) => void;
   currentView: string;
   currentUser?: User | null;
   onLogout?: () => void;
@@ -123,7 +126,6 @@ function formatBytes(bytes?: number) {
 
 export const Layout: React.FC<LayoutProps> = ({
   children,
-  onNavigate,
   currentView,
   currentUser,
   onLogout,
@@ -164,10 +166,7 @@ export const Layout: React.FC<LayoutProps> = ({
     return () => document.removeEventListener('mousedown', onDown);
   }, [moreOpen]);
 
-  const go = (view: LayoutView) => {
-    setMoreOpen(false);
-    onNavigate(view);
-  };
+  const closeMore = () => setMoreOpen(false);
 
   const pageLabel = PAGE_LABEL[currentView] || '串看板';
 
@@ -184,13 +183,14 @@ export const Layout: React.FC<LayoutProps> = ({
       <header className="topbar">
         <div className="topbar-inner glass">
           <div className="brand">
-            <div className="brand-mark">NA</div>
+            <BrandMark />
             <div className="brand-text">
               <strong>NAI 终端</strong>
               <span>{pageLabel}</span>
             </div>
           </div>
           <div className="top-actions">
+            <ModeSwitch />
             <ThemePicker compact />
             {currentUser ? (
               <Avatar name={currentUser.username[0]?.toUpperCase()} />
@@ -202,7 +202,7 @@ export const Layout: React.FC<LayoutProps> = ({
       <aside className="sidebar" aria-label="主导航">
         <div className="sidebar-panel surface-strong">
           <div className="brand">
-            <div className="brand-mark">NA</div>
+            <BrandMark />
             <div className="brand-text">
               <strong>NAI 咒语构建终端</strong>
             </div>
@@ -211,32 +211,33 @@ export const Layout: React.FC<LayoutProps> = ({
           <nav className="sidebar-nav">
             <div className="nav-section">创作</div>
             {CREATE_NAV.map((item) => (
-              <button
+              <NavLink
                 key={item.id}
-                type="button"
+                to={pathFor(item.id)}
                 className={cx('nav-item', isNavActive(item.id, currentView) && 'active')}
-                onClick={() => go(item.id)}
+                onClick={closeMore}
               >
                 {item.icon}
                 {item.label}
-              </button>
+              </NavLink>
             ))}
             {!isGuest ? (
               <>
                 <div className="nav-section">系统</div>
-                <button
-                  type="button"
+                <NavLink
+                  to={pathFor('admin')}
                   className={cx('nav-item', currentView === 'admin' && 'active')}
-                  onClick={() => go('admin')}
+                  onClick={closeMore}
                 >
                   {ICONS.admin}
                   设置与管理
-                </button>
+                </NavLink>
               </>
             ) : null}
           </nav>
 
           <div className="sidebar-foot">
+            <ModeSwitch />
             <ThemePicker compact side />
             {showStorage ? (
               <div className="storage">
@@ -303,15 +304,15 @@ export const Layout: React.FC<LayoutProps> = ({
               );
             }
             return (
-              <button
+              <NavLink
                 key={navId}
-                type="button"
+                to={pathFor(navId)}
                 className={cx('bnav-item', isNavActive(navId, currentView) && 'active')}
-                onClick={() => go(navId)}
+                onClick={closeMore}
               >
                 {item.icon}
                 <span>{item.label}</span>
-              </button>
+              </NavLink>
             );
           })}
         </nav>
@@ -319,15 +320,15 @@ export const Layout: React.FC<LayoutProps> = ({
 
       {moreOpen && !hideNav ? (
         <div className="more-menu glass-strong open" id="moreMenu" role="menu" ref={moreRef}>
-          <button type="button" role="menuitem" onClick={() => go('history')}>
+          <NavLink to={pathFor('history')} role="menuitem" onClick={closeMore}>
             {ICONS.history}
             历史
-          </button>
+          </NavLink>
           {!isGuest ? (
-            <button type="button" role="menuitem" onClick={() => go('admin')}>
+            <NavLink to={pathFor('admin')} role="menuitem" onClick={closeMore}>
               {ICONS.admin}
               设置
-            </button>
+            </NavLink>
           ) : null}
           {onLogout ? (
             <button

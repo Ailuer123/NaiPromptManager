@@ -65,14 +65,14 @@ describe('ChainList', () => {
     const user = userEvent.setup();
     const { onTypeChange } = renderList();
 
-    expect(screen.getByRole('tab', { name: '画师串' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: /画师串/ })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('link', { name: /雾霾玫瑰/ })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /角色乙/ })).toBeNull();
 
-    await user.click(screen.getByRole('tab', { name: '角色串' }));
+    await user.click(screen.getByRole('tab', { name: /角色串/ }));
     expect(onTypeChange).toHaveBeenCalledTimes(1);
     expect(onTypeChange).toHaveBeenCalledWith('character');
-    expect(screen.getByRole('tab', { name: '画师串' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: /画师串/ })).toHaveAttribute('aria-selected', 'true');
     expect(screen.queryByRole('link', { name: /角色乙/ })).toBeNull();
   });
 
@@ -132,8 +132,8 @@ describe('ChainList', () => {
 
   it('空态使用 Empty；游客没有新建', () => {
     renderList({ chains: [], isGuest: true });
-    expect(screen.getByRole('heading', { name: '暂无数据' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '新建画师串' })).toBeNull();
+    expect(screen.getByRole('heading', { name: '还没有这类串' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '新建串' })).toBeNull();
   });
 
   it('长标题仍能点进编辑，搜索会藏掉不匹配的串', async () => {
@@ -151,7 +151,7 @@ describe('ChainList', () => {
     await user.click(screen.getByRole('link', { name: longName }));
     expect(onSelect).toHaveBeenCalledWith('s1');
 
-    await user.type(screen.getByRole('textbox', { name: '搜索串' }), '短名');
+    await user.type(screen.getByRole('searchbox', { name: '搜索串' }), '短名');
     expect(screen.getByRole('link', { name: '短名串' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: longName })).toBeNull();
   });

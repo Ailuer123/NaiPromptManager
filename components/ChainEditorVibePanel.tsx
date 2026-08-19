@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { NAIParams, VibeMount, VibePreset } from '../types';
 import { parseVibeFile } from '../services/vibeFile';
 import { vibeLibrary, VibeLibrary } from '../services/vibeLibrary';
+import { IconWarn } from './ui/glyphs';
 import {
   clampMountStrength,
   getMaxStrengthForMount,
@@ -138,7 +139,7 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
   };
 
   return (
-    <section className="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+    <section>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="flex items-center gap-2">
@@ -262,9 +263,9 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
       <div className={`mt-3 flex items-center justify-between rounded-lg px-3 py-2 text-xs ${validationError || strengthOverRecommended ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-900/60 dark:text-gray-400'}`}>
         <span>
           {validationError
-            ? `⚠ ${validationError}`
+            ? <span className="inline-ico"><IconWarn />{validationError}</span>
             : strengthOverRecommended
-              ? '⚠ Strength 合计建议不超过 1（当前已超出，仍可保存与生成）'
+              ? <span className="inline-ico"><IconWarn />Strength 合计建议不超过 1（当前已超出，仍可保存与生成）</span>
               : 'Strength 合计建议不超过 1'}
         </span>
         <strong>{strengthTotal.toFixed(2)} / 1.00</strong>

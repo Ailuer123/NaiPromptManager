@@ -1,6 +1,10 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useBlocker, useLocation, useNavigate } from 'react-router-dom';
+import { parseAppPath, pathFor, type AppView } from './app/paths';
+import { doneRouteProgress, startRouteProgress } from './app/routeProgress';
 import { Layout } from './components/Layout';
+import { RouteProgress } from './components/RouteProgress';
 import { DbSetupError, Landing } from './components/Landing';
 import { ChainList } from './components/ChainList';
 import { ChainEditor } from './components/ChainEditor';
@@ -9,16 +13,20 @@ import { ArtistAdmin } from './components/ArtistAdmin';
 import { InspirationGallery } from './components/InspirationGallery';
 import { GenHistory } from './components/GenHistory';
 import { db } from './services/dbService';
-import { useTheme } from './theme';
 import { PromptChain, User, Artist, Inspiration, ChainType } from './types';
 
-type ViewState = 'list' | 'characters' | 'edit' | 'library' | 'inspiration' | 'admin' | 'history' | 'playground';
+type ViewState = AppView;
 
 const CACHE_TTL = 60 * 60 * 1000; // 1 Hour Cache
 
 const App = () => {
-  const [view, setView] = useState<ViewState>('list');
-  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const target = parseAppPath(location.pathname);
+  const [ready, setReady] = useState(target);
+  const view = ready.view;
+  const selectedId = ready.id;
+  const prefetchGen = useRef(0);
   const [chains, setChains] = useState<PromptChain[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbConfigError, setDbConfigError] = useState(false);
@@ -50,9 +58,6 @@ const App = () => {
   const [isGuestMode, setIsGuestMode] = useState(false);
   const [guestPasscode, setGuestPasscode] = useState('');
 
-  const { mode, setMode } = useTheme();
-  const isDark = mode === 'dark';
-
   // Toast State
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
@@ -71,11 +76,31 @@ const App = () => {
     });
   }, []);
 
+  const ensurePlayground = () => {
+    setPlaygroundChain((prev) => prev ?? {
+      id: 'playground',
+      name: '生图实验室',
+      description: '临时生图实验，点击保存为串可写入列表',
+      userId: currentUser?.id || 'guest',
+      basePrompt: '',
+      negativePrompt: '',
+      modules: [],
+      params: {
+        width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: undefined, qualityToggle: true, ucPreset: 4, characters: [],
+      },
+      variableValues: { subject: '' },
+      type: 'style',
+      tags: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  };
+
   const refreshData = async (force = false) => {
     // Chains (Always load all chains so we can filter client side and do mutual imports)
     if (!force && chains.length > 0 && Date.now() - lastChainFetch < CACHE_TTL) return;
 
-    setLoading(true);
+    if (chains.length === 0) setLoading(true);
     try {
       const data = await db.getAllChains();
       setChains(data);
@@ -112,52 +137,41 @@ const App = () => {
     setLastUserFetch(Date.now());
   };
 
-  const toggleTheme = () => setMode(isDark ? 'light' : 'dark');
+  const prefetchView = async (next: ViewState) => {
+    if (next === 'list' || next === 'characters' || next === 'edit') await refreshData();
+    if (next === 'library' || next === 'admin') await loadArtists();
+    if (next === 'inspiration') await loadInspirations();
+    if (next === 'admin' && currentUser?.role === 'admin') await loadUsers();
+    if (next === 'playground') ensurePlayground();
+  };
 
   const handleNavigate = (newView: ViewState, id?: string) => {
-    if (isEditorDirty) {
-      if (!confirm('您有未保存的更改，确定要离开吗？')) {
-        return;
-      }
-      // User confirmed, reset dirty state
-      setIsEditorDirty(false);
-    }
-
-    setSelectedId(id);
-    setView(newView);
-
-    // Auto-load data based on view, respecting cache
-    if (newView === 'list' || newView === 'characters') refreshData();
-    if (newView === 'library') loadArtists();
-    if (newView === 'inspiration') loadInspirations();
-    if (newView === 'admin') {
-      // Admin view handles both artist and user loading internally via props now, 
-      // but we trigger it here to ensure fresh data if needed or respect cache
-      loadArtists();
-      if (currentUser?.role === 'admin') loadUsers();
-    }
-
-    if (newView === 'playground' && !playgroundChain) {
-      // Initialize Playground Chain
-      setPlaygroundChain({
-        id: 'playground',
-        name: '生图实验室',
-        description: '临时生图实验，点击 Fork 可保存到库',
-        userId: currentUser?.id || 'guest',
-        basePrompt: '',
-        negativePrompt: '',
-        modules: [],
-        params: {
-          width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: undefined, qualityToggle: true, ucPreset: 4, characters: []
-        },
-        variableValues: { subject: '' },
-        type: 'style',
-        tags: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      });
-    }
+    navigate(pathFor(newView, id));
   };
+
+  const blocker = useBlocker(Boolean(currentUser && isEditorDirty && (view === 'edit' || view === 'playground')));
+
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return;
+    if (confirm('您有未保存的更改，确定要离开吗？')) {
+      setIsEditorDirty(false);
+      blocker.proceed();
+    } else {
+      blocker.reset();
+    }
+  }, [blocker.state]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const gen = ++prefetchGen.current;
+    const swap = target.view !== ready.view || target.id !== ready.id;
+    if (swap) startRouteProgress();
+    prefetchView(target.view).finally(() => {
+      if (gen !== prefetchGen.current) return;
+      setReady(target);
+      if (swap) doneRouteProgress();
+    });
+  }, [currentUser, target.view, target.id]);
 
   const handleUpdatePlaygroundChain = async (id: string, updates: Partial<PromptChain>) => {
     setPlaygroundChain(prev => prev ? { ...prev, ...updates } : null);
@@ -180,9 +194,8 @@ const App = () => {
       // Force refresh chains to apply guest_hidden/private filters based on new role
       await refreshData(true);
       // Guest should not stay in admin/profile view
-      if (res.user.role === 'guest' && (view === 'admin' || view === 'edit')) {
-        setView('list');
-        setSelectedId(undefined);
+      if (res.user.role === 'guest' && (target.view === 'admin' || target.view === 'edit')) {
+        navigate(pathFor('list'), { replace: true });
       }
     } catch (err: any) {
       setLoginError(err.message || '登录失败');
@@ -200,8 +213,7 @@ const App = () => {
     setUsersCache(null);
     setInspirationsCache(null);
     // Reset view to list to prevent guest from staying in admin view
-    setView('list');
-    setSelectedId(undefined);
+    navigate(pathFor('list'), { replace: true });
   };
 
   const handleCreateChain = async (name: string, desc: string, type: ChainType) => {
@@ -219,7 +231,7 @@ const App = () => {
     notify('Fork 成功！已保存到您的列表');
     await refreshData(true);
     // Return to appropriate list based on type
-    setView(finalType === 'character' ? 'characters' : 'list');
+    navigate(pathFor(finalType === 'character' ? 'characters' : 'list'));
   };
 
   const handleUpdateChain = async (id: string, updates: Partial<PromptChain>) => {
@@ -239,6 +251,8 @@ const App = () => {
 
   if (!currentUser) {
     return (
+      <>
+      <RouteProgress />
       <Landing
         isGuestMode={isGuestMode}
         onGuestModeChange={setIsGuestMode}
@@ -251,6 +265,7 @@ const App = () => {
         onGuestPasscodeChange={setGuestPasscode}
         onSubmit={handleLogin}
       />
+      </>
     );
   }
 
@@ -291,6 +306,7 @@ const App = () => {
         const editChain = getSelectedChain();
         if (!editChain) return <div>Chain not found</div>;
         return <ChainEditor
+          key={editChain.id}
           chain={editChain}
           allChains={chains}
           currentUser={currentUser}
@@ -302,8 +318,6 @@ const App = () => {
         />;
       case 'library':
         return <ArtistLibrary
-          isDark={isDark}
-          toggleTheme={toggleTheme}
           artistsData={artistsCache}
           onRefresh={() => loadArtists(true)}
           notify={notify}
@@ -324,15 +338,13 @@ const App = () => {
           usersData={usersCache}
           onRefreshArtists={() => loadArtists(true)}
           onRefreshUsers={() => loadUsers(true)}
-          isDark={isDark}
-          toggleTheme={toggleTheme}
-          onLogout={handleLogout}
         />;
       case 'history':
         return <GenHistory currentUser={currentUser} notify={notify} onNavigateToPlayground={() => handleNavigate('playground')} onRefreshInspiration={() => loadInspirations(true)} />;
       case 'playground':
         if (!playgroundChain) return <div>Loading...</div>;
         return <ChainEditor
+          key={playgroundChain.id}
           chain={playgroundChain}
           allChains={chains}
           currentUser={currentUser}
@@ -348,16 +360,18 @@ const App = () => {
   };
 
   return (
-    <Layout
-      onNavigate={handleNavigate}
-      currentView={view}
-      currentUser={currentUser}
-      onLogout={handleLogout}
-      toast={toast}
-      hideNav={view === 'edit' || view === 'playground'}
-    >
-      {renderContent()}
-    </Layout>
+    <>
+      <RouteProgress />
+      <Layout
+        currentView={view}
+        currentUser={currentUser}
+        onLogout={handleLogout}
+        toast={toast}
+        hideNav={view === 'edit' || view === 'playground'}
+      >
+        {renderContent()}
+      </Layout>
+    </>
   );
 };
 
