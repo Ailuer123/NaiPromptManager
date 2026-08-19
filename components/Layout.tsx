@@ -9,7 +9,6 @@ import { ThemePicker } from './ThemePicker';
 import { ModeSwitch } from './ui/ModeSwitch';
 import { Avatar } from './ui/Avatar';
 import { IconButton } from './ui/IconButton';
-import { Tag } from './ui/Tag';
 import { Toast, ToastHost } from './ui/Toast';
 import { cx } from './ui/cx';
 
@@ -193,7 +192,23 @@ export const Layout: React.FC<LayoutProps> = ({
             <ModeSwitch />
             <ThemePicker compact />
             {currentUser ? (
-              <Avatar name={currentUser.username[0]?.toUpperCase()} />
+              <div className={cx('user-chip', currentUser.role === 'vip' && 'vip-badge')}>
+                <Avatar name={currentUser.username[0]?.toUpperCase()} />
+                <div className="meta">
+                  <strong className={currentUser.role === 'vip' ? 'vip-username' : undefined}>
+                    {currentUser.username}
+                  </strong>
+                  <span className={ROLE_POLICY.getRoleBadgeClass(currentUser.role)}>
+                    {ROLE_POLICY.getRoleDisplayName(currentUser.role)}
+                    {currentUser.role === 'vip' ? <i className="vip-label">VIP</i> : null}
+                  </span>
+                </div>
+                {onLogout ? (
+                  <IconButton label="退出登录" onClick={onLogout}>
+                    {ICONS.logout}
+                  </IconButton>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </div>
@@ -265,9 +280,9 @@ export const Layout: React.FC<LayoutProps> = ({
                   <strong className={currentUser.role === 'vip' ? 'vip-username' : undefined}>
                     {currentUser.username}
                   </strong>
-                  <span>
+                  <span className={ROLE_POLICY.getRoleBadgeClass(currentUser.role)}>
                     {ROLE_POLICY.getRoleDisplayName(currentUser.role)}
-                    {currentUser.role === 'vip' ? <Tag className="vip-label">VIP</Tag> : null}
+                    {currentUser.role === 'vip' ? <i className="vip-label">VIP</i> : null}
                   </span>
                 </div>
                 {onLogout ? (

@@ -91,6 +91,17 @@ describe('Layout', () => {
     expect(screen.queryByRole('button', { name: '更多' })).toBeNull();
   });
 
+  it('顶栏展示权限组并提供退出登录', async () => {
+    const user = userEvent.setup();
+    const vip: User = { id: 'v', username: 'nova', role: 'vip', createdAt: 0 };
+    const { onLogout } = renderLayout(vip, vi.fn(), true);
+
+    expect(screen.getAllByText('VIP', { selector: '.role-vip' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('nova').length).toBeGreaterThan(0);
+    await user.click(screen.getAllByRole('button', { name: '退出登录' })[0]);
+    expect(onLogout).toHaveBeenCalledTimes(1);
+  });
+
   it('外观开关是亮/暗/随设备的图标 radio', () => {
     renderLayout(member);
     const groups = screen.getAllByRole('radiogroup', { name: '外观' });

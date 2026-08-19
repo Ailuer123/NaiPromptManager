@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { NAIParams, VibeMount, VibePreset } from '../types';
 import { parseVibeFile } from '../services/vibeParse';
 import { vibeLibrary, VibeLibrary } from '../services/vibeLibrary';
-import { IconWarn } from './ui/glyphs';
+import { IconClose, IconWarn } from './ui/glyphs';
+import { IconButton } from './ui/IconButton';
 import { Portal } from './ui/Portal';
 import {
   clampMountStrength,
@@ -64,11 +65,8 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
       if (event.key === 'Escape') setShowLibrary(false);
     };
     document.addEventListener('keydown', onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prev;
     };
   }, [showLibrary]);
 
@@ -101,6 +99,7 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
     const files = [...(event.target.files ?? [])];
     if (files.length === 0) return;
 
+    event.currentTarget.blur();
     setImporting(true);
     try {
       const imported = (await Promise.all(files.map(file => parseVibeFile(file)))).flat();
@@ -179,7 +178,7 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
               multiple
               accept=".naiv4vibe,.naiv4vibebundle,application/json"
               onChange={handleImport}
-              className="sr-only"
+              className="vibe-file-input"
             />
             <label
               htmlFor="vibe-file-input"
@@ -306,7 +305,9 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
               <div>
                 <h3 id="vibe-lib-title" className="font-bold text-gray-900 dark:text-white">Vibe 本地库</h3>
               </div>
-              <button type="button" aria-label="关闭 Vibe 本地库" onClick={() => setShowLibrary(false)} className="rounded p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">×</button>
+              <IconButton className="vibe-lib-close" label="关闭 Vibe 本地库" onClick={() => setShowLibrary(false)}>
+                <IconClose />
+              </IconButton>
             </div>
             <div className="flex min-h-0 flex-1 flex-col p-4">
               <input

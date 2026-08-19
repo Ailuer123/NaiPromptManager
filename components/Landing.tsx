@@ -5,61 +5,11 @@ import { ThemePicker } from './ThemePicker';
 import { ModeSwitch } from './ui/ModeSwitch';
 import { Button } from './ui/Button';
 import { Seg } from './ui/Chip';
-import { Empty } from './ui/Empty';
 import { Field, Input } from './ui/Field';
 
 const AUTH_TABS = [
   { value: 'user', label: '账号登录' },
   { value: 'guest', label: '游客参观' },
-] as const;
-
-const MODULES = [
-  {
-    title: '串看板',
-    icon: (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4 7h16M4 12h10M4 17h14" />
-      </svg>
-    ),
-  },
-  {
-    title: '提示词结构',
-    icon: (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 20h9" />
-        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 20l-4 1 1-4 11.5-13.5z" />
-      </svg>
-    ),
-  },
-  {
-    title: '军火库',
-    icon: (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <rect x="3" y="4" width="18" height="16" rx="2" />
-        <circle cx="9" cy="10" r="2" />
-        <path d="M3 16l4.5-3.5L11 15l3-2.5L21 17" />
-      </svg>
-    ),
-  },
-  {
-    title: '生图实验室',
-    icon: (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M9 3h6l1 4H8l1-4z" />
-        <path d="M8 7h8v3a4 4 0 0 1-8 0V7z" />
-        <path d="M10 14v7M14 14v7" />
-      </svg>
-    ),
-  },
-  {
-    title: '生成历史',
-    icon: (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="12" r="9" />
-        <path d="M12 7v5l3 2" />
-      </svg>
-    ),
-  },
 ] as const;
 
 export type LandingProps = {
@@ -105,17 +55,7 @@ export function Landing({
 
       <div className="lp-stage">
         <section className="lp-intro" aria-label="产品介绍">
-          <h1>把画师、模块与参数，编译成可复用的咒语</h1>
-          <ul className="lp-modules">
-            {MODULES.map((mod) => (
-              <li key={mod.title} className="lp-mod">
-                <div className="lp-mod-icon" aria-hidden="true">{mod.icon}</div>
-                <div className="lp-mod-body">
-                  <strong>{mod.title}</strong>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <h1>把散落的灵感，收成可再咏的咒语</h1>
         </section>
 
         <div className="lp-login-col">

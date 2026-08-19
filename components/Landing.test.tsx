@@ -37,14 +37,12 @@ function Host(overrides: Partial<LandingProps> = {}) {
 }
 
 describe('Landing', () => {
-  it('展示价值句与五模块', () => {
+  it('展示价值句，不渲染模块清单', () => {
     render(<Host />);
-    expect(screen.getByRole('heading', { name: '把画师、模块与参数，编译成可复用的咒语' })).toBeInTheDocument();
-    expect(screen.getByText('串看板')).toBeInTheDocument();
-    expect(screen.getByText('提示词结构')).toBeInTheDocument();
-    expect(screen.getByText('军火库')).toBeInTheDocument();
-    expect(screen.getByText('生图实验室')).toBeInTheDocument();
-    expect(screen.getByText('生成历史')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '把散落的灵感，收成可再咏的咒语' })).toBeInTheDocument();
+    expect(screen.queryByText('串看板')).toBeNull();
+    expect(screen.queryByText('军火库')).toBeNull();
+    expect(document.querySelector('.lp-modules')).toBeNull();
   });
 
   it('游客 tab 切换出口令表单', async () => {

@@ -1196,6 +1196,15 @@ a.icon-btn svg,
   flex-shrink: 0;
 }
 
+.vibe-file-input {
+  position: fixed;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -1490,6 +1499,46 @@ html[data-theme-mode="dark"] .brand-mark {
 
 .sidebar { display: none; }
 
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--cream) 55%, transparent);
+  min-width: 0;
+}
+
+.user-chip .meta { min-width: 0; flex: 1; }
+
+.user-chip .meta strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-chip .meta span {
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.topbar .user-chip {
+  padding: 4px 6px 4px 4px;
+  gap: 8px;
+  max-width: min(52vw, 16rem);
+}
+
+.topbar .user-chip .meta strong { font-size: 12px; }
+
+@media (min-width: 900px) {
+  .topbar .user-chip { display: none; }
+}
+
 @media (min-width: 900px) {
   .sidebar {
     display: flex;
@@ -1580,15 +1629,6 @@ html[data-theme-mode="dark"] .brand-mark {
     gap: 12px;
     padding-top: 12px;
     border-top: 1px solid var(--line);
-  }
-
-  .user-chip {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px;
-    border-radius: var(--r-md);
-    background: rgba(255, 255, 255, 0.35);
   }
 
   .user-chip .meta { min-width: 0; flex: 1; }
@@ -1762,6 +1802,17 @@ html[data-theme-mode="dark"] .brand-mark {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+}
+
+.editor-shell > .page-head,
+.editor-shell > .hint {
+  flex-shrink: 0;
+}
+
+@media (max-width: 1023px) {
+  .editor-shell > .editor-layout {
+    flex-shrink: 0;
+  }
 }
 
 .editor-layout {
@@ -2236,6 +2287,7 @@ svg.w-8 {
   display: grid;
   gap: 16px;
   align-items: stretch;
+  align-content: start;
   grid-template-columns: 1fr;
 }
 
@@ -2260,7 +2312,7 @@ svg.w-8 {
 }
 
 .lp-intro h1 {
-  margin: 0 0 12px;
+  margin: 0;
   font-size: clamp(var(--fs-xl), 4.2vw, 2.25rem);
   font-weight: 600;
   letter-spacing: -0.03em;
@@ -3461,6 +3513,12 @@ svg.w-8 {
   height: calc(100dvh - 24px);
   max-height: calc(100dvh - 24px);
   overflow: hidden;
+}
+
+.vibe-lib-close {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
 }
 
 @media (max-width: 899px) {
