@@ -2770,10 +2770,16 @@ svg.w-8 {
 
 .board-grid .card-body { flex: 1; }
 
+.board-cover-box {
+  position: absolute;
+  inset: 0;
+}
+
 .board-cover {
+  display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
 }
 
 .board-ph {

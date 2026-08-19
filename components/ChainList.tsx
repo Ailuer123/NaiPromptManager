@@ -373,9 +373,9 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onTypeChange
                 mediaRatio="sq"
                 onOpen={() => onSelect(chain.id)}
                 media={(
-                  <>
+                  <div className="board-cover-box">
                     {chain.previewImage ? (
-                      <img className="board-cover" src={chain.previewImage} alt={chain.name} />
+                      <img className="board-cover" src={chain.previewImage} alt="" />
                     ) : (
                       <div className="board-ph">{type === 'character' ? ICONS.person : ICONS.image}</div>
                     )}
@@ -389,7 +389,7 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onTypeChange
                         )}
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
                 title={chain.name}
                 extra={(

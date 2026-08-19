@@ -88,6 +88,7 @@ describe('ChainList', () => {
     expect(link).toHaveClass('card-link');
     const privateFlag = within(root as HTMLElement).getByLabelText('私人串');
     expect(privateFlag).toHaveClass('board-flag', 'is-private');
+    expect(privateFlag.closest('.board-cover-box')).toBeTruthy();
     expect(privateFlag.closest('.card-media')).toBeTruthy();
 
     rerender(
@@ -112,6 +113,7 @@ describe('ChainList', () => {
     const charCard = container.querySelector('article.card');
     const hiddenFlag = within(charCard as HTMLElement).getByLabelText('游客不可见');
     expect(hiddenFlag).toHaveClass('board-flag', 'is-hidden');
+    expect(hiddenFlag.closest('.board-cover-box')).toBeTruthy();
     expect(hiddenFlag.closest('.card-media')).toBeTruthy();
     expect(charCard).not.toHaveAttribute('role', 'button');
   });
