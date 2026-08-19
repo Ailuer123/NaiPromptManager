@@ -7,7 +7,7 @@ import {
   fetchDiscordIdentity,
   isDiscordConfigured,
   pickDiscordUsername,
-  verifyDiscordChannelAccess,
+  verifyDiscordGuildMembership,
   type DiscordEnv,
 } from './discordOAuth';
 
@@ -55,9 +55,7 @@ interface Env {
   R2_PUBLIC_URL?: string; // Kept for legacy compatibility if needed
   DISCORD_CLIENT_ID?: string;
   DISCORD_CLIENT_SECRET?: string;
-  DISCORD_BOT_TOKEN?: string;
   DISCORD_GUILD_ID?: string;
-  DISCORD_CHANNEL_ID?: string;
 }
 
 // ==================== 角色策略配置 ====================
@@ -541,8 +539,8 @@ export default {
             const redirectUri = `${url.origin}/api/auth/discord/callback`;
             const accessToken = await exchangeDiscordCode(env as DiscordEnv, code, redirectUri);
             const identity = await fetchDiscordIdentity(accessToken);
-            const allowed = await verifyDiscordChannelAccess(env as DiscordEnv, identity.id);
-            if (!allowed) return fail('未通过频道验证，请先加入指定 Discord 频道');
+            const allowed = await verifyDiscordGuildMembership(env as DiscordEnv, accessToken);
+            if (!allowed) return fail('未加入指定 Discord 服务器，无法登录');
 
             const existing = await db.prepare('SELECT id, username, role, storage_usage, max_storage FROM users WHERE discord_id = ?')
               .bind(identity.id).first<{ id: string; username: string; role: string; storage_usage: number; max_storage: number }>();
