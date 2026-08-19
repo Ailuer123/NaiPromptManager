@@ -149,6 +149,37 @@ button { cursor: pointer; }
 img { display: block; max-width: 100%; }
 a { color: inherit; text-decoration: none; }
 
+/* 未写宽高的 SVG 在浏览器里是 300×150。UI 线标统一 20px，具体容器再覆盖。 */
+svg[viewBox] {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+button svg,
+a.icon-btn svg,
+.chip svg,
+.queue-mask svg,
+.is-spin svg {
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chip svg {
+  width: 14px;
+  height: 14px;
+}
+
+.queue-mask svg,
+.is-spin svg {
+  width: 22px;
+  height: 22px;
+}
+
 :focus-visible {
   outline: 2px solid var(--accent-2);
   outline-offset: 2px;
@@ -2105,9 +2136,6 @@ a { color: inherit; text-decoration: none; }
 .board-tools .chip svg {
   width: 14px;
   height: 14px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 1.8;
 }
 
 .board-tools .chip.active svg {
