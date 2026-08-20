@@ -177,6 +177,12 @@ export function Landing({
               把散落的灵感，收成可再咏的咒语
             </h1>
 
+            <div className="lp-highlights" aria-label="产品亮点">
+              <span className="lp-pill">模块化串编排</span>
+              <span className="lp-pill">画师军火库</span>
+              <span className="lp-pill">端侧无损压缩</span>
+            </div>
+
             {/* 移动端隐藏的官方原生体验复刻副段落 */}
             <p className="hidden lg:block mt-3 text-sm sm:text-base text-white/65 leading-relaxed max-w-xl font-normal">
               深度复刻 NovelAI 官方原生级生图体验与核心参数生态，并针对提示词工程与创作流进行全方位现代化升维与效率优化，提供模块化串编排、画师军火库及灵感反推管理。
@@ -236,28 +242,25 @@ export function Landing({
                 终端登录
               </h2>
 
-              {/* Discord 一键登录 */}
               {discordEnabled ? (
-                <button
-                  type="button"
-                  onClick={() => { window.location.href = '/api/auth/discord'; }}
-                  className="auth-discord group relative w-full h-10 sm:h-11 rounded-xl bg-gradient-to-r from-[#5865F2] to-[#4752C4] hover:from-[#6975f5] hover:to-[#535ecf] text-white font-medium text-xs sm:text-sm flex items-center justify-center gap-2.5 shadow-[0_4px_20px_rgba(88,101,242,0.35)] transition-all active:scale-[0.98] overflow-hidden cursor-pointer"
-                >
-                  <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
-                  <IconDiscord />
-                  <span>使用 Discord 账号登录</span>
-                </button>
-              ) : (
-                <p className="auth-error font-mono text-xs my-2 text-white/50">Discord 登录尚未配置</p>
-              )}
-
-              {/* OR PASSWORD 分割线 */}
-              <div className="relative flex items-center justify-center my-3.5 sm:my-4 auth-divider">
-                <div className="w-full border-t border-white/10" />
-                <span className="absolute bg-[#0b0e15] px-2.5 font-mono text-[10px] sm:text-[11px] text-white/40 tracking-wider">
-                  OR PASSWORD
-                </span>
-              </div>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => { window.location.href = '/api/auth/discord'; }}
+                    className="auth-discord group relative w-full h-10 sm:h-11 rounded-xl bg-gradient-to-r from-[#5865F2] to-[#4752C4] hover:from-[#6975f5] hover:to-[#535ecf] text-white font-medium text-xs sm:text-sm flex items-center justify-center gap-2.5 shadow-[0_4px_20px_rgba(88,101,242,0.35)] transition-all active:scale-[0.98] overflow-hidden cursor-pointer"
+                  >
+                    <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                    <IconDiscord />
+                    <span>使用 Discord 账号登录</span>
+                  </button>
+                  <div className="relative flex items-center justify-center my-3.5 sm:my-4 auth-divider">
+                    <div className="w-full border-t border-white/10" />
+                    <span className="absolute bg-[#0b0e15] px-2.5 font-mono text-[10px] sm:text-[11px] text-white/40 tracking-wider">
+                      — 或使用账号密码登录 —
+                    </span>
+                  </div>
+                </>
+              ) : null}
 
               {/* 表单区 */}
               <form className="space-y-3 sm:space-y-3.5 auth-form" onSubmit={onSubmit} autoComplete="on">
@@ -297,11 +300,13 @@ export function Landing({
                   />
                 </div>
 
-                {loginError ? (
-                  <p className="auth-error font-mono text-xs text-red-400 text-center my-1" aria-live="polite">
-                    {loginError}
-                  </p>
-                ) : null}
+                <div className="auth-error-slot" aria-live="polite">
+                  {loginError ? (
+                    <p className="auth-error font-mono text-xs text-red-400 text-center">
+                      {loginError}
+                    </p>
+                  ) : null}
+                </div>
 
                 {/* 登录提交按钮 (进入终端) */}
                 <button

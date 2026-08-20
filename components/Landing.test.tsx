@@ -53,7 +53,7 @@ describe('Landing', () => {
     const discord = screen.getByRole('button', { name: /使用 Discord/ });
     expect(discord).toBeInTheDocument();
     expect(discord.querySelector('svg.icon-fill')).toBeTruthy();
-    expect(screen.queryByText('或使用账号密码')).toBeNull();
+    expect(screen.getByText('— 或使用账号密码登录 —')).toBeInTheDocument();
     expect(screen.getByLabelText(/用户名/)).toBeInTheDocument();
     expect(screen.queryByLabelText('游客口令')).toBeNull();
     expect(screen.queryByText('Discord 登录尚未配置')).toBeNull();
@@ -61,13 +61,46 @@ describe('Landing', () => {
     expect(screen.queryByRole('radiogroup', { name: '外观' })).toBeNull();
   });
 
-  it('未配置 Discord 时只提示一次，不再重复账号密码', () => {
+  it('未配置 Discord 时彻底收起 Discord 区域', () => {
     render(<Host discordEnabled={false} />);
     expect(screen.queryByRole('button', { name: /使用 Discord/ })).toBeNull();
-    expect(screen.getByText('Discord 登录尚未配置')).toBeInTheDocument();
-    expect(screen.queryByText('或使用账号密码')).toBeNull();
+    expect(screen.queryByText('Discord 登录尚未配置')).toBeNull();
+    expect(screen.queryByText(/或使用账号密码登录/)).toBeNull();
     expect(screen.queryByText(/请使用账号密码/)).toBeNull();
     expect(screen.getByLabelText(/用户名/)).toBeInTheDocument();
+  });
+
+  it('标语下有三个亮点胶囊', () => {
+    render(<Host />);
+    const pills = [...document.querySelectorAll('.lp-pill')].map((el) => el.textContent);
+    expect(pills).toEqual(['模块化串编排', '画师军火库', '端侧无损压缩']);
+    expect(document.querySelector('.lp-highlights')?.previousElementSibling).toHaveTextContent(
+      '把散落的灵感，收成可再咏的咒语',
+    );
+  });
+
+  it('登录错误槽位常驻，避免卡片跳变', () => {
+    const { rerender } = render(<Host />);
+    const slot = document.querySelector('.auth-error-slot');
+    expect(slot).toBeTruthy();
+    expect(slot?.textContent?.trim()).toBe('');
+
+    rerender(
+      <ThemeProvider>
+        <Landing
+          loginUser=""
+          loginPass=""
+          loginError="用户名或密码错误"
+          onLoginUserChange={() => {}}
+          onLoginPassChange={() => {}}
+          onSubmit={(e) => e.preventDefault()}
+        />
+      </ThemeProvider>,
+    );
+    expect(screen.getByText('用户名或密码错误')).toHaveClass('auth-error');
+    expect(document.querySelector('.auth-error-slot')).toContainElement(
+      screen.getByText('用户名或密码错误'),
+    );
   });
 
   it('符文矩阵落在 size 容器内，深电流挂在 BrandMark 上', () => {

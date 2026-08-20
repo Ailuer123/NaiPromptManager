@@ -108,4 +108,12 @@ describe('Layout', () => {
     expect(screen.queryByRole('button', { name: /外观：/ })).toBeNull();
     expect(screen.queryByRole('button', { name: '选择主题配色' })).toBeNull();
   });
+
+  it('当前页导航带 active，供侧栏 Accent 指示条挂钩', () => {
+    renderLayout(member);
+    const current = screen.getByRole('link', { name: '串看板' });
+    expect(current).toHaveClass('nav-item', 'active');
+    expect(screen.getByRole('link', { name: '军火库' })).toHaveClass('nav-item');
+    expect(screen.getByRole('link', { name: '军火库' })).not.toHaveClass('active');
+  });
 });

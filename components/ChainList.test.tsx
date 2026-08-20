@@ -140,6 +140,16 @@ describe('ChainList', () => {
     expect(onDelete).toHaveBeenCalledWith('s1');
   });
 
+  it('无封面卡片用串名哈希铺莫兰迪底纹', () => {
+    const { container } = renderList();
+    const ph = container.querySelector('.board-ph') as HTMLElement;
+    expect(ph).toBeTruthy();
+    expect(ph.style.getPropertyValue('--ph-grad')).toMatch(/^var\(--g[1-6]\)$/);
+    expect(ph.style.getPropertyValue('--ph-spot')).toMatch(/^var\(--c[1-4]\)$/);
+    expect(ph.style.getPropertyValue('--ph-spot-x')).toMatch(/%$/);
+    expect(ph.getAttribute('aria-hidden')).toBe('true');
+  });
+
   it('空态使用 Empty；游客没有新建', () => {
     renderList({ chains: [], isGuest: true });
     expect(screen.getByRole('heading', { name: '还没有这类串' })).toBeInTheDocument();

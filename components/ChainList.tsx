@@ -65,6 +65,26 @@ const ICONS = {
   ),
 };
 
+function hashName(name: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < name.length; i++) {
+    h ^= name.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function coverPlaceholderStyle(name: string): React.CSSProperties {
+  const h = hashName(name || 'chain');
+  return {
+    '--ph-grad': `var(--g${(h % 6) + 1})`,
+    '--ph-spot': `var(--c${(h % 4) + 1})`,
+    '--ph-spot-x': `${22 + ((h >> 4) % 56)}%`,
+    '--ph-spot-y': `${16 + ((h >> 10) % 52)}%`,
+    '--ph-grid': `${14 + (h % 8)}px`,
+  } as React.CSSProperties;
+}
+
 // Internal Component: Smart Copy Modal
 const CopyModal: React.FC<{
     chain: PromptChain;
@@ -385,7 +405,9 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onTypeChange
                     {chain.previewImage ? (
                       <img className="board-cover" src={chain.previewImage} alt="" />
                     ) : (
-                      <div className="board-ph">{type === 'character' ? ICONS.person : ICONS.image}</div>
+                      <div className="board-ph" style={coverPlaceholderStyle(chain.name)} aria-hidden="true">
+                        {type === 'character' ? ICONS.person : ICONS.image}
+                      </div>
                     )}
                     {(chain.isPrivate || chain.guestHidden) && (
                       <div className="board-flags">
