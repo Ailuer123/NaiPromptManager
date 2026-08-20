@@ -18,7 +18,6 @@ binding = "BUCKET"
 bucket_name = "nai-assets" # 请替换为你真实创建的 Bucket 名称
 
 [vars]
-GUEST_PASSCODE = "nai_guest_123" # 已弃用：游客改为 Discord OAuth
 DISCORD_CLIENT_ID = "1539667441397801071"
 DISCORD_GUILD_ID = "1134557553011998840"
 # Client Secret 不要写进本文件。

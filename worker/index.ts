@@ -454,16 +454,12 @@ export default {
         }
       } catch (e) { console.error('Admin init failed', e) }
 
-      // Default Guest
+      // 共享 guest 账号已退役：游客走 Discord OAuth。只清种子账号，不动 Discord 游客。
       try {
-        const guestName = 'guest';
-        const existing = await db.prepare('SELECT * FROM users WHERE username = ?').bind(guestName).first<{id: string, role: string}>();
-        if (!existing) {
-             const guestId = 'guest-0000-0000-0000-000000000000';
-             await db.prepare("INSERT INTO users (id, username, password, role, created_at, storage_usage) VALUES (?, ?, 'nai_guest_123', 'guest', ?, 0)")
-               .bind(guestId, guestName, Date.now()).run();
-        }
-      } catch (e) { console.error('Guest init failed', e) }
+        const legacyGuestId = 'guest-0000-0000-0000-000000000000';
+        await db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(legacyGuestId).run();
+        await db.prepare('DELETE FROM users WHERE id = ?').bind(legacyGuestId).run();
+      } catch (e) { console.error('Legacy guest user cleanup failed', e) }
     };
 
     // --- Authentication Middleware ---
@@ -604,23 +600,6 @@ export default {
           }
       }
 
-      // Guest Login & Normal Login Logic
-      if (path === '/api/auth/guest-login' && method === 'POST') {
-          const { passcode } = await request.json() as any;
-          if (!passcode) return error('请输入访问口令', 400);
-          let guestUser = await db.prepare('SELECT * FROM users WHERE role = ?').bind('guest').first<{id: string, username: string, role: string, password: string}>();
-          if (!guestUser) { await initDB(); guestUser = await db.prepare('SELECT * FROM users WHERE role = ?').bind('guest').first<{id: string, username: string, role: string, password: string}>(); }
-          if (!guestUser) return error('System Error', 500);
-          if (passcode !== guestUser.password) return error('访问口令错误', 401);
-          const sessionId = crypto.randomUUID();
-          const expiresAt = Date.now() + 86400000;
-          await db.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)').bind(sessionId, guestUser.id, expiresAt).run();
-          // 记录登录日志和每日统计
-          await logAccess(db, { id: guestUser.id, username: guestUser.username, role: 'guest' }, request, 'guest_login');
-          await incrementDailyStat(db, 'guest_logins');
-          return json({ success: true, user: { id: guestUser.id, username: guestUser.username, role: 'guest', storageUsage: 0 } }, 200, { 'Set-Cookie': `session_id=${sessionId}; Expires=${new Date(expiresAt).toUTCString()}; Path=/; SameSite=Lax; HttpOnly` });
-      }
-
       if (path === '/api/auth/login' && method === 'POST') {
           const { username, password } = await request.json() as any;
           try { await db.prepare('SELECT 1 FROM users').first(); } catch(e) { await initDB(); }
@@ -703,20 +682,6 @@ export default {
           }
 
           return json({ success: true, id: existing?.id || id, imageUrl: r2Url });
-      }
-
-      // --- Admin Guest Setting ---
-      if (path === '/api/admin/guest-setting' && method === 'GET') {
-          if (currentUser.role !== 'admin') return error('Forbidden', 403);
-          let guest = await db.prepare('SELECT password FROM users WHERE role = ?').bind('guest').first<{password: string}>();
-          if (!guest) { await initDB(); guest = await db.prepare('SELECT password FROM users WHERE role = ?').bind('guest').first<{password: string}>(); }
-          return json({ passcode: guest?.password });
-      }
-      if (path === '/api/admin/guest-setting' && method === 'PUT') {
-          if (currentUser.role !== 'admin') return error('Forbidden', 403);
-          const { passcode } = await request.json() as any;
-          await db.prepare('UPDATE users SET password = ? WHERE role = ?').bind(passcode, 'guest').run();
-          return json({ success: true });
       }
 
       // --- ADMIN: Usage Statistics ---

@@ -53,7 +53,7 @@ Worker 启动时调用 `initializeDatabase()`（worker/index.ts:66 附近）自�
 ### 5. 认证
 - 默认管理员 `admin` / `admin_996`（首次启动建议改密）
 - 会话：HttpOnly Cookie，`sessions` 表管理过期
-- 游客口令：存在 D1 `settings` 表（**不是**环境变量，`wrangler.toml` 里的 `GUEST_PASSCODE` 已弃用）
+- 游客通过 Discord OAuth 登录（`role = guest`）；不再有共享 `guest` 账号或游客口令
 - 密码：bcryptjs hash
 - 普通用户配额 300MB（worker/index.ts:119 附近）
 

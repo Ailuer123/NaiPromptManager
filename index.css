@@ -4131,6 +4131,7 @@ svg.w-8 {
   justify-content: space-between;
   gap: 8px;
   padding: 10px 12px;
+  min-width: 0;
 }
 
 .artist-admin-item img {
@@ -4139,6 +4140,25 @@ svg.w-8 {
   border-radius: 8px;
   object-fit: cover;
   flex-shrink: 0;
+}
+
+.artist-admin-name {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  gap: 8px;
+}
+
+.artist-admin-name strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artist-admin-actions {
+  flex-shrink: 0;
+  gap: 2px;
 }
 
 .stat-grid {

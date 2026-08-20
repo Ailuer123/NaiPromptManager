@@ -8,10 +8,6 @@ class DBService {
     return await api.post('/auth/login', { username, password });
   }
 
-  async guestLogin(passcode: string): Promise<{ success: boolean, user: User }> {
-    return await api.post('/auth/guest-login', { passcode });
-  }
-
   async logout(): Promise<void> {
     await api.post('/auth/logout', {});
   }
@@ -61,16 +57,7 @@ class DBService {
     return await api.post('/users/demote-stale', {});
   }
 
-  // --- Admin: Guest Settings & Import ---
-  async getGuestCode(): Promise<string> {
-    const res = await api.get('/admin/guest-setting');
-    return res.passcode;
-  }
-
-  async updateGuestCode(passcode: string): Promise<void> {
-    await api.put('/admin/guest-setting', { passcode });
-  }
-
+  // --- Admin: Import ---
   async importArtistFromGithub(name: string, url: string): Promise<void> {
     await api.post('/admin/import-github', { name, url });
   }

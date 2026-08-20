@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { APP_VERSION } from '../app/version';
 import { STALE_GUEST_IDLE_MS } from '../config/staleUsers';
 import { ThemeProvider } from '../theme';
-import type { User } from '../types';
+import type { Artist, User } from '../types';
 import { FeedbackProvider } from './ui/Feedback';
 import { ArtistAdmin } from './ArtistAdmin';
 
@@ -17,13 +17,13 @@ afterEach(cleanup);
 const guest: User = { id: 'g', username: 'visitor', role: 'guest', createdAt: 0 };
 const admin: User = { id: 'a', username: 'admin', role: 'admin', createdAt: 0 };
 
-function renderAdmin(user: User, usersData: User[] = []) {
+function renderAdmin(user: User, usersData: User[] = [], artistsData: Artist[] = []) {
   return render(
     <ThemeProvider>
       <FeedbackProvider>
         <ArtistAdmin
           currentUser={user}
-          artistsData={[]}
+          artistsData={artistsData}
           usersData={usersData}
           onRefreshArtists={vi.fn(async () => {})}
           onRefreshUsers={vi.fn(async () => {})}
@@ -96,5 +96,58 @@ describe('ArtistAdmin tabs', () => {
     const submit = screen.getByRole('button', { name: '更新密码' });
     expect(input).toHaveAttribute('aria-label', '新密码');
     expect(input.closest('.pref-row')).toContainElement(submit);
+  });
+
+  it('关联 Discord 按钮左侧带图标，压缩标题为本地图片压缩', () => {
+    renderAdmin({ id: 'm', username: 'mira', role: 'user', createdAt: 0 });
+    const discord = screen.getByRole('button', { name: '关联 Discord' });
+    expect(discord.querySelector('svg')).not.toBeNull();
+    expect(screen.getByRole('heading', { name: '本地图片压缩' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^图片压缩$/ })).toBeNull();
+  });
+
+  it('游客不显示存储配额和修改配额', async () => {
+    const user = userEvent.setup();
+    const visitor: User = {
+      id: 'g1',
+      username: '暮春',
+      role: 'guest',
+      createdAt: 1,
+      storageUsage: 0,
+      maxStorage: 100 * 1024 * 1024,
+    };
+    const alice: User = {
+      id: 'u1',
+      username: 'alice',
+      role: 'user',
+      createdAt: 1,
+      storageUsage: 0,
+      maxStorage: 300 * 1024 * 1024,
+    };
+    renderAdmin(admin, [visitor, alice]);
+    await user.click(screen.getByRole('tab', { name: '用户管理' }));
+    const guestRow = screen.getByText('暮春').closest('tr');
+    const userRow = screen.getByText('alice').closest('tr');
+    expect(guestRow).toBeTruthy();
+    expect(userRow).toBeTruthy();
+    expect(within(guestRow as HTMLElement).getByText('无配额')).toBeInTheDocument();
+    expect(within(guestRow as HTMLElement).queryByRole('button', { name: '修改配额' })).toBeNull();
+    expect(within(guestRow as HTMLElement).queryByText(/MB/)).toBeNull();
+    expect(within(userRow as HTMLElement).getByRole('button', { name: '修改配额' })).toBeInTheDocument();
+  });
+
+  it('画师管理用图标编辑删除，长名字截断', async () => {
+    const user = userEvent.setup();
+    const longName = 'very_long_artist_name_(spice!!)_that_should_ellipsis';
+    renderAdmin(admin, [], [{ id: 'art1', name: longName, imageUrl: 'https://example.com/a.png' }]);
+    await user.click(screen.getByRole('tab', { name: '画师管理' }));
+    expect(screen.queryByRole('button', { name: '编辑' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: '删除' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: '编辑' })).toHaveClass('icon-btn');
+    expect(screen.getByRole('button', { name: '删除' })).toHaveClass('icon-btn');
+    expect(screen.queryByRole('button', { name: '编辑' })?.textContent).toBe('');
+    const name = screen.getByText(longName);
+    expect(name).toHaveAttribute('title', longName);
+    expect(name.closest('.artist-admin-name')).toBeTruthy();
   });
 });

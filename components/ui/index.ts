@@ -25,6 +25,7 @@ export {
   IconPackage,
   IconPalette,
   IconPause,
+  IconPencil,
   IconPlay,
   IconRobot,
   IconSun,

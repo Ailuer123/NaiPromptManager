@@ -6,7 +6,7 @@ import { ROLE_POLICY } from '../config/rolePolicy';
 import { isStaleZeroQuotaUser } from '../config/staleUsers';
 import { AboutPage } from './AboutPage';
 import { AppearanceSettings } from './AppearanceSettings';
-import { ApiKeyFields, Button, Empty, Field, IconButton, IconCrown, Input, Panel, Seg, Select, Switch } from './ui';
+import { ApiKeyFields, Button, Empty, Field, IconButton, IconCrown, IconDiscord, IconPencil, IconTrash, Input, Panel, Seg, Select, Switch } from './ui';
 import { useFeedback } from './ui/Feedback';
 import { cx } from './ui/cx';
 
@@ -436,13 +436,17 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                 <div className="artist-admin-grid">
                     {artists.map(a => (
                         <div key={a.id} className="artist-admin-item surface">
-                            <div className="card-extra" style={{ minWidth: 0 }}>
+                            <div className="card-extra artist-admin-name">
                                 <img src={a.imageUrl} alt="" loading="lazy" />
-                                <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</strong>
+                                <strong title={a.name}>{a.name}</strong>
                             </div>
-                            <div className="card-extra">
-                                <Button size="sm" variant="ghost" onClick={() => handleEditArtist(a)}>编辑</Button>
-                                <Button size="sm" variant="danger" onClick={() => handleArtistDelete(a.id)}>删除</Button>
+                            <div className="card-extra artist-admin-actions">
+                                <IconButton size="sm" label="编辑" onClick={() => handleEditArtist(a)}>
+                                    <IconPencil />
+                                </IconButton>
+                                <IconButton size="sm" danger label="删除" onClick={() => handleArtistDelete(a.id)}>
+                                    <IconTrash />
+                                </IconButton>
                             </div>
                         </div>
                     ))}
@@ -517,7 +521,9 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                                     <td className="hint">{formatDate(u.createdAt)}</td>
                                     <td className="hint">{formatDateTime(u.lastLogin)}</td>
                                     <td>
-                                        {ROLE_POLICY.isUnlimitedStorage(u.role) ? (
+                                        {u.role === 'guest' ? (
+                                            <div className="hint">无配额</div>
+                                        ) : ROLE_POLICY.isUnlimitedStorage(u.role) ? (
                                             <div className="hint">
                                                 <strong>无限制</strong>
                                                 <div>管理员不受存储配额限制</div>
@@ -680,6 +686,7 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                                 <>
                                     <p className="hint">关联后可用 Discord 登录此账号。</p>
                                     <Button onClick={() => { window.location.href = '/api/auth/discord?link=1'; }}>
+                                        <IconDiscord />
                                         关联 Discord
                                     </Button>
                                 </>
@@ -709,7 +716,7 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                         <h3>偏好</h3>
                     </div>
                     <div className="settings-pair">
-                        <Panel title="图片压缩">
+                        <Panel title="本地图片压缩">
                             <div className="pref-row">
                                 <div>自动 JPG 保存</div>
                                 <Switch
