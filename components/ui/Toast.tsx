@@ -1,7 +1,7 @@
 import React from 'react';
 import { cx } from './cx';
 
-export type ToastTone = 'info' | 'success' | 'error';
+export type ToastTone = 'info' | 'success' | 'error' | 'warning';
 
 export type ToastProps = {
   message: React.ReactNode;

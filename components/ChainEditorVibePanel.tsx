@@ -3,6 +3,7 @@ import type { NAIParams, VibeMount, VibePreset } from '../types';
 import { parseVibeFile } from '../services/vibeParse';
 import { vibeLibrary, VibeLibrary } from '../services/vibeLibrary';
 import { IconClose, IconWarn } from './ui/glyphs';
+import { useFeedback } from './ui/Feedback';
 import { IconButton } from './ui/IconButton';
 import { Portal } from './ui/Portal';
 import {
@@ -35,6 +36,7 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
   notify,
   library = vibeLibrary,
 }) => {
+  const { confirm } = useFeedback();
   const [presets, setPresets] = useState<VibePreset[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
@@ -166,7 +168,12 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
   };
 
   const deletePreset = async (preset: VibePreset) => {
-    if (!confirm(`确定从本地库删除「${preset.name}」吗？`)) return;
+    const ok = await confirm({
+      title: `确定从本地库删除「${preset.name}」吗？`,
+      confirmLabel: '删除',
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       await library.delete(preset.id);
       updateMounts(mounts.filter(mount => mount.vibeId !== preset.id));

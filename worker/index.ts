@@ -1,6 +1,7 @@
 
 import bcrypt from 'bcryptjs';
 import { APP_REPO_URL, APP_VERSION } from '../app/version';
+import { STALE_GUEST_IDLE_MS } from '../config/staleUsers';
 import {
   discordAuthorizeUrl,
   exchangeDiscordCode,
@@ -883,6 +884,28 @@ export default {
               }
           });
       }
+      if (path === '/api/users/demote-stale' && method === 'POST') {
+          if (currentUser.role !== 'admin') return error('Forbidden', 403);
+          const cutoff = Date.now() - STALE_GUEST_IDLE_MS;
+          const guestQuota = ROLE_POLICY.getDefaultQuota('guest');
+          const listed = await db.prepare(
+            `SELECT id FROM users
+             WHERE role = 'user'
+               AND id != ?
+               AND IFNULL(storage_usage, 0) = 0
+               AND (last_login IS NULL OR last_login < ?)`
+          ).bind(currentUser.id, cutoff).all();
+          const count = listed.results?.length ?? 0;
+          if (count === 0) return json({ success: true, count: 0 });
+          await db.prepare(
+            `UPDATE users SET role = 'guest', max_storage = ?
+             WHERE role = 'user'
+               AND id != ?
+               AND IFNULL(storage_usage, 0) = 0
+               AND (last_login IS NULL OR last_login < ?)`
+          ).bind(guestQuota, currentUser.id, cutoff).run();
+          return json({ success: true, count });
+      }
       if (path.startsWith('/api/users/') && method === 'DELETE') {
          if (currentUser.role !== 'admin') return error('Forbidden', 403);
          const id = path.split('/').pop();
@@ -934,8 +957,8 @@ export default {
          const { role, resetQuota = false } = await request.json() as any;
 
          // 使用统一的角色策略验证角色值
-         if (!ROLE_POLICY.VALID_ROLES.includes(role as any) || role === 'guest') {
-           return error('Invalid role value: must be user, vip, or admin', 400);
+         if (!ROLE_POLICY.VALID_ROLES.includes(role as any)) {
+           return error('Invalid role value: must be guest, user, vip, or admin', 400);
          }
 
          // 不能修改自己的角色
@@ -949,8 +972,8 @@ export default {
            return error('User not found', 404);
          }
 
-         // 只有显式请求重置配额时才更新配额，避免隐藏副作用
-         if (resetQuota) {
+         // 改回游客时套用游客默认配额；其余角色仅在显式 resetQuota 时改配额
+         if (role === 'guest' || resetQuota) {
            const defaultQuota = ROLE_POLICY.getDefaultQuota(role);
            await db.prepare('UPDATE users SET role = ?, max_storage = ? WHERE id = ?').bind(role, defaultQuota, userId).run();
            return json({ success: true, role, maxStorage: defaultQuota });

@@ -11,6 +11,7 @@ import {
     isJpgDataUri,
 } from '../services/imageCompression';
 import { Button, Card, Empty, Field, IconButton, IconChart, IconClock, IconClose, IconPackage, IconTrash, Input, Portal, Sheet } from './ui';
+import { useFeedback } from './ui/Feedback';
 
 interface GenHistoryProps {
     currentUser: User;
@@ -44,6 +45,7 @@ const formatMB = (bytes: number): string => {
 };
 
 export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onNavigateToPlayground, onRefreshInspiration }) => {
+    const { confirm } = useFeedback();
     const [items, setItems] = useState<LocalGenItem[]>([]);
     const [lightbox, setLightbox] = useState<LocalGenItem | null>(null);
     const [isPublishing, setIsPublishing] = useState(false);
@@ -304,23 +306,31 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
 
     const handleDelete = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        if (confirm('确定删除这张图片记录吗？(无法恢复)')) {
-            await localHistory.delete(id);
-            if (lightbox?.id === id) setLightbox(null);
-            // 清空缓存并强制刷新当前页
-            setCacheState({});
-            await goToPage(currentPage, true);
-        }
+        const ok = await confirm({
+            title: '确定删除这张图片记录吗？',
+            description: '无法恢复。',
+            confirmLabel: '删除',
+            tone: 'danger',
+        });
+        if (!ok) return;
+        await localHistory.delete(id);
+        if (lightbox?.id === id) setLightbox(null);
+        setCacheState({});
+        await goToPage(currentPage, true);
     };
 
     const handleClearAll = async () => {
-        if (confirm('确定清空所有本地生图历史吗？')) {
-            await localHistory.clear();
-            setItems([]);
-            setTotalCount(0);
-            setShowCleanMenu(false);
-            setPendingPngCount(0);
-        }
+        const ok = await confirm({
+            title: '确定清空所有本地生图历史吗？',
+            confirmLabel: '清空',
+            tone: 'danger',
+        });
+        if (!ok) return;
+        await localHistory.clear();
+        setItems([]);
+        setTotalCount(0);
+        setShowCleanMenu(false);
+        setPendingPngCount(0);
     };
 
     const handleCleanMenuClick = (mode: 'days' | 'count') => {

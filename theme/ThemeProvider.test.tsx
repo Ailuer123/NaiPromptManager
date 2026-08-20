@@ -6,6 +6,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { THEME_ID_STORAGE_KEY, THEME_MODE_STORAGE_KEY } from './applyTheme';
+import { FONT_SCALE_STORAGE_KEY } from './fontScale';
 import { ThemeProvider, useTheme } from './ThemeProvider';
 
 afterEach(() => {
@@ -22,17 +23,19 @@ beforeEach(() => {
 });
 
 function Probe() {
-  const { mode, preference, themeId, setMode, setTheme } = useTheme();
+  const { mode, preference, themeId, fontScale, setMode, setTheme, setFontScale } = useTheme();
   return (
     <div>
       <span data-testid="mode">{mode}</span>
       <span data-testid="pref">{preference}</span>
       <span data-testid="theme">{themeId}</span>
+      <span data-testid="font">{fontScale}</span>
       <button type="button" onClick={() => setMode(mode === 'dark' ? 'light' : 'dark')}>
         切换暗色
       </button>
       <button type="button" onClick={() => setMode('system')}>随设备</button>
       <button type="button" onClick={() => setTheme('peach')}>切换色板</button>
+      <button type="button" onClick={() => setFontScale('lg')}>切换字号</button>
     </div>
   );
 }
@@ -107,5 +110,20 @@ describe('ThemeProvider', () => {
     expect(localStorage.getItem(THEME_MODE_STORAGE_KEY)).toBe('system');
     expect(document.documentElement.getAttribute('data-theme-pref')).toBe('system');
     expect(document.documentElement.classList.contains('dark')).toBe(true);
+  });
+
+  it('setFontScale 写入 nai_font_scale 与 --font-scale', async () => {
+    const user = userEvent.setup();
+    render(
+      <ThemeProvider>
+        <Probe />
+      </ThemeProvider>,
+    );
+
+    expect(screen.getByTestId('font')).toHaveTextContent('md');
+    await user.click(screen.getByRole('button', { name: '切换字号' }));
+    expect(screen.getByTestId('font')).toHaveTextContent('lg');
+    expect(localStorage.getItem(FONT_SCALE_STORAGE_KEY)).toBe('lg');
+    expect(document.documentElement.getAttribute('data-font-scale')).toBe('lg');
   });
 });

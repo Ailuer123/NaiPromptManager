@@ -5,6 +5,7 @@ import { Inspiration, User, NAIParams } from '../types';
 import { extractMetadata, parseNovelAIMetadata, ParsedNAIData, IMPORT_SESSION_KEY } from '../services/metadataService';
 import { ParamsViewer } from './ParamsViewer';
 import { Button, Card, Empty, Field, IconButton, IconClose, Input, Portal, Sheet, Tag, Textarea } from './ui';
+import { useFeedback } from './ui/Feedback';
 import { cx } from './ui/cx';
 
 interface InspirationGalleryProps {
@@ -164,6 +165,7 @@ const InspirationLightbox: React.FC<InspirationLightboxProps> = ({
 };
 
 export const InspirationGallery: React.FC<InspirationGalleryProps> = ({ currentUser, inspirationsData, onRefresh, notify, onNavigateToPlayground }) => {
+  const { confirm } = useFeedback();
   const [searchTerm, setSearchTerm] = useState('');
   const [lightboxImg, setLightboxImg] = useState<{item: Inspiration, isEditing: boolean} | null>(null);
   const [uploadMode, setUploadMode] = useState(false);
@@ -255,7 +257,12 @@ export const InspirationGallery: React.FC<InspirationGalleryProps> = ({ currentU
 
   const handleBulkDelete = async () => {
       if (selectedIds.size === 0) return;
-      if (!confirm(`确认删除选中的 ${selectedIds.size} 张图片吗？`)) return;
+      const ok = await confirm({
+          title: `确认删除选中的 ${selectedIds.size} 张图片吗？`,
+          confirmLabel: '删除',
+          tone: 'danger',
+      });
+      if (!ok) return;
       await db.bulkDeleteInspirations(Array.from(selectedIds));
       setSelectedIds(new Set());
       setSelectionMode(false);

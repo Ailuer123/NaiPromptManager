@@ -57,6 +57,10 @@ class DBService {
     return await api.put(`/users/${userId}/role`, { role, resetQuota });
   }
 
+  async demoteStaleUsers(): Promise<{ success: boolean; count: number }> {
+    return await api.post('/users/demote-stale', {});
+  }
+
   // --- Admin: Guest Settings & Import ---
   async getGuestCode(): Promise<string> {
     const res = await api.get('/admin/guest-setting');

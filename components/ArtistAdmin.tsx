@@ -3,8 +3,11 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
 import { Artist, User, UsageStats, AccessLog, DailyStat } from '../types';
 import { ROLE_POLICY } from '../config/rolePolicy';
-import { APP_REPO_URL, APP_VERSION } from '../app/version';
-import { ApiKeyFields, Button, Empty, Field, IconButton, IconCrown, Input, Panel, Seg, Switch } from './ui';
+import { isStaleZeroQuotaUser } from '../config/staleUsers';
+import { AboutPage } from './AboutPage';
+import { AppearanceSettings } from './AppearanceSettings';
+import { ApiKeyFields, Button, Empty, Field, IconButton, IconCrown, Input, Panel, Seg, Select, Switch } from './ui';
+import { useFeedback } from './ui/Feedback';
 import { cx } from './ui/cx';
 
 type ArtistWeightSyntax = 'numeric' | 'bracket';
@@ -23,6 +26,7 @@ interface ExtendedArtistAdminProps {
 export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
     currentUser, artistsData, usersData, onRefreshArtists, onRefreshUsers,
 }) => {
+  const { toast, confirm } = useFeedback();
   // 使用统一的角色策略
   const isAdmin = currentUser.role === 'admin';
   const isVip = currentUser.role === 'vip';
@@ -143,12 +147,12 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
   };
 
   const handleArtistDelete = async (id: string) => {
-      if(confirm('确定删除该画师吗？')) {
-          setIsLoading(true);
-          await db.deleteArtist(id);
-          await onRefreshArtists();
-          setIsLoading(false);
-      }
+      const ok = await confirm({ title: '确定删除该画师吗？', confirmLabel: '删除', tone: 'danger' });
+      if (!ok) return;
+      setIsLoading(true);
+      await db.deleteArtist(id);
+      await onRefreshArtists();
+      setIsLoading(false);
   };
 
   const handleCreateUser = async () => {
@@ -158,31 +162,31 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
         await db.createUser(newUsername, newPassword);
         setNewUsername(''); setNewPassword('');
         await onRefreshUsers();
-        alert('用户创建成功');
-      } catch(e) { alert('创建失败：用户名可能已存在'); }
+        toast('用户创建成功', 'success');
+      } catch(e) { toast('创建失败：用户名可能已存在', 'error'); }
       setIsLoading(false);
   };
 
   const handleDeleteUser = async (id: string) => {
-      if(confirm('删除用户？')) {
-          setIsLoading(true);
-          await db.deleteUser(id);
-          await onRefreshUsers();
-          setIsLoading(false);
-      }
+      const ok = await confirm({ title: '删除这个用户？', description: '此操作无法撤销。', confirmLabel: '删除', tone: 'danger' });
+      if (!ok) return;
+      setIsLoading(true);
+      await db.deleteUser(id);
+      await onRefreshUsers();
+      setIsLoading(false);
   };
 
   const handleUpdateQuota = async (userId: string) => {
       const mb = parseFloat(newQuotaMB);
       if (isNaN(mb) || mb < 0) {
-          alert('请输入有效的配额数值（非负数）');
+          toast('请输入有效的配额数值（非负数）', 'warning');
           return;
       }
       
       // 验证配额上限（100GB）
       const MAX_QUOTA_MB = 100 * 1024; // 100GB in MB
       if (mb > MAX_QUOTA_MB) {
-          alert(`配额值超出上限，最大允许 ${MAX_QUOTA_MB} MB (100GB)`);
+          toast(`配额值超出上限，最大允许 ${MAX_QUOTA_MB} MB (100GB)`, 'warning');
           return;
       }
       
@@ -193,7 +197,7 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
           await onRefreshUsers();
           setEditingQuotaUserId(null);
           setNewQuotaMB('');
-          alert('配额更新成功');
+          toast('配额更新成功', 'success');
       } catch(e: any) {
           // 提供更具体的错误信息
           let errorMessage = '更新失败';
@@ -210,7 +214,7 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                   errorMessage = `更新失败: ${e.message}`;
               }
           }
-          alert(errorMessage);
+          toast(errorMessage, 'error');
           console.error('配额更新失败:', e);
       }
       setIsLoading(false);
@@ -229,16 +233,16 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
 
   // 清理旧日志
   const handleClearLogs = async () => {
-      if (!confirm('确定要清理 30 天前的登录日志吗？')) return;
+      const ok = await confirm({ title: '清理 30 天前的登录日志？', confirmLabel: '清理', tone: 'danger' });
+      if (!ok) return;
       setClearingLogs(true);
       try {
           await db.clearOldLogs();
-          // 刷新统计数据
           const newStats = await db.getUsageStats();
           setUsageStats(newStats);
-          alert('旧日志已清理');
+          toast('旧日志已清理', 'success');
       } catch (e) {
-          alert('清理失败');
+          toast('清理失败', 'error');
       }
       setClearingLogs(false);
   };
@@ -263,7 +267,7 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
       if(!myNewPassword) return;
       await db.updatePassword(myNewPassword);
       setMyNewPassword('');
-      alert('密码修改成功');
+      toast('密码修改成功', 'success');
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -276,8 +280,32 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
   };
 
   // --- GitHub Import Logic ---
+  const handleBatchDemote = async () => {
+      const ok = await confirm({
+          title: '批量改回游客？',
+          description: '将普通用户中 15 天未登录、且配额使用为 0 的账号改回游客权限组，并套用游客默认配额。当前登录账号不会被改动。',
+          confirmLabel: '改回游客',
+          tone: 'danger',
+      });
+      if (!ok) return;
+      setIsLoading(true);
+      try {
+          const { count } = await db.demoteStaleUsers();
+          await onRefreshUsers();
+          toast(count ? `已将 ${count} 名用户改回游客` : '没有符合条件的用户', count ? 'success' : 'info');
+      } catch (e) {
+          toast('批量更新失败', 'error');
+      }
+      setIsLoading(false);
+  };
+
   const handleGithubImport = async () => {
-      if (!confirm('这将从 twoearcat/nai-artists 仓库抓取所有图片并导入数据库。\n过程可能较慢，请勿关闭页面。')) return;
+      const ok = await confirm({
+          title: '从 GitHub 导入画师？',
+          description: '将从 twoearcat/nai-artists 仓库抓取所有图片并导入数据库。过程可能较慢，请勿关闭页面。',
+          confirmLabel: '开始导入',
+      });
+      if (!ok) return;
       
       setIsImporting(true);
       setImportProgress(0);
@@ -331,14 +359,16 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
       }
   };
 
+  const staleUserCount = users.filter((u) => isStaleZeroQuotaUser(u, Date.now(), currentUser.id)).length;
+
   const tabOptions = [
       { value: 'profile' as const, label: '偏好设置' },
-      { value: 'about' as const, label: '关于' },
       ...((isAdmin || isVip) ? [{ value: 'artist' as const, label: '画师管理' }] : []),
       ...(isAdmin ? [
           { value: 'users' as const, label: '用户管理' },
           { value: 'stats' as const, label: '使用统计' },
       ] : []),
+      { value: 'about' as const, label: '关于' },
   ];
 
   return (
@@ -430,10 +460,14 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                     </div>
                 </Panel>
 
-                <Panel title="Discord 游客">
+                <Panel title="批量改回游客">
                     <p className="hint">
-                        新 Discord 登录用户默认为游客权限组。可在下表把游客提升为正式用户。
+                        普通用户、15 天内未登录、且配额使用为 0 的账号。
+                        {staleUserCount > 0 ? ` 当前列表中有 ${staleUserCount} 人符合。` : ' 当前列表中没有符合的账号。'}
                     </p>
+                    <div className="sheet-foot">
+                        <Button onClick={handleBatchDemote} disabled={isLoading}>批量改回游客</Button>
+                    </div>
                 </Panel>
 
                 <div className="page-scroll" style={{ overflowX: 'auto' }}>
@@ -458,25 +492,27 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                                         {u.role === 'vip' && <span className="vip-crown" title="VIP"><IconCrown /></span>}
                                     </td>
                                     <td>
-                                        <select
+                                        <Select
+                                            aria-label={`${u.username} 的角色`}
                                             value={u.role}
                                             onChange={async (e) => {
                                                 const newRole = e.target.value;
                                                 try {
-                                                    await db.updateUserRole(u.id, newRole, false);
+                                                    await db.updateUserRole(u.id, newRole, newRole === 'guest');
                                                     await onRefreshUsers();
+                                                    toast(`已将 ${u.username} 设为${ROLE_POLICY.getRoleDisplayName(newRole as User['role'])}`, 'success');
                                                 } catch (err) {
-                                                    alert('角色更新失败');
+                                                    toast('角色更新失败', 'error');
                                                 }
                                             }}
-                                            className={ROLE_POLICY.getRoleBadgeClass(u.role as any)}
+                                            className="role-select"
                                             disabled={u.id === currentUser.id}
                                         >
-                                            {u.role === 'guest' && <option value="guest">{ROLE_POLICY.getRoleDisplayName('guest')}</option>}
+                                            <option value="guest">{ROLE_POLICY.getRoleDisplayName('guest')}</option>
                                             <option value="user">{ROLE_POLICY.getRoleDisplayName('user')}</option>
                                             <option value="vip">{ROLE_POLICY.getRoleDisplayName('vip')}</option>
                                             <option value="admin">{ROLE_POLICY.getRoleDisplayName('admin')}</option>
-                                        </select>
+                                        </Select>
                                     </td>
                                     <td className="hint">{formatDate(u.createdAt)}</td>
                                     <td className="hint">{formatDateTime(u.lastLogin)}</td>
@@ -626,90 +662,93 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
 
         {activeTab === 'about' && (
             <div className="settings-stack wide">
-                <Panel title="关于">
-                    <div className="stack" style={{ gap: 10 }}>
-                        <div className="pref-row">
-                            <span>当前版本</span>
-                            <strong>{APP_VERSION}</strong>
-                        </div>
-                        <div className="pref-row">
-                            <span>源代码</span>
-                            <a href={APP_REPO_URL} target="_blank" rel="noreferrer">{APP_REPO_URL}</a>
-                        </div>
-                    </div>
-                </Panel>
+                <AboutPage />
             </div>
         )}
 
         {activeTab === 'profile' && (
             <div className="settings-stack wide">
-                <div className="settings-pair">
-                    <Panel title="Discord">
-                        {currentUser.discordId ? (
-                            <p className="hint">已关联：{currentUser.discordUsername || currentUser.discordId}</p>
-                        ) : (
-                            <>
-                                <p className="hint">关联后可用 Discord 登录此账号。</p>
-                                <Button onClick={() => { window.location.href = '/api/auth/discord?link=1'; }}>
-                                    关联 Discord
-                                </Button>
-                            </>
+                <section className="settings-block">
+                    <div className="settings-block-head">
+                        <h3>账号</h3>
+                    </div>
+                    <div className="settings-pair">
+                        <Panel title="Discord">
+                            {currentUser.discordId ? (
+                                <p className="hint">已关联：{currentUser.discordUsername || currentUser.discordId}</p>
+                            ) : (
+                                <>
+                                    <p className="hint">关联后可用 Discord 登录此账号。</p>
+                                    <Button onClick={() => { window.location.href = '/api/auth/discord?link=1'; }}>
+                                        关联 Discord
+                                    </Button>
+                                </>
+                            )}
+                        </Panel>
+                        {currentUser.role !== 'guest' && (
+                            <Panel title="修改密码">
+                                <div className="pref-row">
+                                    <Input
+                                        type="password"
+                                        value={myNewPassword}
+                                        onChange={e => setMyNewPassword(e.target.value)}
+                                        placeholder="新密码"
+                                        aria-label="新密码"
+                                    />
+                                    <Button className="pref-action" onClick={handleChangePassword}>更新密码</Button>
+                                </div>
+                            </Panel>
                         )}
-                    </Panel>
-                    {currentUser.role !== 'guest' && (
-                        <Panel title="修改密码">
-                            <Field label="新密码">
-                                <Input type="password" value={myNewPassword} onChange={e => setMyNewPassword(e.target.value)} placeholder="新密码" />
+                        <Panel title="API Key">
+                            <ApiKeyFields />
+                        </Panel>
+                    </div>
+                </section>
+                <section className="settings-block">
+                    <div className="settings-block-head">
+                        <h3>偏好</h3>
+                    </div>
+                    <div className="settings-pair">
+                        <Panel title="图片压缩">
+                            <div className="pref-row">
+                                <div>自动 JPG 保存</div>
+                                <Switch
+                                    checked={autoJpg}
+                                    onCheckedChange={handleAutoJpgChange}
+                                    aria-label="自动 JPG 保存"
+                                />
+                            </div>
+                            <Field label={`JPG 质量 ${jpgQuality.toFixed(2)}`}>
+                                <input
+                                    type="range"
+                                    className="range"
+                                    min="0.1"
+                                    max="1"
+                                    step="0.01"
+                                    value={jpgQuality}
+                                    onChange={e => handleQualityChange(parseFloat(e.target.value))}
+                                />
                             </Field>
-                            <div className="sheet-foot">
-                                <Button onClick={handleChangePassword}>更新密码</Button>
+                            <div className="pref-row hint">
+                                <span>更小（0.10）</span>
+                                <span>更清晰（1.00）</span>
                             </div>
                         </Panel>
-                    )}
-                    <Panel title="API Key">
-                        <ApiKeyFields />
-                    </Panel>
-                </div>
-
-                <div className="settings-pair">
-                    <Panel title="图片压缩">
-                        <div className="pref-row">
-                            <div>自动 JPG 保存</div>
-                            <Switch
-                                checked={autoJpg}
-                                onCheckedChange={handleAutoJpgChange}
-                                aria-label="自动 JPG 保存"
+                        <Panel title="军火库">
+                            <Seg
+                                fill
+                                aria-label="权重语法"
+                                value={artistWeightSyntax}
+                                onChange={handleArtistWeightSyntaxChange}
+                                options={[
+                                    { value: 'numeric', label: '数字权重' },
+                                    { value: 'bracket', label: '括号权重' },
+                                ]}
                             />
-                        </div>
-                        <Field label={`JPG 质量 ${jpgQuality.toFixed(2)}`}>
-                            <input
-                                type="range"
-                                className="range"
-                                min="0.1"
-                                max="1"
-                                step="0.01"
-                                value={jpgQuality}
-                                onChange={e => handleQualityChange(parseFloat(e.target.value))}
-                            />
-                        </Field>
-                        <div className="pref-row hint">
-                            <span>更小（0.10）</span>
-                            <span>更清晰（1.00）</span>
-                        </div>
-                    </Panel>
-                    <Panel title="军火库">
-                        <Seg
-                            fill
-                            aria-label="权重语法"
-                            value={artistWeightSyntax}
-                            onChange={handleArtistWeightSyntaxChange}
-                            options={[
-                                { value: 'numeric', label: '数字权重' },
-                                { value: 'bracket', label: '括号权重' },
-                            ]}
-                        />
-                    </Panel>
-                </div>
+                        </Panel>
+                    </div>
+                </section>
+                <AppearanceSettings />
             </div>
         )}
       </div>

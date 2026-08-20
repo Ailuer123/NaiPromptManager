@@ -5,11 +5,8 @@ import { ROLE_POLICY } from '../config/rolePolicy';
 import { User } from '../types';
 import { Atmosphere } from './Atmosphere';
 import { BrandMark } from './BrandMark';
-import { ThemePicker } from './ThemePicker';
-import { ModeSwitch } from './ui/ModeSwitch';
 import { Avatar } from './ui/Avatar';
 import { IconButton } from './ui/IconButton';
-import { Toast, ToastHost } from './ui/Toast';
 import { cx } from './ui/cx';
 
 export type LayoutView =
@@ -27,7 +24,6 @@ interface LayoutProps {
   currentView: string;
   currentUser?: User | null;
   onLogout?: () => void;
-  toast?: { message: string, type: 'success' | 'error' } | null;
   hideNav?: boolean;
 }
 
@@ -128,7 +124,6 @@ export const Layout: React.FC<LayoutProps> = ({
   currentView,
   currentUser,
   onLogout,
-  toast,
   hideNav,
 }) => {
   const [moreOpen, setMoreOpen] = useState(false);
@@ -172,12 +167,6 @@ export const Layout: React.FC<LayoutProps> = ({
     <div className={cx('app-shell', hideNav && 'hide-nav')}>
       <Atmosphere />
 
-      {toast ? (
-        <ToastHost>
-          <Toast message={toast.message} type={toast.type} />
-        </ToastHost>
-      ) : null}
-
       <header className="topbar">
         <div className="topbar-inner glass">
           <div className="brand">
@@ -188,8 +177,6 @@ export const Layout: React.FC<LayoutProps> = ({
             </div>
           </div>
           <div className="top-actions">
-            <ModeSwitch />
-            <ThemePicker compact />
             {currentUser ? (
               <div className={cx('user-chip', currentUser.role === 'vip' && 'vip-badge')}>
                 <Avatar name={currentUser.username[0]?.toUpperCase()} />
@@ -247,8 +234,6 @@ export const Layout: React.FC<LayoutProps> = ({
           </nav>
 
           <div className="sidebar-foot">
-            <ModeSwitch />
-            <ThemePicker compact side />
             {showStorage ? (
               <div className="storage">
                 <div className="storage-row">

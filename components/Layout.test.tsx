@@ -102,13 +102,10 @@ describe('Layout', () => {
     expect(onLogout).toHaveBeenCalledTimes(1);
   });
 
-  it('外观开关是亮/暗/随设备的图标 radio', () => {
+  it('顶栏和侧栏不再放常驻主题 / 深浅开关', () => {
     renderLayout(member);
-    const groups = screen.getAllByRole('radiogroup', { name: '外观' });
-    expect(groups.length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('radio', { name: '亮色' }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('radio', { name: '暗色' }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('radio', { name: '随设备' }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('radio', { name: '亮色' })[0]).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByRole('radiogroup', { name: '外观' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /外观：/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: '选择主题配色' })).toBeNull();
   });
 });

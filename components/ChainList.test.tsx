@@ -6,6 +6,7 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PromptChain } from '../types';
+import { FeedbackProvider } from './ui/Feedback';
 import { ChainList } from './ChainList';
 
 afterEach(() => {
@@ -40,6 +41,7 @@ function renderList(
   const notify = vi.fn();
 
   const result = render(
+    <FeedbackProvider>
     <ChainList
       chains={[
         makeChain({ id: 's1', name: '雾霾玫瑰', type: 'style', isPrivate: true }),
@@ -54,7 +56,8 @@ function renderList(
       isLoading={false}
       notify={notify}
       {...overrides}
-    />,
+    />
+    </FeedbackProvider>,
   );
 
   return { onTypeChange, onCreate, onSelect, onDelete, onRefresh, notify, ...result };
@@ -121,7 +124,6 @@ describe('ChainList', () => {
   it('更多按钮打开复制/删除，不进入编辑', async () => {
     const user = userEvent.setup();
     const { onSelect, onDelete } = renderList();
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     await user.click(screen.getByRole('button', { name: '更多 雾霾玫瑰' }));
     expect(onSelect).not.toHaveBeenCalled();
@@ -133,8 +135,9 @@ describe('ChainList', () => {
     await user.keyboard('{Escape}');
     await user.click(screen.getByRole('button', { name: '更多 雾霾玫瑰' }));
     await user.click(screen.getByRole('button', { name: '删除' }));
+    const confirmDlg = await screen.findByRole('alertdialog', { name: '确认删除?' });
+    await user.click(within(confirmDlg).getByRole('button', { name: '删除' }));
     expect(onDelete).toHaveBeenCalledWith('s1');
-    confirmSpy.mockRestore();
   });
 
   it('空态使用 Empty；游客没有新建', () => {

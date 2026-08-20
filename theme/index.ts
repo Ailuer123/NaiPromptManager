@@ -35,4 +35,15 @@ export {
   subscribeSystemDark,
   type ThemePreference,
 } from './applyTheme';
+export {
+  DEFAULT_FONT_SCALE,
+  FONT_SCALE_OPTIONS,
+  FONT_SCALE_STORAGE_KEY,
+  applyFontScale,
+  fontScaleFactor,
+  parseFontScale,
+  persistFontScale,
+  readStoredFontScale,
+  type FontScaleId,
+} from './fontScale';
 export { ThemeProvider, useTheme } from './ThemeProvider';

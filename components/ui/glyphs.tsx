@@ -85,6 +85,15 @@ export function IconRobot(props: IconProps) {
   );
 }
 
+export function IconInfo(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 10v6M12 7h.01" />
+    </Svg>
+  );
+}
+
 export function IconWarn(props: IconProps) {
   return (
     <Svg {...props}>
@@ -183,6 +192,56 @@ export function IconClose(props: IconProps) {
   return (
     <Svg {...props}>
       <path d="M6 6l12 12M18 6L6 18" />
+    </Svg>
+  );
+}
+
+export function IconGithub({ className, title }: IconProps) {
+  return (
+    <svg
+      className={['icon-fill', className].filter(Boolean).join(' ')}
+      viewBox="0 0 24 24"
+      aria-hidden={title ? undefined : true}
+      role={title ? 'img' : undefined}
+    >
+      {title ? <title>{title}</title> : null}
+      <path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.342-3.369-1.342-.454-1.155-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.564 9.564 0 0 1 12 6.844a9.56 9.56 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48A10.019 10.019 0 0 0 22 12c0-5.523-4.477-10-10-10z" />
+    </svg>
+  );
+}
+
+export function IconExternal(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M15 3h6v6" />
+      <path d="M10 14L21 3" />
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    </Svg>
+  );
+}
+
+export function IconSun(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+    </Svg>
+  );
+}
+
+export function IconMoon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M17 14.6A7 7 0 1 1 9.4 7 5.5 5.5 0 0 0 17 14.6z" />
+    </Svg>
+  );
+}
+
+export function IconMonitor(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="2" y="3" width="20" height="14" rx="2" />
+      <path d="M8 21h8M12 17v4" />
     </Svg>
   );
 }

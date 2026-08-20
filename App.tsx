@@ -14,6 +14,7 @@ import { InspirationGallery } from './components/InspirationGallery';
 import { GenHistory } from './components/GenHistory';
 import { db } from './services/dbService';
 import { PromptChain, User, Artist, Inspiration, ChainType } from './types';
+import { useFeedback } from './components/ui/Feedback';
 
 type ViewState = AppView;
 
@@ -55,12 +56,9 @@ const App = () => {
   const [loginError, setLoginError] = useState('');
   const [discordEnabled, setDiscordEnabled] = useState(true);
 
-  // Toast State
-  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
-
-  const notify = (message: string, type: 'success' | 'error' = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+  const { toast, confirm } = useFeedback();
+  const notify = (message: string, type: 'success' | 'error' | 'warning' | 'info' = 'success') => {
+    toast(message, type);
   };
 
   // Check Session on Load
@@ -162,13 +160,24 @@ const App = () => {
 
   useEffect(() => {
     if (blocker.state !== 'blocked') return;
-    if (confirm('您有未保存的更改，确定要离开吗？')) {
-      setIsEditorDirty(false);
-      blocker.proceed();
-    } else {
-      blocker.reset();
-    }
-  }, [blocker.state]);
+    let cancelled = false;
+    confirm({
+      title: '确定要离开吗？',
+      description: '您有未保存的更改。',
+      confirmLabel: '离开',
+      cancelLabel: '继续编辑',
+      tone: 'danger',
+    }).then((ok) => {
+      if (cancelled) return;
+      if (ok) {
+        setIsEditorDirty(false);
+        blocker.proceed();
+      } else {
+        blocker.reset();
+      }
+    });
+    return () => { cancelled = true; };
+  }, [blocker.state, confirm]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -362,7 +371,6 @@ const App = () => {
         currentView={view}
         currentUser={currentUser}
         onLogout={handleLogout}
-        toast={toast}
         hideNav={view === 'edit' || view === 'playground'}
       >
         {renderContent()}

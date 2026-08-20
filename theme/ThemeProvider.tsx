@@ -10,14 +10,21 @@ import {
 } from './applyTheme';
 import { applyFavicon } from '../components/BrandMark';
 import type { ThemeMode } from './buildThemeVars';
+import {
+  DEFAULT_FONT_SCALE,
+  applyFontScale,
+  type FontScaleId,
+} from './fontScale';
 import { themeById, type ThemeId } from './palettes';
 
 type ThemeContextValue = {
   themeId: ThemeId;
   mode: ThemeMode;
   preference: ThemePreference;
+  fontScale: FontScaleId;
   setTheme: (id: string) => void;
   setMode: (pref: ThemePreference) => void;
+  setFontScale: (id: FontScaleId) => void;
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -28,17 +35,19 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [initial] = useState(readStoredTheme);
   const [themeId, setThemeId] = useState(initial.themeId);
   const [preference, setPreferenceState] = useState<ThemePreference>(initial.preference);
+  const [fontScale, setFontScaleState] = useState<FontScaleId>(DEFAULT_FONT_SCALE);
   const [systemDark, setSystemDark] = useState(readSystemDark);
   const mode = resolveMode(preference, systemDark);
 
   useLayoutEffect(() => {
     applyTheme(themeId, mode);
     persistMode(preference);
+    applyFontScale(fontScale);
     if (typeof document === 'undefined') return;
     document.documentElement.classList.toggle('dark', mode === 'dark');
     document.documentElement.setAttribute('data-theme-pref', preference);
     applyFavicon(mode);
-  }, [themeId, mode, preference]);
+  }, [themeId, mode, preference, fontScale]);
 
   useLayoutEffect(() => {
     return subscribeSystemDark(setSystemDark);
@@ -67,9 +76,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setPreferenceState(pref);
   }, []);
 
+  const setFontScale = useCallback((id: FontScaleId) => {
+    applyFontScale(id);
+    setFontScaleState(id);
+  }, []);
+
   const value = useMemo(
-    () => ({ themeId, mode, preference, setTheme, setMode }),
-    [themeId, mode, preference, setTheme, setMode],
+    () => ({ themeId, mode, preference, fontScale, setTheme, setMode, setFontScale }),
+    [themeId, mode, preference, fontScale, setTheme, setMode, setFontScale],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

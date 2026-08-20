@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NAIParams } from '../types';
 import { VibeLibrary } from '../services/vibeLibrary';
+import { FeedbackProvider } from './ui/Feedback';
 import { ChainEditorVibePanel } from './ChainEditorVibePanel';
 
 afterEach(cleanup);
@@ -17,7 +18,7 @@ const Host = ({ library }: { library: VibeLibrary }) => {
     width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', vibes: [],
   });
   return (
-    <>
+    <FeedbackProvider>
       <ChainEditorVibePanel
         params={params}
         setParams={setParams}
@@ -27,7 +28,7 @@ const Host = ({ library }: { library: VibeLibrary }) => {
         library={library}
       />
       <output data-testid="params-state">{JSON.stringify(params)}</output>
-    </>
+    </FeedbackProvider>
   );
 };
 

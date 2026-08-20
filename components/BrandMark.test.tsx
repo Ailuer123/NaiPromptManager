@@ -17,6 +17,17 @@ describe('BrandMark', () => {
     expect(svg.querySelector('path[d="M30 68V32h10l20 30V32h10v36H60L40 38v30H30z"]')).toBeTruthy();
   });
 
+  it('动效版使用暗底 N 与电流描边，不用渐变填充字形', () => {
+    render(<BrandMark animated />);
+    const svg = screen.getByRole('img', { name: '符文矩阵' });
+    expect(svg).toHaveClass('w-full', 'h-full');
+    expect(svg.querySelector('.glyph-trace')).toBeTruthy();
+    expect(svg.querySelector('.ring-outer')).toBeTruthy();
+    const glyph = svg.querySelector('path[d="M30 68V32h10l20 30V32h10v36H60L40 38v30H30z"]');
+    expect(glyph).toHaveAttribute('fill', '#0c1220');
+    expect(svg.querySelector('linearGradient')).toBeNull();
+  });
+
   it('同页两枚 LOGO 的渐变 id 不冲突', () => {
     render(
       <>

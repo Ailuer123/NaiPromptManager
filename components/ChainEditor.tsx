@@ -13,6 +13,7 @@ import { extractMetadata, parseNovelAIMetadata, IMPORT_SESSION_KEY } from '../se
 import { ChainEditorParams } from './ChainEditorParams';
 import { ChainEditorPreview } from './ChainEditorPreview';
 import { ChainEditorVibePanel } from './ChainEditorVibePanel';
+import { useFeedback } from './ui/Feedback';
 import { SaveAsChainSheet } from './SaveAsChainSheet';
 import { vibeLibrary } from '../services/vibeLibrary';
 import { resolveVibeMounts, validateVibeMounts } from '../services/vibeResolve';
@@ -29,6 +30,7 @@ interface ChainEditorProps {
 }
 
 export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, currentUser, onUpdateChain, onBack, onFork, setIsDirty, notify }) => {
+    const { confirm } = useFeedback();
     // Permission Check
     // Guests are allowed to EDIT (in memory) for testing, but NOT SAVE.
     const isGuest = currentUser.role === 'guest';
@@ -404,7 +406,12 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
             return;
         }
 
-        if (!confirm('是否用该图片的参数覆盖当前 Base Prompt、Negative Prompt 和参数设置？\n(Subject 和 模块不会被修改)')) return;
+        const ok = await confirm({
+            title: '用图片参数覆盖当前设置？',
+            description: '会覆盖当前 Base Prompt、Negative Prompt 和参数设置。Subject 和模块不会被修改。',
+            confirmLabel: '覆盖',
+        });
+        if (!ok) return;
 
         try {
             // 调用公共解析服务
@@ -466,8 +473,14 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         setShowForkModal(true);
     };
 
-    const handleReset = () => {
-        if (!confirm('确定要重置实验室吗？所有当前输入都将丢失。')) return;
+    const handleReset = async () => {
+        const ok = await confirm({
+            title: '确定要重置实验室吗？',
+            description: '所有当前输入都将丢失。',
+            confirmLabel: '重置',
+            tone: 'danger',
+        });
+        if (!ok) return;
         setChainName('生图实验室');
         setChainDesc('临时生图实验，点击保存为串可写入列表');
         setBasePrompt('');
@@ -568,38 +581,49 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
 
     const handleSavePreview = async () => {
         if (!generatedImage || !isOwner || chain.id === 'playground') return;
-        if (confirm('将当前生成的图片设为该串的封面图？\n\n警告：此操作将永久删除旧的封面图（如果是上传的图片）。')) {
-            setIsUploading(true);
-            try {
-                const res = await fetch(generatedImage);
-                const blob = await res.blob();
-                const file = new File([blob], getDownloadFilename(), { type: 'image/png' });
-                const uploadRes = await api.uploadFile(file, 'covers');
-                await onUpdateChain(chain.id, { previewImage: uploadRes.url });
-                notify('封面已更新 (刷新列表查看效果)');
-            } catch (e: any) {
-                notify('设置封面失败: ' + e.message, 'error');
-            } finally {
-                setIsUploading(false);
-            }
+        const ok = await confirm({
+            title: '设为封面图？',
+            description: '此操作将永久删除旧的封面图（如果是上传的图片）。',
+            confirmLabel: '设为封面',
+            tone: 'danger',
+        });
+        if (!ok) return;
+        setIsUploading(true);
+        try {
+            const res = await fetch(generatedImage);
+            const blob = await res.blob();
+            const file = new File([blob], getDownloadFilename(), { type: 'image/png' });
+            const uploadRes = await api.uploadFile(file, 'covers');
+            await onUpdateChain(chain.id, { previewImage: uploadRes.url });
+            notify('封面已更新 (刷新列表查看效果)');
+        } catch (e: any) {
+            notify('设置封面失败: ' + e.message, 'error');
+        } finally {
+            setIsUploading(false);
         }
     };
 
     const handleUploadCover = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!isOwner) return;
         const file = e.target.files?.[0];
+        e.target.value = '';
         if (!file) return;
-        if (confirm('您确定要上传新封面吗？\n\n警告：此操作将永久删除旧的封面图文件。')) {
-            setIsUploading(true);
-            try {
-                const res = await api.uploadFile(file, 'covers');
-                await onUpdateChain(chain.id, { previewImage: res.url });
-                notify('封面已更新');
-            } catch (err: any) {
-                notify('上传失败: ' + err.message, 'error');
-            } finally {
-                setIsUploading(false);
-            }
+        const ok = await confirm({
+            title: '上传新封面？',
+            description: '此操作将永久删除旧的封面图文件。',
+            confirmLabel: '替换封面',
+            tone: 'danger',
+        });
+        if (!ok) return;
+        setIsUploading(true);
+        try {
+            const res = await api.uploadFile(file, 'covers');
+            await onUpdateChain(chain.id, { previewImage: res.url });
+            notify('封面已更新');
+        } catch (err: any) {
+            notify('上传失败: ' + err.message, 'error');
+        } finally {
+            setIsUploading(false);
         }
     };
 

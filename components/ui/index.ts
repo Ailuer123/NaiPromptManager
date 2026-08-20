@@ -12,16 +12,22 @@ export {
   IconClose,
   IconCrown,
   IconDiscord,
+  IconExternal,
   IconEye,
   IconEyeOff,
   IconGear,
+  IconGithub,
   IconInbox,
+  IconInfo,
   IconLock,
+  IconMonitor,
+  IconMoon,
   IconPackage,
   IconPalette,
   IconPause,
   IconPlay,
   IconRobot,
+  IconSun,
   IconTrash,
   IconUser,
   IconWarn,
@@ -29,6 +35,7 @@ export {
 export { Field, Input, Select, Textarea, type FieldProps, type InputProps, type SelectProps, type TextareaProps } from './Field';
 export { IconButton, type IconButtonProps } from './IconButton';
 export { Panel, type PanelProps } from './Panel';
+export { FeedbackProvider, useFeedback, type ConfirmOptions, type ConfirmTone, type ToastTone as FeedbackToastTone } from './Feedback';
 export { ModeSwitch } from './ModeSwitch';
 export { Overlay, Sheet, type OverlayProps, type SheetProps } from './Sheet';
 export { Portal } from './Portal';

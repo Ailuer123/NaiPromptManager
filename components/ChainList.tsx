@@ -9,6 +9,7 @@ import { Field, Input, Select, Textarea } from './ui/Field';
 import { IconButton } from './ui/IconButton';
 import { Sheet } from './ui/Sheet';
 import { Tag } from './ui/Tag';
+import { useFeedback } from './ui/Feedback';
 import { IconEyeOff, IconLock } from './ui/glyphs';
 
 interface ChainListProps {
@@ -178,6 +179,7 @@ const CopyModal: React.FC<{
 };
 
 export const ChainList: React.FC<ChainListProps> = ({ chains, type, onTypeChange, onCreate, onSelect, onDelete, onRefresh, isLoading, notify, isGuest = false }) => {
+  const { confirm } = useFeedback();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
@@ -286,8 +288,14 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onTypeChange
     setCopyModalChain(chain);
   };
 
-  const handleDeleteFromMenu = (chain: PromptChain) => {
-    if (!confirm('确认删除?')) return;
+  const handleDeleteFromMenu = async (chain: PromptChain) => {
+    const ok = await confirm({
+      title: '确认删除?',
+      description: `将删除「${chain.name}」，此操作无法撤销。`,
+      confirmLabel: '删除',
+      tone: 'danger',
+    });
+    if (!ok) return;
     onDelete(chain.id);
     setMenuChain(null);
   };

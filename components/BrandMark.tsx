@@ -64,40 +64,72 @@ export function applyFavicon(mode: ThemeMode) {
   link.href = `data:image/svg+xml,${encodeURIComponent(grimoireSvgMarkup(mode))}`;
 }
 
-type BrandMarkProps = {
+export type BrandMarkProps = {
   className?: string;
   title?: string;
+  animated?: boolean;
 };
 
-export function BrandMark({ className, title = '符文矩阵' }: BrandMarkProps) {
+export function BrandMark({ className, title = '符文矩阵', animated = false }: BrandMarkProps) {
   const uid = useId().replace(/:/g, '');
   const gid = `grimoire-grad-${uid}`;
 
   return (
-    <span className={cx('brand-mark', className)}>
-      <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label={title}>
+    <span className={cx('brand-mark', animated && 'motion-deep-stream', className)}>
+      <svg className="w-full h-full" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label={title}>
         <title>{title}</title>
-        <defs>
-          <linearGradient id={gid} x1="20" y1="20" x2="80" y2="80" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="var(--logo-from)" />
-            <stop offset="50%" stopColor="var(--logo-mid)" />
-            <stop offset="100%" stopColor="var(--logo-to)" />
-          </linearGradient>
-        </defs>
-        <circle cx="50" cy="50" r="44" stroke="var(--logo-ring-outer)" strokeWidth="1" strokeDasharray="2 4" />
-        <circle cx="50" cy="50" r="38" stroke="var(--logo-ring)" strokeWidth="1.5" />
-        <path d="M50 6v6M50 88v6M6 50h6M88 50h6" stroke="var(--logo-tick)" strokeWidth="2" strokeLinecap="square" />
-        <circle cx="26" cy="26" r="1.5" fill="var(--logo-star-a)" />
-        <circle cx="74" cy="26" r="1.5" fill="var(--logo-star-b)" />
-        <circle cx="26" cy="74" r="1.5" fill="var(--logo-star-b)" />
-        <circle cx="74" cy="74" r="1.5" fill="var(--logo-star-a)" />
-        <path
-          d="M30 68V32h10l20 30V32h10v36H60L40 38v30H30z"
-          fill={`url(#${gid})`}
-          stroke="var(--logo-sheen)"
-          strokeWidth="1"
-        />
-        <circle cx="50" cy="50" r="2.5" fill="var(--logo-core)" />
+        {animated ? (
+          <>
+            {/* 外环虚线 (28s 极慢旋转) */}
+            <circle className="ring-outer" cx="50" cy="50" r="44" stroke="rgba(129,140,248,0.35)" strokeWidth="1.2" />
+            {/* 内环 (呼吸微光) */}
+            <circle className="ring-inner" cx="50" cy="50" r="38" stroke="#38BDF8" strokeWidth="1.5" />
+            {/* 四向十字刻度 */}
+            <path d="M50 6v6M50 88v6M6 50h6M88 50h6" stroke="#818CF8" strokeWidth="2.5" strokeLinecap="square" />
+            {/* 四角星点 (微光脉冲) */}
+            <circle className="star-dot" cx="26" cy="26" r="1.8" fill="#EC4899" />
+            <circle className="star-dot" cx="74" cy="26" r="1.8" fill="#38BDF8" />
+            <circle className="star-dot" cx="26" cy="74" r="1.8" fill="#38BDF8" />
+            <circle className="star-dot" cx="74" cy="74" r="1.8" fill="#EC4899" />
+            {/* N 字静态深邃暗底 (保证发光电流在暗底上高对比度巡航) */}
+            <path d="M30 68V32h10l20 30V32h10v36H60L40 38v30H30z" fill="#0c1220" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
+            {/* 慢速平稳电流光流 (9s 周期) */}
+            <path
+              className="glyph-trace"
+              d="M30 68V32h10l20 30V32h10v36H60L40 38v30H30z"
+              fill="none"
+              stroke="#38BDF8"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+            />
+            {/* 核心恒星原点 */}
+            <circle cx="50" cy="50" r="2.5" fill="#FFFFFF" />
+          </>
+        ) : (
+          <>
+            <defs>
+              <linearGradient id={gid} x1="20" y1="20" x2="80" y2="80" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="var(--logo-from, #38BDF8)" />
+                <stop offset="50%" stopColor="var(--logo-mid, #818CF8)" />
+                <stop offset="100%" stopColor="var(--logo-to, #EC4899)" />
+              </linearGradient>
+            </defs>
+            <circle cx="50" cy="50" r="44" stroke="var(--logo-ring-outer, rgba(129,140,248,0.3))" strokeWidth="1" strokeDasharray="2 4" />
+            <circle cx="50" cy="50" r="38" stroke="var(--logo-ring, rgba(129,140,248,0.5))" strokeWidth="1.5" />
+            <path d="M50 6v6M50 88v6M6 50h6M88 50h6" stroke="var(--logo-tick, #818CF8)" strokeWidth="2" strokeLinecap="square" />
+            <circle cx="26" cy="26" r="1.5" fill="var(--logo-star-a, #EC4899)" />
+            <circle cx="74" cy="26" r="1.5" fill="var(--logo-star-b, #38BDF8)" />
+            <circle cx="26" cy="74" r="1.5" fill="var(--logo-star-b, #38BDF8)" />
+            <circle cx="74" cy="74" r="1.5" fill="var(--logo-star-a, #EC4899)" />
+            <path
+              d="M30 68V32h10l20 30V32h10v36H60L40 38v30H30z"
+              fill={`url(#${gid})`}
+              stroke="var(--logo-sheen, rgba(255,255,255,0.45))"
+              strokeWidth="1"
+            />
+            <circle cx="50" cy="50" r="2.5" fill="var(--logo-core, #FFFFFF)" />
+          </>
+        )}
       </svg>
     </span>
   );
