@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { PromptChain, ChainType } from '../types';
+import { compilePrompt } from '../services/promptUtils';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 import { Chip, Seg } from './ui/Chip';
@@ -11,6 +12,7 @@ import { Sheet } from './ui/Sheet';
 import { Tag } from './ui/Tag';
 import { useFeedback } from './ui/Feedback';
 import { IconEyeOff, IconLock } from './ui/glyphs';
+import { cx } from './ui/cx';
 
 interface ChainListProps {
   chains: PromptChain[];
@@ -61,6 +63,12 @@ const ICONS = {
   image: (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+    </svg>
+  ),
+  copy: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
     </svg>
   ),
 };
@@ -210,6 +218,7 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onTypeChange
   const [sortOption, setSortOption] = useState<'updated_desc' | 'updated_asc' | 'created_desc' | 'created_asc'>('updated_desc');
   const [favOnly, setFavOnly] = useState(false);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [tagsExpanded, setTagsExpanded] = useState(false);
 
   // Load favorites from localStorage (client-side only)
   useEffect(() => {
@@ -303,9 +312,19 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onTypeChange
   const styleCount = chains.filter((c) => c.type === 'style' || !c.type).length;
   const charCount = chains.filter((c) => c.type === 'character').length;
 
+  const TAG_PREVIEW = 7;
+
   const openCopy = (chain: PromptChain) => {
     setMenuChain(null);
     setCopyModalChain(chain);
+  };
+
+  const copyCompiledPrompt = (chain: PromptChain, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const text = compilePrompt(chain, chain.variableValues?.subject || '', true);
+    void navigator.clipboard.writeText(text);
+    notify('已复制 Prompt');
   };
 
   const handleDeleteFromMenu = async (chain: PromptChain) => {
@@ -358,7 +377,7 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onTypeChange
           ]}
         />
         {allTags.length > 0 && (
-          <div className="chips">
+          <div className={cx('chips', 'board-filter-tags', tagsExpanded && 'is-expanded')}>
             <Chip
               active={selectedTags.size === 0}
               onClick={() => setSelectedTags(new Set())}
@@ -380,6 +399,15 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onTypeChange
                 {tag}
               </Chip>
             ))}
+            {allTags.length > TAG_PREVIEW && (
+              <Chip
+                className="tag-more"
+                active={tagsExpanded}
+                onClick={() => setTagsExpanded((open) => !open)}
+              >
+                {tagsExpanded ? '收起' : `展开全部 (+${allTags.length - TAG_PREVIEW})`}
+              </Chip>
+            )}
           </div>
         )}
       </div>
@@ -419,6 +447,15 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onTypeChange
                         )}
                       </div>
                     )}
+                    <IconButton
+                      size="sm"
+                      className="board-copy"
+                      label={`复制 ${chain.name} Prompt`}
+                      data-card-action=""
+                      onClick={(e) => copyCompiledPrompt(chain, e)}
+                    >
+                      {ICONS.copy}
+                    </IconButton>
                   </div>
                 )}
                 title={chain.name}

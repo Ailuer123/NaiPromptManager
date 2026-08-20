@@ -12,6 +12,7 @@ import { ChainList } from './ChainList';
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  vi.unstubAllGlobals();
 });
 
 function makeChain(partial: Partial<PromptChain> & Pick<PromptChain, 'id' | 'name' | 'type'>): PromptChain {
@@ -138,6 +139,27 @@ describe('ChainList', () => {
     const confirmDlg = await screen.findByRole('alertdialog', { name: '确认删除?' });
     await user.click(within(confirmDlg).getByRole('button', { name: '删除' }));
     expect(onDelete).toHaveBeenCalledWith('s1');
+  });
+
+  it('桌面可一键复制编译后的 Prompt', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    const { notify } = renderList({
+      chains: [
+        makeChain({
+          id: 's1',
+          name: '雾霾玫瑰',
+          type: 'style',
+          basePrompt: 'artist:foo',
+          variableValues: { subject: '1girl' },
+        }),
+      ],
+    });
+
+    await user.click(screen.getByRole('button', { name: '复制 雾霾玫瑰 Prompt' }));
+    expect(writeText).toHaveBeenCalledWith('artist:foo, 1girl');
+    expect(notify).toHaveBeenCalledWith('已复制 Prompt');
   });
 
   it('无封面卡片用串名哈希铺莫兰迪底纹', () => {

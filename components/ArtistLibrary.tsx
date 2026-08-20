@@ -240,6 +240,22 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ artistsData, onRef
     const [usePrefix, setUsePrefix] = useState(true);
     const [artistWeightSyntax, setArtistWeightSyntax] = useState<ArtistWeightSyntax>(DEFAULT_ARTIST_WEIGHT_SYNTAX);
     const [lightboxState, setLightboxState] = useState<{ artistIdx: number, slotIdx: number } | null>(null);
+    const [azHint, setAzHint] = useState<string | null>(null);
+    const [azHintTop, setAzHintTop] = useState('50%');
+    const azNavRef = useRef<HTMLElement>(null);
+
+    const setAzHintFromEvent = (e: React.PointerEvent) => {
+        const hit = document.elementFromPoint(e.clientX, e.clientY);
+        const btn = hit instanceof Element ? hit.closest('.arsenal-az button') : null;
+        const letter = btn?.getAttribute('data-letter');
+        const nav = azNavRef.current;
+        if (letter && btn instanceof HTMLElement && nav) {
+            const navRect = nav.getBoundingClientRect();
+            const btnRect = btn.getBoundingClientRect();
+            setAzHint(letter);
+            setAzHintTop(`${btnRect.top + btnRect.height / 2 - navRect.top}px`);
+        }
+    };
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -886,16 +902,29 @@ export const ArtistLibrary: React.FC<ArtistLibraryProps> = ({ artistsData, onRef
                 </div>
             </header>
 
-            <nav className="arsenal-az glass" aria-label="字母索引">
-                {ALPHABET.map(char => (
-                    <button
-                        key={char}
-                        type="button"
-                        onClick={() => scrollToLetter(char)}
-                    >
-                        {char}
-                    </button>
-                ))}
+            <nav
+                ref={azNavRef}
+                className="arsenal-az glass"
+                aria-label="字母索引"
+                style={azHint ? { '--az-tip-top': azHintTop } as React.CSSProperties : undefined}
+                onPointerLeave={() => setAzHint(null)}
+                onPointerMove={setAzHintFromEvent}
+            >
+                <div className="arsenal-az-track">
+                    {ALPHABET.map(char => (
+                        <button
+                            key={char}
+                            type="button"
+                            data-letter={char}
+                            className={azHint === char ? 'is-hint' : undefined}
+                            onClick={() => scrollToLetter(char)}
+                            onPointerEnter={setAzHintFromEvent}
+                        >
+                            {char}
+                        </button>
+                    ))}
+                </div>
+                {azHint ? <span className="arsenal-az-tip" role="tooltip">{azHint}</span> : null}
             </nav>
 
             <div ref={scrollContainerRef} className="page-scroll arsenal-body">

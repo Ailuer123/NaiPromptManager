@@ -184,10 +184,13 @@ export const Layout: React.FC<LayoutProps> = ({
                   <strong className={currentUser.role === 'vip' ? 'vip-username' : undefined}>
                     {currentUser.username}
                   </strong>
-                  <span className={ROLE_POLICY.getRoleBadgeClass(currentUser.role)}>
-                    {ROLE_POLICY.getRoleDisplayName(currentUser.role)}
-                    {currentUser.role === 'vip' ? <i className="vip-label">VIP</i> : null}
-                  </span>
+                  {currentUser.role === 'vip' ? (
+                    <span className="vip-role-mobile">VIP</span>
+                  ) : (
+                    <span className={ROLE_POLICY.getRoleBadgeClass(currentUser.role)}>
+                      {ROLE_POLICY.getRoleDisplayName(currentUser.role)}
+                    </span>
+                  )}
                 </div>
                 {onLogout ? (
                   <IconButton label="退出登录" onClick={onLogout}>
@@ -241,7 +244,7 @@ export const Layout: React.FC<LayoutProps> = ({
                   <span>{formatBytes(usage)} / {formatBytes(maxStorage)}</span>
                 </div>
                 <div
-                  className="bar"
+                  className={cx('bar', usagePct >= 90 ? 'hot' : usagePct >= 75 && 'warn')}
                   role="meter"
                   aria-label="存储配额"
                   aria-valuemin={0}
@@ -260,10 +263,13 @@ export const Layout: React.FC<LayoutProps> = ({
                   <strong className={currentUser.role === 'vip' ? 'vip-username' : undefined}>
                     {currentUser.username}
                   </strong>
+                {currentUser.role === 'vip' ? (
+                  <span className="vip-label">VIP</span>
+                ) : (
                   <span className={ROLE_POLICY.getRoleBadgeClass(currentUser.role)}>
                     {ROLE_POLICY.getRoleDisplayName(currentUser.role)}
-                    {currentUser.role === 'vip' ? <i className="vip-label">VIP</i> : null}
                   </span>
+                )}
                 </div>
                 {onLogout ? (
                   <IconButton label="退出登录" onClick={onLogout}>
@@ -314,6 +320,8 @@ export const Layout: React.FC<LayoutProps> = ({
       ) : null}
 
       {moreOpen && !hideNav ? (
+        <>
+        <div className="more-backdrop" onClick={closeMore} aria-hidden="true" />
         <div className="more-menu glass-strong open" id="moreMenu" role="menu" ref={moreRef}>
           <NavLink to={pathFor('history')} role="menuitem" onClick={closeMore}>
             {ICONS.history}
@@ -337,6 +345,7 @@ export const Layout: React.FC<LayoutProps> = ({
             </button>
           ) : null}
         </div>
+        </>
       ) : null}
     </div>
   );

@@ -29,6 +29,7 @@ plans/*
 AGENTS.md
 docs/plans/
 .planning
+.antigravitycli
 
 # 本地部署数据
 local-data/
@@ -42,4 +43,4 @@ local-data/
 .wrangler/
 .dev.vars
 
-docs/db-field-addition-guide.md
+docs/

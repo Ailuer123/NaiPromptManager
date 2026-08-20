@@ -96,7 +96,8 @@ describe('Layout', () => {
     const vip: User = { id: 'v', username: 'nova', role: 'vip', createdAt: 0 };
     const { onLogout } = renderLayout(vip, vi.fn(), true);
 
-    expect(screen.getAllByText('VIP', { selector: '.role-vip' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('VIP', { selector: '.vip-role-mobile' }).length).toBeGreaterThan(0);
+    expect(screen.queryByText('VIP VIP')).toBeNull();
     expect(screen.getAllByText('nova').length).toBeGreaterThan(0);
     await user.click(screen.getAllByRole('button', { name: '退出登录' })[0]);
     expect(onLogout).toHaveBeenCalledTimes(1);
@@ -115,5 +116,24 @@ describe('Layout', () => {
     expect(current).toHaveClass('nav-item', 'active');
     expect(screen.getByRole('link', { name: '军火库' })).toHaveClass('nav-item');
     expect(screen.getByRole('link', { name: '军火库' })).not.toHaveClass('active');
+  });
+
+  it('配额条按 75/90 切换 warn 与 hot', () => {
+    const warnUser: User = {
+      ...member,
+      storageUsage: 240 * 1024 * 1024,
+      maxStorage: 300 * 1024 * 1024,
+    };
+    const { unmount } = renderLayout(warnUser);
+    expect(screen.getByRole('meter', { name: '存储配额' })).toHaveClass('bar', 'warn');
+    unmount();
+
+    const hotUser: User = {
+      ...member,
+      storageUsage: 280 * 1024 * 1024,
+      maxStorage: 300 * 1024 * 1024,
+    };
+    renderLayout(hotUser);
+    expect(screen.getByRole('meter', { name: '存储配额' })).toHaveClass('bar', 'hot');
   });
 });

@@ -7,8 +7,19 @@ import {
   luminance,
   mix,
   pickHueAccent,
+  relLuminance,
   rgba,
 } from './colorMath';
+
+function ensureBgForText(bg: string, fg: string, min: number): string {
+  if (contrastRatio(fg, bg) >= min) return bg;
+  const lightenBg = relLuminance(fg) < relLuminance(bg);
+  for (let t = 0.04; t <= 0.85; t += 0.04) {
+    const next = lightenBg ? lighten(bg, t) : darken(bg, t);
+    if (contrastRatio(fg, next) >= min) return next;
+  }
+  return lightenBg ? lighten(bg, 0.72) : darken(bg, 0.72);
+}
 
 export type ThemeMode = 'light' | 'dark';
 export type ThemeVars = Record<string, string>;
@@ -134,10 +145,10 @@ export function buildThemeVars(
     '--g4': g(c1, c2, c3),
     '--g5': g(c3, c4, c2),
     '--g6': g(c2, c4, c1),
-    '--seg-base': mix(c1, cream, 0.72),
-    '--seg-pre': mix(c3, cream, 0.68),
-    '--seg-subject': mix(c2, cream, 0.66),
-    '--seg-post': mix(c4, cream, 0.7),
-    '--seg-neg': mix('#b07a72', cream, 0.82),
+    '--seg-base': ensureBgForText(mix(c1, cream, dark ? 0.55 : 0.72), ink, 4.5),
+    '--seg-pre': ensureBgForText(mix(c3, cream, dark ? 0.52 : 0.68), ink, 4.5),
+    '--seg-subject': ensureBgForText(mix(c2, cream, dark ? 0.5 : 0.66), ink, 4.5),
+    '--seg-post': ensureBgForText(mix(c4, cream, dark ? 0.54 : 0.7), ink, 4.5),
+    '--seg-neg': ensureBgForText(mix('#c45c58', cream, dark ? 0.58 : 0.82), ink, 4.5),
   };
 }

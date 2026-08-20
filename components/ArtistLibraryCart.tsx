@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button } from './ui/Button';
 import { IconButton } from './ui/IconButton';
 import { cx } from './ui/cx';
@@ -24,6 +24,18 @@ interface ArtistLibraryCartProps {
 export const ArtistLibraryCart: React.FC<ArtistLibraryCartProps> = ({
     cart, updateWeight, toggleCart, setCart, copyCart, formatTag, weightSyntax
 }) => {
+    const [pop, setPop] = useState(false);
+    const prevLen = useRef(cart.length);
+    useEffect(() => {
+        if (cart.length > prevLen.current) {
+            setPop(true);
+            const t = window.setTimeout(() => setPop(false), 320);
+            prevLen.current = cart.length;
+            return () => window.clearTimeout(t);
+        }
+        prevLen.current = cart.length;
+    }, [cart.length]);
+
     return (
         <div className={cx('arsenal-cart', 'glass-strong', cart.length > 0 && 'open')}>
             <div className="arsenal-cart-inner">
@@ -38,7 +50,7 @@ export const ArtistLibraryCart: React.FC<ArtistLibraryCartProps> = ({
                     ))}
                 </div>
                 <div className="cart-meta">
-                    <div>已选 <strong>{cart.length}</strong></div>
+                    <div>已选 <strong className={cx('cart-count', pop && 'is-pop')}>{cart.length}</strong></div>
                     <div className="hint">
                         {weightSyntax === 'numeric' ? '数字权重 ±0.1' : '括号权重 ±1层'}
                     </div>

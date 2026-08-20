@@ -4,7 +4,7 @@ import { PromptChain, PromptModule, User, CharacterParams, NAIParams } from '../
 import { compilePrompt } from '../services/promptUtils';
 import { generateImage } from '../services/naiService';
 import { getApiKey } from '../services/apiKeyStore';
-import { ApiKeySheet, Button, Chip, Collapse, Field, IconButton, IconClose, IconPalette, IconUser, Input, Portal, Select, Tag, Textarea, Toggle, useApiKeyConfigured } from './ui';
+import { ApiKeySheet, Button, Chip, Collapse, Field, IconButton, IconClose, IconPalette, IconUser, Input, Portal, Seg, Select, Tag, Textarea, Toggle, useApiKeyConfigured } from './ui';
 import { cx } from './ui/cx';
 import { localHistory } from '../services/localHistory';
 import { compressPngToJpg } from '../services/imageCompression';
@@ -111,13 +111,18 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
     const keyConfigured = useApiKeyConfigured();
     const [keySheetOpen, setKeySheetOpen] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
-    const [hoveredModuleId, setHoveredModuleId] = useState<string | null>(null);
+    const [draggingId, setDraggingId] = useState<string | null>(null);
+    const [dropTarget, setDropTarget] = useState<{
+        id: string | null;
+        position: 'pre' | 'post';
+        edge: 'before' | 'after';
+    } | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [generatedImage, setGeneratedImage] = useState<string | null>(null);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const importInputRef = useRef<HTMLInputElement>(null);
     const [showForkModal, setShowForkModal] = useState(false);
-    const [charsOpen, setCharsOpen] = useState(() => (chain.params?.characters?.length ?? 0) > 0);
+    const [composeOpen, setComposeOpen] = useState(true);
 
     // --- Initialization ---
 
@@ -245,12 +250,143 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         markChange();
     };
 
+    const moveModule = (
+        fromId: string,
+        targetId: string | null,
+        position: 'pre' | 'post',
+        edge: 'before' | 'after',
+    ) => {
+        if (!canEdit || fromId === targetId) return;
+        const from = modules.findIndex((m) => m.id === fromId);
+        if (from < 0) return;
+        const next = modules.filter((m) => m.id !== fromId);
+        const item: PromptModule = { ...modules[from], position };
+        if (targetId) {
+            let to = next.findIndex((m) => m.id === targetId);
+            if (to < 0) next.push(item);
+            else {
+                if (edge === 'after') to += 1;
+                next.splice(to, 0, item);
+            }
+        } else if (position === 'pre') {
+            const lastPre = next.map((m, i) => ({ m, i })).filter(({ m }) => m.position === 'pre').pop();
+            if (lastPre) next.splice(lastPre.i + 1, 0, item);
+            else next.unshift(item);
+        } else {
+            next.push(item);
+        }
+        setModules(next);
+        markChange();
+    };
+
+    const onModuleDragStart = (id: string, e: React.DragEvent) => {
+        if (!canEdit) return;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', id);
+        setDraggingId(id);
+    };
+
+    const onModuleDragOver = (id: string | null, position: 'pre' | 'post', e: React.DragEvent) => {
+        if (!canEdit || !draggingId) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'move';
+        let edge: 'before' | 'after' = 'after';
+        if (id) {
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            edge = e.clientY - rect.top < rect.height / 2 ? 'before' : 'after';
+        }
+        setDropTarget({ id, position, edge });
+    };
+
+    const onModuleDrop = (id: string | null, position: 'pre' | 'post', e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const fromId = draggingId || e.dataTransfer.getData('text/plain');
+        const edge = dropTarget && dropTarget.position === position && dropTarget.id === id
+            ? dropTarget.edge
+            : (id ? 'before' : 'after');
+        if (fromId) moveModule(fromId, id && id !== fromId ? id : null, position, edge);
+        setDraggingId(null);
+        setDropTarget(null);
+    };
+
+    const onModuleDragEnd = () => {
+        setDraggingId(null);
+        setDropTarget(null);
+    };
+
+    const renderModule = (mod: PromptModule) => {
+        const idx = modules.findIndex((m) => m.id === mod.id);
+        const position = mod.position === 'pre' ? 'pre' : 'post';
+        const isDrop = dropTarget?.id === mod.id && dropTarget.position === position && draggingId !== mod.id;
+        return (
+            <div
+                key={mod.id}
+                className={cx(
+                    'module-item',
+                    activeModules[mod.id] === false && 'opacity-60',
+                    draggingId === mod.id && 'is-dragging',
+                    isDrop && dropTarget?.edge === 'before' && 'is-drop-before',
+                    isDrop && dropTarget?.edge === 'after' && 'is-drop-after',
+                )}
+                onDragOver={(e) => onModuleDragOver(mod.id, position, e)}
+                onDrop={(e) => onModuleDrop(mod.id, position, e)}
+            >
+                {canEdit ? (
+                    <button
+                        type="button"
+                        className="mod-drag"
+                        draggable
+                        aria-label={`拖拽 ${mod.name}`}
+                        onDragStart={(e) => onModuleDragStart(mod.id, e)}
+                        onDragEnd={onModuleDragEnd}
+                    >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <circle cx="9" cy="7" r="1.2" fill="currentColor" stroke="none" />
+                            <circle cx="15" cy="7" r="1.2" fill="currentColor" stroke="none" />
+                            <circle cx="9" cy="12" r="1.2" fill="currentColor" stroke="none" />
+                            <circle cx="15" cy="12" r="1.2" fill="currentColor" stroke="none" />
+                            <circle cx="9" cy="17" r="1.2" fill="currentColor" stroke="none" />
+                            <circle cx="15" cy="17" r="1.2" fill="currentColor" stroke="none" />
+                        </svg>
+                    </button>
+                ) : null}
+                <Toggle
+                    pressed={activeModules[mod.id] !== false}
+                    onPressedChange={() => toggleModuleActive(mod.id)}
+                    aria-label={`启用 ${mod.name}`}
+                />
+                <div className="mod-body">
+                    <div className="mod-title">
+                        <Input className="mod-name" disabled={!canEdit} value={mod.name} onChange={(e) => handleModuleChange(idx, 'name', e.target.value)} />
+                        <Input className="mod-group" disabled={!canEdit} placeholder="分组" value={mod.group || ''} onChange={(e) => handleModuleChange(idx, 'group', e.target.value)} />
+                    </div>
+                    <Textarea disabled={!canEdit} value={mod.content} onChange={(e) => handleModuleChange(idx, 'content', e.target.value)} />
+                </div>
+                <div className="mod-actions">
+                    <Seg
+                        className="seg-xs"
+                        aria-label={`${mod.name} 位置`}
+                        value={position}
+                        onChange={(next) => handleModuleChange(idx, 'position', next)}
+                        options={[
+                            { value: 'pre' as const, label: '前置' },
+                            { value: 'post' as const, label: '后置' },
+                        ]}
+                    />
+                    {canEdit && <IconButton size="sm" label="删除模块" onClick={() => removeModule(idx)}><IconClose /></IconButton>}
+                </div>
+            </div>
+        );
+    };
+
     // --- Character Handlers ---
     const addCharacter = () => {
         if (!canEdit) return;
         const newChar: CharacterParams = { id: crypto.randomUUID(), prompt: '', x: 0.5, y: 0.5 };
         setParams({ ...params, characters: [...(params.characters || []), newChar] });
-        setCharsOpen(true);
+        setComposeOpen(true);
         markChange();
     };
 
@@ -771,59 +907,32 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                                 />
                             </Field>
                             <p className="param-group-label">前置模块</p>
-                            <div className="module-list">
-                                {(modules || []).filter((m) => m.position === 'pre').map((mod) => {
-                                    const idx = modules.findIndex((m) => m.id === mod.id);
-                                    return (
-                                        <div key={mod.id} className={`module-item${hoveredModuleId === mod.id ? ' lit' : ''}${activeModules[mod.id] === false ? ' opacity-60' : ''}`}>
-                                            <Toggle
-                                                pressed={activeModules[mod.id] !== false}
-                                                onPressedChange={() => toggleModuleActive(mod.id)}
-                                                aria-label={`启用 ${mod.name}`}
-                                            />
-                                            <div className="mod-body">
-                                                <div className="mod-title">
-                                                    <Input className="mod-name" disabled={!canEdit} value={mod.name} onChange={(e) => handleModuleChange(idx, 'name', e.target.value)} />
-                                                    <Input className="mod-group" disabled={!canEdit} placeholder="分组" value={mod.group || ''} onChange={(e) => handleModuleChange(idx, 'group', e.target.value)} />
-                                                </div>
-                                                <Textarea disabled={!canEdit} value={mod.content} onChange={(e) => handleModuleChange(idx, 'content', e.target.value)} />
-                                            </div>
-                                            <div className="mod-actions">
-                                                <Chip active onClick={() => handleModuleChange(idx, 'position', 'post')} disabled={!canEdit}>转后置</Chip>
-                                                {canEdit && <IconButton size="sm" label="删除模块" onClick={() => removeModule(idx)}><IconClose /></IconButton>}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                            <div
+                                className={cx(
+                                    'module-list',
+                                    (modules || []).every((m) => m.position !== 'pre') && 'is-empty',
+                                    dropTarget?.position === 'pre' && !dropTarget.id && 'is-drop-empty',
+                                )}
+                                onDragOver={(e) => onModuleDragOver(null, 'pre', e)}
+                                onDrop={(e) => onModuleDrop(null, 'pre', e)}
+                            >
+                                {(modules || []).filter((m) => m.position === 'pre').map(renderModule)}
                             </div>
                             <p className="param-group-label">后置模块</p>
-                            <div className="module-list">
-                                {(modules || []).filter((m) => m.position !== 'pre').map((mod) => {
-                                    const idx = modules.findIndex((m) => m.id === mod.id);
-                                    return (
-                                        <div key={mod.id} className={`module-item${hoveredModuleId === mod.id ? ' lit' : ''}${activeModules[mod.id] === false ? ' opacity-60' : ''}`}>
-                                            <Toggle
-                                                pressed={activeModules[mod.id] !== false}
-                                                onPressedChange={() => toggleModuleActive(mod.id)}
-                                                aria-label={`启用 ${mod.name}`}
-                                            />
-                                            <div className="mod-body">
-                                                <div className="mod-title">
-                                                    <Input className="mod-name" disabled={!canEdit} value={mod.name} onChange={(e) => handleModuleChange(idx, 'name', e.target.value)} />
-                                                    <Input className="mod-group" disabled={!canEdit} placeholder="分组" value={mod.group || ''} onChange={(e) => handleModuleChange(idx, 'group', e.target.value)} />
-                                                </div>
-                                                <Textarea disabled={!canEdit} value={mod.content} onChange={(e) => handleModuleChange(idx, 'content', e.target.value)} />
-                                            </div>
-                                            <div className="mod-actions">
-                                                <Chip active={false} onClick={() => handleModuleChange(idx, 'position', 'pre')} disabled={!canEdit}>转前置</Chip>
-                                                {canEdit && <IconButton size="sm" label="删除模块" onClick={() => removeModule(idx)}><IconClose /></IconButton>}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                            <div
+                                className={cx(
+                                    'module-list',
+                                    (modules || []).every((m) => m.position === 'pre') && 'is-empty',
+                                    dropTarget?.position === 'post' && !dropTarget.id && 'is-drop-empty',
+                                )}
+                                onDragOver={(e) => onModuleDragOver(null, 'post', e)}
+                                onDrop={(e) => onModuleDrop(null, 'post', e)}
+                            >
+                                {(modules || []).filter((m) => m.position !== 'pre').map(renderModule)}
                             </div>
                             <Field label="全局负面提示词">
                                 <Textarea
+                                    className="textarea-neg"
                                     disabled={!canEdit}
                                     value={negativePrompt}
                                     onChange={(e) => { setNegativePrompt(e.target.value); markChange(); }}
@@ -832,11 +941,14 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                         </div>
                     </Collapse>
 
-                    <Collapse
-                        title="多角色 / 坐标"
-                        open={charsOpen}
-                        onOpenChange={setCharsOpen}
-                        extra={(
+                    <ChainEditorParams
+                        params={params}
+                        setParams={setParams}
+                        canEdit={canEdit}
+                        markChange={markChange}
+                        compositionOpen={composeOpen}
+                        onCompositionOpenChange={setComposeOpen}
+                        compositionExtra={(
                             <>
                                 <Chip
                                     active={params.useCoords ?? true}
@@ -848,38 +960,35 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                                 {canEdit && <Button variant="ghost" size="sm" onClick={addCharacter}>+ 角色</Button>}
                             </>
                         )}
-                    >
-                        <div className="stack">
-                            {(params.characters || []).length === 0 && (
-                                <p className="hint">暂无角色定义，提示词将作为整体处理。</p>
-                            )}
-                            {(params.characters || []).map((char, idx) => (
-                                <div key={char.id} className="module-item char-item">
-                                    <div className="mod-body stack" style={{ gap: 8 }}>
-                                        <Field label={`角色 ${idx + 1} 提示词`}>
-                                            <Textarea disabled={!canEdit} value={char.prompt} onChange={(e) => updateCharacter(idx, { prompt: e.target.value })} />
-                                        </Field>
-                                        <Field label="专属负面">
-                                            <Textarea disabled={!canEdit} value={char.negativePrompt || ''} onChange={(e) => updateCharacter(idx, { negativePrompt: e.target.value })} />
-                                        </Field>
-                                        <div className={cx('param-grid', 'coord-fields', !(params.useCoords ?? true) && 'is-off')}>
-                                            <Field label="Center X">
-                                                <Input type="number" step="0.1" min={0} max={1} disabled={!canEdit || !(params.useCoords ?? true)} value={char.x} onChange={(e) => updateCharacter(idx, { x: parseFloat(e.target.value) })} />
+                        compositionBody={(
+                            <div className="stack">
+                                {(params.characters || []).length === 0 && (
+                                    <p className="hint">暂无角色定义，提示词将作为整体处理。</p>
+                                )}
+                                {(params.characters || []).map((char, idx) => (
+                                    <div key={char.id} className="module-item char-item">
+                                        <div className="mod-body stack" style={{ gap: 8 }}>
+                                            <Field label={`角色 ${idx + 1} 提示词`}>
+                                                <Textarea disabled={!canEdit} value={char.prompt} onChange={(e) => updateCharacter(idx, { prompt: e.target.value })} />
                                             </Field>
-                                            <Field label="Center Y">
-                                                <Input type="number" step="0.1" min={0} max={1} disabled={!canEdit || !(params.useCoords ?? true)} value={char.y} onChange={(e) => updateCharacter(idx, { y: parseFloat(e.target.value) })} />
+                                            <Field label="专属负面">
+                                                <Textarea disabled={!canEdit} value={char.negativePrompt || ''} onChange={(e) => updateCharacter(idx, { negativePrompt: e.target.value })} />
                                             </Field>
+                                            <div className={cx('param-grid', 'coord-fields', !(params.useCoords ?? true) && 'is-off')}>
+                                                <Field label="Center X">
+                                                    <Input type="number" step="0.1" min={0} max={1} disabled={!canEdit || !(params.useCoords ?? true)} value={char.x} onChange={(e) => updateCharacter(idx, { x: parseFloat(e.target.value) })} />
+                                                </Field>
+                                                <Field label="Center Y">
+                                                    <Input type="number" step="0.1" min={0} max={1} disabled={!canEdit || !(params.useCoords ?? true)} value={char.y} onChange={(e) => updateCharacter(idx, { y: parseFloat(e.target.value) })} />
+                                                </Field>
+                                            </div>
                                         </div>
+                                        {canEdit && <IconButton size="sm" label="删除角色" onClick={() => removeCharacter(idx)}><IconClose /></IconButton>}
                                     </div>
-                                    {canEdit && <IconButton size="sm" label="删除角色" onClick={() => removeCharacter(idx)}><IconClose /></IconButton>}
-                                </div>
-                            ))}
-                        </div>
-                    </Collapse>
-
-                    <Collapse title="生成参数" defaultOpen>
-                        <ChainEditorParams params={params} setParams={setParams} canEdit={canEdit} markChange={markChange} />
-                    </Collapse>
+                                ))}
+                            </div>
+                        )}
+                    />
 
                     <Collapse title="参考风格" defaultOpen>
                         <ChainEditorVibePanel

@@ -63,8 +63,40 @@ export const ParamsViewer: React.FC<ParamsViewerProps> = ({
         notify?.(`${label} 已复制`);
     };
 
+    const copyAll = () => {
+        const lines = [
+            prompt !== undefined ? `Prompt: ${prompt || '(empty)'}` : '',
+            negativePrompt !== undefined ? `Negative: ${negativePrompt || '(empty)'}` : '',
+            `Resolution: ${params.width} × ${params.height}`,
+            `Steps: ${params.steps}`,
+            `Scale: ${params.scale}`,
+            `Sampler: ${params.sampler}`,
+            `Seed: ${params.seed ?? 'Random'}`,
+            `Quality Tags: ${params.qualityToggle ? 'On' : 'Off'}`,
+            `UC Preset: ${params.ucPreset !== undefined ? (UC_LABELS[params.ucPreset] ?? params.ucPreset) : '-'}`,
+            `Variety+: ${params.variety ? 'On' : 'Off'}`,
+            params.cfgRescale ? `CFG Rescale: ${params.cfgRescale}` : '',
+            params.characters?.length
+                ? params.characters.map((c, i) => `Character ${i + 1} (${c.x.toFixed(2)}, ${c.y.toFixed(2)}): ${c.prompt || '(empty)'}`).join('\n')
+                : '',
+            params.vibes?.length
+                ? params.vibes.map((v) => `Vibe ${v.name}: S ${v.strength.toFixed(2)} · IE ${v.informationExtracted.toFixed(2)}`).join('\n')
+                : '',
+        ].filter(Boolean);
+        handleCopy(lines.join('\n'), '全部参数');
+    };
+
     return (
         <div className="space-y-4">
+            <div className="flex justify-end">
+                <button
+                    type="button"
+                    onClick={copyAll}
+                    className="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+                >
+                    一键复制所有参数
+                </button>
+            </div>
             {/* 正面提示词 */}
             {prompt !== undefined && (
                 <div>

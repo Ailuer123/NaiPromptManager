@@ -166,5 +166,13 @@ describe('buildThemeVars contrast guard', () => {
         expect(dark[key]).toMatch(/^linear-gradient\(/);
       }
     });
+
+    it('分段预览底对 ink ≥ 4.5', () => {
+      const keys = ['--seg-base', '--seg-pre', '--seg-subject', '--seg-post', '--seg-neg'] as const;
+      for (const key of keys) {
+        expect(contrastRatio(light['--ink'], light[key])).toBeGreaterThanOrEqual(AA);
+        expect(contrastRatio(dark['--ink'], dark[key])).toBeGreaterThanOrEqual(AA);
+      }
+    });
   });
 });

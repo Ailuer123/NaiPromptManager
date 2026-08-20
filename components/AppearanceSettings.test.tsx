@@ -36,6 +36,7 @@ describe('AppearanceSettings', () => {
     expect(screen.queryByRole('button', { name: 'graphite' })).toBeNull();
     expect(screen.queryByText('字体大小')).toBeNull();
     expect(screen.getByRole('button', { name: '冷若冰霜' }).querySelector('.appearance-check')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '冷若冰霜' }).querySelector('.appearance-tile')).toHaveClass('is-active');
     expect(screen.getByRole('button', { name: '焦糖布丁' }).querySelector('.appearance-check')).toBeNull();
   });
 

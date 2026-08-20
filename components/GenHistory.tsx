@@ -44,6 +44,59 @@ const formatMB = (bytes: number): string => {
     return mb < 0.01 ? mb.toFixed(3) : mb.toFixed(2);
 };
 
+function RollingMB({ bytes }: { bytes: number }) {
+    const target = bytes / (1024 * 1024);
+    const [shown, setShown] = useState(0);
+    const shownRef = useRef(0);
+    useEffect(() => {
+        const start = shownRef.current;
+        const t0 = performance.now();
+        let raf = 0;
+        const tick = (now: number) => {
+            const t = Math.min(1, (now - t0) / 280);
+            const ease = 1 - (1 - t) * (1 - t);
+            const next = start + (target - start) * ease;
+            shownRef.current = next;
+            setShown(next);
+            if (t < 1) raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+    }, [target]);
+    const digits = shown < 0.01 && shown > 0 ? 3 : 2;
+    return <strong className="rolling-mb">~{shown.toFixed(digits)} MB</strong>;
+}
+
+function CompareSplit({ png, jpg, quality }: { png: string; jpg: string; quality: number }) {
+    const [pct, setPct] = useState(50);
+    const boxRef = useRef<HTMLDivElement>(null);
+    const move = (clientX: number) => {
+        const box = boxRef.current?.getBoundingClientRect();
+        if (!box || box.width <= 0) return;
+        setPct(Math.round(Math.min(100, Math.max(0, ((clientX - box.left) / box.width) * 100))));
+    };
+    return (
+        <div
+            ref={boxRef}
+            className="compare-split"
+            onPointerDown={(e) => {
+                e.currentTarget.setPointerCapture(e.pointerId);
+                move(e.clientX);
+            }}
+            onPointerMove={(e) => {
+                if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+                move(e.clientX);
+            }}
+        >
+            <img src={jpg} alt="JPG" />
+            <img src={png} alt="PNG" style={{ clipPath: `inset(0 ${100 - pct}% 0 0)` }} />
+            <div className="compare-split-handle" style={{ left: `${pct}%` }} />
+            <span className="compare-label">PNG</span>
+            <span className="compare-label jpg">JPG {quality.toFixed(2)}</span>
+        </div>
+    );
+}
+
 export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onNavigateToPlayground, onRefreshInspiration }) => {
     const { confirm } = useFeedback();
     const [items, setItems] = useState<LocalGenItem[]>([]);
@@ -101,11 +154,6 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
     const [lightboxQuality, setLightboxQuality] = useState<number>(() => readQuality());
     /** 当前正在生成预览 */
     const [previewing, setPreviewing] = useState(false);
-    /** 并排预览的双列同步滚动容器 ref，监听 scroll 镜像 scrollTop/scrollLeft */
-    const previewLeftRef = useRef<HTMLDivElement | null>(null);
-    const previewRightRef = useRef<HTMLDivElement | null>(null);
-    /** 同步 scroll 时的"内部触发"标记，防止 A→B→A 反向回弹无限循环 */
-    const scrollSyncingRef = useRef<boolean>(false);
     /** 单张压缩进行中 */
     const [singleCompacting, setSingleCompacting] = useState(false);
     /** 预览 debounce timer */
@@ -498,42 +546,6 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
         setLightboxQuality(readQuality());
     }, [lightbox?.id]);
 
-    /**
-     * 双列同步滚动：当并排预览开启时，监听任一容器的 scroll 事件，
-     * 把 scrollTop/scrollLeft 镜像到另一侧。
-     *
-     * 关键防回弹：A 触发 onScroll 后我们写 B.scrollTop = A.scrollTop，
-     * 这又会让 B 的 onScroll 触发；用 scrollSyncingRef 标记"这是内部回写"，
-     * 让对侧 listener 直接 return，避免无限循环。
-     */
-    useEffect(() => {
-        const left = previewLeftRef.current;
-        const right = previewRightRef.current;
-        // 双方都挂载且并排预览正在显示
-        if (!left || !right || !previewJpgDataUri || lightboxIsJpg) return;
-
-        const sync = (source: HTMLDivElement, target: HTMLDivElement) => {
-            if (scrollSyncingRef.current) {
-                scrollSyncingRef.current = false;
-                return;
-            }
-            scrollSyncingRef.current = true;
-            target.scrollTop = source.scrollTop;
-            target.scrollLeft = source.scrollLeft;
-        };
-
-        const onLeft = () => sync(left, right);
-        const onRight = () => sync(right, left);
-        left.addEventListener('scroll', onLeft, { passive: true });
-        right.addEventListener('scroll', onRight, { passive: true });
-        return () => {
-            left.removeEventListener('scroll', onLeft);
-            right.removeEventListener('scroll', onRight);
-        };
-        // 依赖 previewJpgDataUri：预览首次出现 / 切换图片时重新挂载 listener
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [previewJpgDataUri, lightbox?.id]);
-
     /** 触发软实时预览（debounce） */
     const schedulePreview = (quality: number) => {
         if (!lightbox || isJpgDataUri(lightbox.imageUrl)) return;
@@ -729,26 +741,12 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
                     <div className="lbx-split glass-strong" onClick={e => e.stopPropagation()}>
                         <div className="lbx-media">
                             {previewJpgDataUri && !lightboxIsJpg ? (
-                                <div className="compare-wrap">
-                                    <div ref={previewLeftRef} className="compare-col">
-                                        <div className="compare-label">原图 PNG（100%）</div>
-                                        <img src={lightbox.imageUrl} className="block max-w-none h-auto" />
-                                    </div>
-                                    <div ref={previewRightRef} className="compare-col">
-                                        <div className="compare-label jpg">预览 JPG q={lightboxQuality.toFixed(2)}（100%）</div>
-                                        <img src={previewJpgDataUri} className="block max-w-none h-auto" />
-                                    </div>
-                                </div>
+                                <CompareSplit png={lightbox.imageUrl} jpg={previewJpgDataUri} quality={lightboxQuality} />
                             ) : (
                                 <img src={lightbox.imageUrl} alt="" />
                             )}
                             {previewing && (
                                 <div className="jpg-mark" style={{ top: 'auto', bottom: 8, right: 8, left: 'auto' }}>生成预览中...</div>
-                            )}
-                            {previewJpgDataUri && !lightboxIsJpg && (
-                                <div className="jpg-mark" style={{ top: 'auto', bottom: 8, pointerEvents: 'none' }}>
-                                    双列已同步滚动，拖动查看贴边 / 眼睛 / 纹理细节
-                                </div>
                             )}
                         </div>
 
@@ -925,7 +923,7 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
                         </div>
                         <div className="create-form">
                             <div className="pref-row"><span>已处理</span><strong>{compactProgress.processed} / {compactProgress.total}</strong></div>
-                            <div className="pref-row"><span>节省空间</span><strong>~{formatMB(compactProgress.savedBytes)} MB</strong></div>
+                            <div className="pref-row"><span>节省空间</span><RollingMB bytes={compactProgress.savedBytes} /></div>
                             <div className="pref-row"><span>失败</span><strong>{compactProgress.failed} 张</strong></div>
                             <div className="pref-row"><span>预计剩余</span><strong>{compactProgress.remainingSec}s</strong></div>
                         </div>

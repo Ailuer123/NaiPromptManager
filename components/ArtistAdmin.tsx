@@ -6,7 +6,7 @@ import { ROLE_POLICY } from '../config/rolePolicy';
 import { isStaleZeroQuotaUser } from '../config/staleUsers';
 import { AboutPage } from './AboutPage';
 import { AppearanceSettings } from './AppearanceSettings';
-import { ApiKeyFields, Button, Empty, Field, IconButton, IconCrown, IconDiscord, IconPencil, IconTrash, Input, Panel, Seg, Select, Switch } from './ui';
+import { ApiKeyFields, Button, Empty, Field, IconButton, IconChart, IconCrown, IconDiscord, IconInbox, IconPackage, IconPalette, IconPencil, IconTrash, IconUser, Input, Panel, Seg, Select, Switch } from './ui';
 import { useFeedback } from './ui/Feedback';
 import { cx } from './ui/cx';
 
@@ -372,14 +372,14 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
   ];
 
   return (
-    <div className="page-scroll">
+    <div className="page-scroll settings-scroll">
       <div className="settings-page">
         <header className="board-head settings-head">
             <div className="board-head-top">
                 <div>
                     <h1>设置</h1>
                 </div>
-                {canManageArtists && activeTab !== 'profile' && (
+                {canManageArtists && (activeTab === 'artist' || activeTab === 'users') && (
                     <IconButton label="刷新列表" onClick={handleRefresh}>
                         <span className={isLoading ? 'is-spin' : undefined}>
                             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
@@ -388,6 +388,7 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                 )}
             </div>
             <Seg<'profile' | 'about' | 'artist' | 'users' | 'stats'>
+                className="settings-tabs"
                 aria-label="设置分区"
                 value={activeTab}
                 onChange={setActiveTab}
@@ -581,11 +582,44 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                 ) : usageStats ? (
                     <>
                         <div className="stat-grid">
-                            <div className="stat-card surface"><strong>{usageStats.storage.userCount}</strong><span>注册用户</span></div>
-                            <div className="stat-card surface"><strong>{usageStats.storage.chainsCount}</strong><span>画师串/角色串</span></div>
-                            <div className="stat-card surface"><strong>{usageStats.storage.inspirationsCount}</strong><span>灵感图</span></div>
-                            <div className="stat-card surface"><strong>{usageStats.storage.artistsCount}</strong><span>画师库</span></div>
-                            <div className="stat-card surface"><strong>{formatBytes(usageStats.storage.totalUserStorage)}</strong><span>R2 存储</span></div>
+                            {(() => {
+                                const latest = usageStats.dailyStats[0];
+                                const prev = usageStats.dailyStats[1];
+                                const todayLogins = latest ? latest.userLogins + latest.guestLogins : null;
+                                const prevLogins = prev ? prev.userLogins + prev.guestLogins : null;
+                                const delta = todayLogins != null && prevLogins != null ? todayLogins - prevLogins : null;
+                                const deltaLabel = delta == null ? null : `${delta > 0 ? '+' : ''}${delta} 较昨日`;
+                                return (
+                                    <>
+                                        <div className="stat-card surface">
+                                            <div className="stat-card-ico"><IconUser /></div>
+                                            <strong>{usageStats.storage.userCount}</strong>
+                                            <span>注册用户</span>
+                                            {deltaLabel ? <i className={cx('stat-delta', delta! > 0 && 'up', delta! < 0 && 'down')}>{deltaLabel}</i> : todayLogins != null ? <i className="stat-delta">今日登录 {todayLogins}</i> : null}
+                                        </div>
+                                        <div className="stat-card surface">
+                                            <div className="stat-card-ico"><IconInbox /></div>
+                                            <strong>{usageStats.storage.chainsCount}</strong>
+                                            <span>画师串/角色串</span>
+                                        </div>
+                                        <div className="stat-card surface">
+                                            <div className="stat-card-ico"><IconPalette /></div>
+                                            <strong>{usageStats.storage.inspirationsCount}</strong>
+                                            <span>灵感图</span>
+                                        </div>
+                                        <div className="stat-card surface">
+                                            <div className="stat-card-ico"><IconChart /></div>
+                                            <strong>{usageStats.storage.artistsCount}</strong>
+                                            <span>画师库</span>
+                                        </div>
+                                        <div className="stat-card surface">
+                                            <div className="stat-card-ico"><IconPackage /></div>
+                                            <strong>{formatBytes(usageStats.storage.totalUserStorage)}</strong>
+                                            <span>R2 存储</span>
+                                        </div>
+                                    </>
+                                );
+                            })()}
                         </div>
 
                         <Panel title="近期登录统计">
@@ -678,7 +712,7 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                     <div className="settings-block-head">
                         <h3>账号</h3>
                     </div>
-                    <div className="settings-pair">
+                    <div className="settings-pair account-pair">
                         <Panel title="Discord">
                             {currentUser.discordId ? (
                                 <p className="hint">已关联：{currentUser.discordUsername || currentUser.discordId}</p>
@@ -706,7 +740,7 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                                 </div>
                             </Panel>
                         )}
-                        <Panel title="API Key">
+                        <Panel title="API Key" className="account-api-key">
                             <ApiKeyFields />
                         </Panel>
                     </div>
