@@ -100,6 +100,12 @@ function LandingCanvas() {
   return <canvas ref={canvasRef} className="landing-canvas" aria-hidden="true" />;
 }
 
+function keepSubmitVisible(form: HTMLFormElement | null) {
+  if (!form?.isConnected) return;
+  const submit = form.querySelector<HTMLElement>('.auth-submit');
+  submit?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+}
+
 export function Landing({
   loginUser,
   loginPass,
@@ -109,8 +115,38 @@ export function Landing({
   onLoginPassChange,
   onSubmit,
 }: LandingProps) {
+  const landingRef = useRef<HTMLDivElement>(null);
+  const submitSyncTimer = useRef(0);
+
+  useEffect(() => {
+    const node = landingRef.current;
+    if (!node) return;
+    const vv = window.visualViewport;
+
+    const sync = () => {
+      const height = vv?.height ?? window.innerHeight;
+      node.style.setProperty('--vvh', `${Math.round(height)}px`);
+      const form = node.querySelector<HTMLFormElement>('.auth-form:focus-within');
+      if (form) keepSubmitVisible(form);
+    };
+
+    sync();
+    vv?.addEventListener('resize', sync);
+    vv?.addEventListener('scroll', sync);
+    window.addEventListener('resize', sync);
+    return () => {
+      window.clearTimeout(submitSyncTimer.current);
+      vv?.removeEventListener('resize', sync);
+      vv?.removeEventListener('scroll', sync);
+      window.removeEventListener('resize', sync);
+    };
+  }, []);
+
   return (
-    <div className="landing dark font-sans selection:bg-cyan-500/30 selection:text-cyan-200">
+    <div
+      ref={landingRef}
+      className="landing dark font-sans selection:bg-cyan-500/30 selection:text-cyan-200"
+    >
       {/* 动态粒子背景、网格背景与顶部光晕 */}
       <LandingCanvas />
       <div className="landing-grid-bg" aria-hidden="true" />
@@ -118,7 +154,10 @@ export function Landing({
 
       {/* 顶部轻量状态导航条 */}
       <header className="relative z-40 w-full shrink-0 lp-top">
-        <div className="mx-auto flex h-12 sm:h-16 max-w-7xl items-center justify-end px-4 sm:px-8 w-full">
+        <div className="mx-auto flex h-12 sm:h-16 max-w-7xl items-center justify-between px-4 sm:px-8 w-full">
+          <h2 className="text-sm sm:text-base lg:text-lg font-display font-bold text-white tracking-wide">
+            咒语构建终端
+          </h2>
           <div className="flex items-center gap-2 sm:gap-3">
             <a
               href="https://github.com"
@@ -141,12 +180,12 @@ export function Landing({
 
       {/* 主屏展示区域 */}
       <main className="relative z-10 flex-1 flex items-center justify-center px-4 sm:px-8 py-2 sm:py-6 lg:py-10 max-w-7xl mx-auto w-full min-h-0 lp-stage">
-        <div className="grid w-full gap-4 sm:gap-8 lg:grid-cols-[1.18fr_0.82fr] lg:gap-12 xl:gap-16 items-center">
+        <div className="lp-stage-grid grid w-full gap-4 sm:gap-8 lg:grid-cols-[1.18fr_0.82fr] lg:gap-12 xl:gap-16 items-center">
           
           {/* 左侧：Logo + 标题 + 矩阵 */}
           <section className="flex flex-col justify-center text-left lp-intro" aria-label="产品介绍">
             {/* LOGO 与大标题横向并排区 */}
-            <div className="flex items-center gap-3.5 sm:gap-6 lg:gap-8 mb-1.5 lg:mb-5">
+            <div className="lp-hero flex items-center gap-3.5 sm:gap-6 lg:gap-8 mb-1.5 lg:mb-5">
               {/* 放大版动效符文矩阵 Logo (PRESET 01 沉稳深邃电流光流动效) */}
               <div className="size-14 sm:size-24 lg:size-32 shrink-0 drop-shadow-[0_0_30px_rgba(56,189,248,0.4)]">
                 <BrandMark animated className="w-full h-full" />
@@ -164,24 +203,10 @@ export function Landing({
               </div>
             </div>
 
-            {/* 中文主标语与副标 */}
-            <div className="flex flex-wrap items-baseline gap-2 sm:gap-3 mt-1 lg:mt-2">
-              <h2 className="text-base sm:text-xl lg:text-2xl font-display font-bold text-white tracking-wide">
-                咒语构建终端
-              </h2>
-              <span className="text-white/40 font-mono text-[11px] sm:text-xs">// PROMPT MANAGER</span>
-            </div>
-
             {/* 移动端隐藏的金句段落 */}
             <h1 className="hidden lg:block mt-2 text-base sm:text-lg font-medium text-cyan-400/90">
               把散落的灵感，收成可再咏的咒语
             </h1>
-
-            <div className="lp-highlights" aria-label="产品亮点">
-              <span className="lp-pill">模块化串编排</span>
-              <span className="lp-pill">画师军火库</span>
-              <span className="lp-pill">端侧无损压缩</span>
-            </div>
 
             {/* 移动端隐藏的官方原生体验复刻副段落 */}
             <p className="hidden lg:block mt-3 text-sm sm:text-base text-white/65 leading-relaxed max-w-xl font-normal">
@@ -238,10 +263,6 @@ export function Landing({
                 <span className="size-2 sm:size-2.5 rounded-full bg-cyan-400/80 shadow-[0_0_8px_rgba(34,211,238,0.6)]" />
               </div>
 
-              <h2 className="text-lg sm:text-xl lg:text-2xl font-display font-bold text-white tracking-tight mb-4 auth-title">
-                终端登录
-              </h2>
-
               {discordEnabled ? (
                 <>
                   <button
@@ -263,10 +284,20 @@ export function Landing({
               ) : null}
 
               {/* 表单区 */}
-              <form className="space-y-3 sm:space-y-3.5 auth-form" onSubmit={onSubmit} autoComplete="on">
+              <form
+                className="space-y-3 sm:space-y-3.5 auth-form"
+                onSubmit={onSubmit}
+                autoComplete="on"
+                onFocus={(event) => {
+                  if (!(event.target instanceof HTMLInputElement)) return;
+                  const form = event.currentTarget;
+                  window.clearTimeout(submitSyncTimer.current);
+                  submitSyncTimer.current = window.setTimeout(() => keepSubmitVisible(form), 50);
+                }}
+              >
                 <div>
                   <label htmlFor="landing-username" className="block text-[11px] sm:text-xs font-mono text-white/70 mb-1 tracking-wide">
-                    USERNAME // 用户名
+                    用户名
                   </label>
                   <input
                     id="landing-username"
@@ -284,7 +315,7 @@ export function Landing({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label htmlFor="landing-password" className="block text-[11px] sm:text-xs font-mono text-white/70 tracking-wide">
-                      ACCESS KEY // 密码口令
+                      密码
                     </label>
                   </div>
                   <input
@@ -311,7 +342,7 @@ export function Landing({
                 {/* 登录提交按钮 (进入终端) */}
                 <button
                   type="submit"
-                  className="w-full h-9 sm:h-10 rounded-xl bg-white text-black hover:bg-cyan-300 font-semibold text-xs sm:text-sm tracking-wide transition-all shadow-[0_2px_15px_rgba(255,255,255,0.2)] active:scale-[0.98] mt-1.5 flex items-center justify-center gap-1.5 group cursor-pointer"
+                  className="auth-submit w-full h-9 sm:h-10 rounded-xl bg-white text-black hover:bg-cyan-300 font-semibold text-xs sm:text-sm tracking-wide transition-all shadow-[0_2px_15px_rgba(255,255,255,0.2)] active:scale-[0.98] mt-1.5 flex items-center justify-center gap-1.5 group cursor-pointer"
                 >
                   <span>进入终端</span>
                   <svg className="size-3.5 sm:size-4 group-hover:translate-x-0.5 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

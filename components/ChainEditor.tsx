@@ -2,8 +2,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PromptChain, PromptModule, User, CharacterParams, NAIParams } from '../types';
 import { compilePrompt } from '../services/promptUtils';
-import { generateImage } from '../services/naiService';
+import { generateImage, generateImageStream } from '../services/naiService';
 import { getApiKey } from '../services/apiKeyStore';
+import { refreshNaiAccount } from '../services/naiAccountStore';
+import { DEFAULT_NAI_PARAMS, isV5Model } from '../services/naiModels';
+import { dataUriHasAlpha } from '../services/pngAlpha';
 import { ApiKeySheet, Button, Chip, Collapse, Field, IconButton, IconClose, IconPalette, IconUser, Input, Portal, Seg, Select, Tag, Textarea, Toggle, useApiKeyConfigured } from './ui';
 import { cx } from './ui/cx';
 import { localHistory } from '../services/localHistory';
@@ -53,7 +56,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
     const [negativePrompt, setNegativePrompt] = useState(chain.negativePrompt || '');
     const [modules, setModules] = useState<PromptModule[]>(chain.modules || []);
     // Default Seed to undefined (random), UC Preset to 4 (None)
-    const [params, setParams] = useState(chain.params || { width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: undefined, qualityToggle: true, ucPreset: 4 });
+    const [params, setParams] = useState(chain.params || { ...DEFAULT_NAI_PARAMS });
 
     // --- New: Subject/Variable Prompt State ---
     const [subjectPrompt, setSubjectPrompt] = useState('');
@@ -145,12 +148,9 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
             position: m.position || 'post'
         })));
         setParams({
-            width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: undefined,
-            qualityToggle: true, ucPreset: 4, characters: [],
-            useCoords: chain.params?.useCoords ?? false,
-            variety: chain.params?.variety ?? false,
-            cfgRescale: chain.params?.cfgRescale ?? 0,
-            ...chain.params
+            ...DEFAULT_NAI_PARAMS,
+            model: undefined,
+            ...chain.params,
         });
         setChainName(chain.name);
         setChainDesc(chain.description);
@@ -509,7 +509,11 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                 ucPreset: target.params?.ucPreset ?? prev.ucPreset,
                 cfgRescale: target.params?.cfgRescale ?? prev.cfgRescale,
                 variety: target.params?.variety ?? prev.variety,
-                useCoords: target.params?.useCoords ?? prev.useCoords
+                useCoords: target.params?.useCoords ?? prev.useCoords,
+                model: target.params?.model ?? prev.model,
+                stream: target.params?.stream ?? prev.stream,
+                transparent: target.params?.transparent ?? prev.transparent,
+                alphaMode: target.params?.alphaMode ?? prev.alphaMode,
             }));
         }
 
@@ -622,9 +626,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
         setBasePrompt('');
         setNegativePrompt(''); // keep empty for playground
         // Reset params to defaults
-        setParams({
-            width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: undefined, qualityToggle: true, ucPreset: 4, characters: [], vibes: []
-        });
+        setParams({ ...DEFAULT_NAI_PARAMS, vibes: [] });
         setSubjectPrompt('');
         setModules([]);
         setActiveModules({});
@@ -689,14 +691,32 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                 : (await Promise.all(vibeMounts.map(mount => vibeLibrary.get(mount.vibeId))))
                     .filter(preset => preset !== undefined);
             const resolvedVibes = resolveVibeMounts(vibeMounts, vibePresets);
-            const result = await generateImage(apiKey, finalPrompt, negativePrompt, activeParams, resolvedVibes);
+            let result;
+            if (activeParams.stream) {
+                try {
+                    result = await generateImageStream(
+                        apiKey,
+                        finalPrompt,
+                        negativePrompt,
+                        activeParams,
+                        resolvedVibes,
+                        (preview) => setGeneratedImage(preview),
+                    );
+                } catch (streamErr) {
+                    console.warn('流式生成失败，回退 zip 接口:', streamErr);
+                    result = await generateImage(apiKey, finalPrompt, negativePrompt, activeParams, resolvedVibes);
+                }
+            } else {
+                result = await generateImage(apiKey, finalPrompt, negativePrompt, activeParams, resolvedVibes);
+            }
             setGeneratedImage(result.image);
             // Use actual seed returned from generation
             const finalParams = { ...activeParams, seed: result.seed };
             // 自动 JPG 保存：开启时在入库前把 PNG 转码为 JPG（仅作用于本地历史记录）
             // 失败时回退到原 PNG，绝不阻塞主流程 —— 元数据始终走 prompt/params 独立字段
             let finalImage = result.image;
-            if (localStorage.getItem('naipm.compaction.autoJpg') === 'true') {
+            const skipJpg = (!!activeParams.transparent && isV5Model(activeParams)) || dataUriHasAlpha(result.image);
+            if (!skipJpg && localStorage.getItem('naipm.compaction.autoJpg') === 'true') {
                 try {
                     const q = parseFloat(localStorage.getItem('naipm.compaction.quality') || '0.85');
                     const quality = isNaN(q) ? 0.85 : Math.min(1, Math.max(0.01, q));
@@ -707,6 +727,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                 }
             }
             await localHistory.add(finalImage, finalPrompt, finalParams);
+            void refreshNaiAccount();
         } catch (e: any) {
             setErrorMsg(e.message);
             notify(e.message, 'error');
@@ -946,6 +967,7 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                         setParams={setParams}
                         canEdit={canEdit}
                         markChange={markChange}
+                        notify={notify}
                         compositionOpen={composeOpen}
                         onCompositionOpenChange={setComposeOpen}
                         compositionExtra={(
@@ -1014,13 +1036,21 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
                     handleUploadCover={handleUploadCover}
                     getDownloadFilename={getDownloadFilename}
                     hideCoverActions={chain.id === 'playground'}
+                    transparentPreview={!!params.transparent && isV5Model(params)}
+                    stream={!!params.stream}
+                    streamDisabled={!canEdit}
+                    onToggleStream={() => {
+                        if (!canEdit) return;
+                        setParams({ ...params, stream: !params.stream });
+                        markChange();
+                    }}
                 />
             </div>
 
             {lightboxImg && (
                 <Portal>
                     <div className="lbx" onClick={() => setLightboxImg(null)}>
-                        <img src={lightboxImg} alt="" onClick={e => e.stopPropagation()} />
+                        <img src={lightboxImg} alt="" className={dataUriHasAlpha(lightboxImg) ? 'checker' : undefined} onClick={e => e.stopPropagation()} />
                         <button type="button" className="lbx-close icon-btn" aria-label="关闭" onClick={() => setLightboxImg(null)}>
                             <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
                         </button>

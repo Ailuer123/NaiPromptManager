@@ -13,6 +13,7 @@ import { ArtistAdmin } from './components/ArtistAdmin';
 import { InspirationGallery } from './components/InspirationGallery';
 import { GenHistory } from './components/GenHistory';
 import { db } from './services/dbService';
+import { DEFAULT_NAI_PARAMS } from './services/naiModels';
 import { PromptChain, User, Artist, Inspiration, ChainType } from './types';
 import { useFeedback } from './components/ui/Feedback';
 
@@ -92,9 +93,7 @@ const App = () => {
       basePrompt: '',
       negativePrompt: '',
       modules: [],
-      params: {
-        width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', seed: undefined, qualityToggle: true, ucPreset: 4, characters: [],
-      },
+      params: { ...DEFAULT_NAI_PARAMS },
       variableValues: { subject: '' },
       type: 'style',
       tags: [],

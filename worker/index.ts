@@ -43,7 +43,7 @@ interface R2ObjectBody {
 }
 
 interface R2Bucket {
-    put(key: string, body: ReadableStream | ArrayBuffer | string, options?: any): Promise<any>;
+    put(key: string, body: ReadableStream | ArrayBuffer | Uint8Array | string, options?: any): Promise<any>;
     get(key: string): Promise<R2ObjectBody | null>;
     delete(key: string): Promise<void>;
 }
@@ -220,6 +220,25 @@ async function incrementDailyStat(db: D1Database, field: string) {
   } catch (e) {
     console.error('Failed to update daily stat:', e);
   }
+}
+
+async function adjustStorageUsage(db: D1Database, userId: string, delta: number) {
+  if (!delta) return;
+  if (delta > 0) {
+    await db.prepare('UPDATE users SET storage_usage = COALESCE(storage_usage, 0) + ? WHERE id = ?').bind(delta, userId).run();
+    return;
+  }
+  const drop = -delta;
+  await db.prepare(
+    'UPDATE users SET storage_usage = CASE WHEN COALESCE(storage_usage, 0) > ? THEN COALESCE(storage_usage, 0) - ? ELSE 0 END WHERE id = ?'
+  ).bind(drop, drop, userId).run();
+}
+
+async function deleteSharedVibeRow(env: Env, db: D1Database, row: { id: string; user_id: string; thumbnail_url?: string; payload_url?: string; size?: number }) {
+  if (row.payload_url) await deleteR2File(env, row.payload_url);
+  if (row.thumbnail_url) await deleteR2File(env, row.thumbnail_url);
+  if (row.size && row.user_id) await adjustStorageUsage(db, row.user_id, -row.size);
+  await db.prepare('DELETE FROM shared_vibes WHERE id = ?').bind(row.id).run();
 }
 
 // Helper: Delete File from R2
@@ -401,6 +420,23 @@ export default {
       try { await db.prepare("ALTER TABLE chains ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0").run(); } catch (e) {}
       try { await db.prepare("ALTER TABLE users ADD COLUMN discord_id TEXT").run(); } catch (e) {}
       try { await db.prepare("ALTER TABLE users ADD COLUMN discord_username TEXT").run(); } catch (e) {}
+      try {
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS shared_vibes (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            username TEXT,
+            local_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            thumbnail_url TEXT,
+            payload_url TEXT NOT NULL,
+            size INTEGER DEFAULT 0,
+            created_at INTEGER,
+            updated_at INTEGER
+          )
+        `).run();
+        await db.prepare('CREATE INDEX IF NOT EXISTS idx_shared_vibes_user ON shared_vibes(user_id)').run();
+      } catch (e) {}
       try {
         await db.prepare(`
           CREATE TABLE IF NOT EXISTS oauth_states (
@@ -760,6 +796,31 @@ export default {
         return new Response(blob, { headers: { ...corsHeaders, 'Content-Type': 'application/zip' } });
       }
 
+      if (path === '/api/generate-stream' && method === 'POST') {
+        const body = await request.json();
+        const clientAuth = request.headers.get('Authorization');
+        if (!clientAuth) return error('Missing API Key', 401);
+        const naiRes = await fetch("https://image.novelai.net/ai/generate-image-stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": clientAuth, "Accept": "text/event-stream" },
+          body: JSON.stringify(body),
+        });
+        if (!naiRes.ok) return error(await naiRes.text(), naiRes.status);
+        return new Response(naiRes.body, {
+          headers: { ...corsHeaders, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+        });
+      }
+
+      if (path === '/api/nai/subscription' && method === 'GET') {
+        const clientAuth = request.headers.get('Authorization');
+        if (!clientAuth) return error('Missing API Key', 401);
+        const naiRes = await fetch("https://image.novelai.net/user/subscription", {
+          headers: { "Authorization": clientAuth, "Accept": "application/json" },
+        });
+        if (!naiRes.ok) return error(await naiRes.text(), naiRes.status);
+        return json(await naiRes.json());
+      }
+
       // --- File Upload ---
       if (path === '/api/upload' && method === 'POST') {
           if (!env.BUCKET) return error('R2 Bucket not configured', 503);
@@ -875,6 +936,10 @@ export default {
          if (currentUser.role !== 'admin') return error('Forbidden', 403);
          const id = path.split('/').pop();
          if (id === currentUser.id) return error('Cannot delete self', 400);
+         const ownedVibes = await db.prepare('SELECT id, user_id, thumbnail_url, payload_url, size FROM shared_vibes WHERE user_id = ?').bind(id).all();
+         for (const row of ownedVibes.results || []) {
+           await deleteSharedVibeRow(env, db, row as any);
+         }
          await db.prepare('DELETE FROM users WHERE id = ?').bind(id).run();
          return json({ success: true });
       }
@@ -1252,6 +1317,124 @@ export default {
              await db.prepare('DELETE FROM inspirations WHERE id = ?').bind(id).run();
          }
          return json({ success: true });
+      }
+
+      if (path === '/api/vibes' && method === 'GET') {
+        const rows = await db.prepare('SELECT id, user_id, username, name, thumbnail_url, updated_at FROM shared_vibes ORDER BY updated_at DESC').all();
+        return json((rows.results || []).map((r: any) => ({
+          id: r.id,
+          name: r.name,
+          username: r.username,
+          thumbnailUrl: r.thumbnail_url,
+          ownerId: r.user_id,
+          updatedAt: r.updated_at,
+        })));
+      }
+
+      if (path === '/api/vibes' && method === 'POST') {
+        if (currentUser.role === 'guest') return error('Guests cannot share vibes', 403);
+        if (!env.BUCKET) return error('R2 Bucket not configured', 503);
+        const body = await request.json() as any;
+        const preset = body.preset;
+        const localId = String(body.localId || preset?.id || '');
+        if (!preset || !localId || !preset.name || !Array.isArray(preset.encodings)) {
+          return error('Invalid vibe payload', 400);
+        }
+        const existing = body.sharedId
+          ? await db.prepare('SELECT * FROM shared_vibes WHERE id = ?').bind(body.sharedId).first<any>()
+          : await db.prepare('SELECT * FROM shared_vibes WHERE user_id = ? AND local_id = ?').bind(currentUser.id, localId).first<any>();
+        if (existing && existing.user_id !== currentUser.id && currentUser.role !== 'admin') {
+          return error('Permission Denied', 403);
+        }
+        const id = existing?.id || crypto.randomUUID();
+        const payloadJson = JSON.stringify({
+          name: preset.name,
+          encodings: preset.encodings,
+          members: preset.members || [],
+          defaultStrength: preset.defaultStrength,
+          defaultInformationExtracted: preset.defaultInformationExtracted,
+          sourceFilename: preset.sourceFilename,
+        });
+        const payloadBytes = new TextEncoder().encode(payloadJson);
+        const payloadKey = `vibes/${currentUser.id}/${localId}.json`;
+        let thumbnailUrl = existing?.thumbnail_url || null;
+        let thumbBytes = 0;
+        let thumbKey: string | null = null;
+        let thumbBody: Uint8Array | null = null;
+        let thumbType = 'image/png';
+        if (typeof preset.thumbnailUrl === 'string' && preset.thumbnailUrl.startsWith('data:')) {
+          const matches = preset.thumbnailUrl.match(/^data:image\/([a-zA-Z]+);base64,(.+)$/);
+          if (matches) {
+            const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+            const raw = atob(matches[2]);
+            thumbBody = new Uint8Array(raw.length);
+            for (let i = 0; i < raw.length; i++) thumbBody[i] = raw.charCodeAt(i);
+            thumbBytes = thumbBody.length;
+            thumbType = `image/${matches[1]}`;
+            thumbKey = `vibes/${currentUser.id}/${localId}.thumb.${ext}`;
+            thumbnailUrl = `/api/assets/${thumbKey}`;
+          }
+        } else if (typeof preset.thumbnailUrl === 'string' && preset.thumbnailUrl.startsWith('/api/assets/')) {
+          thumbnailUrl = preset.thumbnailUrl;
+        }
+        const totalSize = payloadBytes.byteLength + thumbBytes;
+        const extra = totalSize - (existing?.size || 0);
+        if (extra > 0 && !ROLE_POLICY.isUnlimitedStorage(currentUser.role)) {
+          const currentUsage = currentUser.storage_usage || 0;
+          const maxStorage = currentUser.max_storage || ROLE_POLICY.getDefaultQuota(currentUser.role) || 314572800;
+          if (currentUsage + extra > maxStorage) return error('Storage quota exceeded', 413);
+        }
+        await env.BUCKET.put(payloadKey, payloadBytes, { httpMetadata: { contentType: 'application/json' } });
+        if (thumbKey && thumbBody) {
+          await env.BUCKET.put(thumbKey, thumbBody, { httpMetadata: { contentType: thumbType } });
+        }
+        const now = Date.now();
+        if (existing) {
+          await db.prepare('UPDATE shared_vibes SET name = ?, thumbnail_url = ?, payload_url = ?, size = ?, updated_at = ?, username = ? WHERE id = ?')
+            .bind(preset.name, thumbnailUrl, `/api/assets/${payloadKey}`, totalSize, now, currentUser.username, id).run();
+        } else {
+          await db.prepare('INSERT INTO shared_vibes (id, user_id, username, local_id, name, thumbnail_url, payload_url, size, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .bind(id, currentUser.id, currentUser.username, localId, preset.name, thumbnailUrl, `/api/assets/${payloadKey}`, totalSize, now, now).run();
+        }
+        await adjustStorageUsage(db, currentUser.id, extra);
+        return json({ id, thumbnailUrl });
+      }
+
+      if (path.startsWith('/api/vibes/') && method === 'GET') {
+        const id = decodeURIComponent(path.replace('/api/vibes/', ''));
+        const row = await db.prepare('SELECT * FROM shared_vibes WHERE id = ?').bind(id).first<any>();
+        if (!row) return error('Not Found', 404);
+        if (!env.BUCKET) return error('R2 Bucket not configured', 503);
+        const key = String(row.payload_url || '').replace('/api/assets/', '');
+        const obj = await env.BUCKET.get(decodeURIComponent(key));
+        if (!obj) {
+          await deleteSharedVibeRow(env, db, row);
+          return error('Not Found', 404);
+        }
+        const payload = JSON.parse(await new Response(obj.body).text());
+        return json({
+          id: row.local_id,
+          name: payload.name || row.name,
+          thumbnailUrl: row.thumbnail_url,
+          encodings: payload.encodings || [],
+          members: payload.members || [],
+          defaultStrength: payload.defaultStrength ?? 0.6,
+          defaultInformationExtracted: payload.defaultInformationExtracted ?? 0.7,
+          sourceFilename: payload.sourceFilename,
+          shared: false,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        });
+      }
+
+      if (path.startsWith('/api/vibes/') && method === 'DELETE') {
+        if (currentUser.role === 'guest') return error('Forbidden', 403);
+        const id = decodeURIComponent(path.replace('/api/vibes/', ''));
+        const row = await db.prepare('SELECT * FROM shared_vibes WHERE id = ?').bind(id).first<any>();
+        if (!row) return json({ success: true });
+        if (row.user_id !== currentUser.id && currentUser.role !== 'admin') return error('Permission Denied', 403);
+        await deleteSharedVibeRow(env, db, row);
+        return json({ success: true });
       }
 
       if (path.startsWith('/api/')) return error('Not Found', 404);

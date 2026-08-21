@@ -58,6 +58,10 @@ export interface VibePreset {
   defaultStrength: number;
   defaultInformationExtracted: number;
   sourceFilename?: string;
+  /** 是否已上传到服务器供其他用户使用。默认 false。 */
+  shared?: boolean;
+  /** 云端共享记录 id，取消共享时用来删除。 */
+  sharedId?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -70,6 +74,15 @@ export interface VibeMount {
   informationExtracted: number;
 }
 
+export interface SharedVibeListItem {
+  id: string;
+  name: string;
+  username?: string;
+  thumbnailUrl?: string;
+  ownerId: string;
+  updatedAt: number;
+}
+
 /** 仅在生成前由本地库解析出的运行时数据。 */
 export interface ResolvedVibe {
   vibeId: string;
@@ -78,6 +91,9 @@ export interface ResolvedVibe {
   informationExtracted: number;
   encoding: string;
 }
+
+export type NAIModelId = 'nai-diffusion-4-5-full' | 'nai-diffusion-5-full';
+export type NAIAlphaMode = 'straight' | 'premultiplied';
 
 export interface NAIParams {
   width: number;
@@ -96,6 +112,14 @@ export interface NAIParams {
   variety?: boolean; // Variety+ (controlled via skip_cfg_above_sigma)
   cfgRescale?: number; // Prompt Guidance Rescale (0.0 - 1.0)
   vibes?: VibeMount[];
+  /** 缺省按 V4.5 Full，兼容旧 Chain。 */
+  model?: NAIModelId;
+  /** 走 /ai/generate-image-stream，中间帧预览。 */
+  stream?: boolean;
+  /** 仅 V5：透明背景。 */
+  transparent?: boolean;
+  /** 仅透明开启时有效。默认 straight。 */
+  alphaMode?: NAIAlphaMode;
 }
 
 export type ChainType = 'style' | 'character';

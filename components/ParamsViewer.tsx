@@ -67,6 +67,7 @@ export const ParamsViewer: React.FC<ParamsViewerProps> = ({
         const lines = [
             prompt !== undefined ? `Prompt: ${prompt || '(empty)'}` : '',
             negativePrompt !== undefined ? `Negative: ${negativePrompt || '(empty)'}` : '',
+            `Model: ${params.model ?? 'nai-diffusion-4-5-full'}`,
             `Resolution: ${params.width} × ${params.height}`,
             `Steps: ${params.steps}`,
             `Scale: ${params.scale}`,

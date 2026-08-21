@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { pathFor } from '../app/paths';
 import { ROLE_POLICY } from '../config/rolePolicy';
 import { User } from '../types';
+import { AnlasChip } from './NaiAnlasChip';
 import { Atmosphere } from './Atmosphere';
 import { BrandMark } from './BrandMark';
 import { Avatar } from './ui/Avatar';
@@ -177,6 +178,7 @@ export const Layout: React.FC<LayoutProps> = ({
             </div>
           </div>
           <div className="top-actions">
+            <AnlasChip compact />
             {currentUser ? (
               <div className={cx('user-chip', currentUser.role === 'vip' && 'vip-badge')}>
                 <Avatar name={currentUser.username[0]?.toUpperCase()} />
@@ -237,6 +239,7 @@ export const Layout: React.FC<LayoutProps> = ({
           </nav>
 
           <div className="sidebar-foot">
+            <AnlasChip />
             {showStorage ? (
               <div className="storage">
                 <div className="storage-row">

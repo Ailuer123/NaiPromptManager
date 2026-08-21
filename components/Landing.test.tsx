@@ -50,11 +50,20 @@ describe('Landing', () => {
 
   it('提供 Discord 登录和账号密码', () => {
     render(<Host />);
+    const form = document.querySelector('.auth-form');
     const discord = screen.getByRole('button', { name: /使用 Discord/ });
     expect(discord).toBeInTheDocument();
     expect(discord.querySelector('svg.icon-fill')).toBeTruthy();
+    expect(form).toBeTruthy();
+    expect(
+      !!(discord.compareDocumentPosition(form!) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
     expect(screen.getByText('— 或使用账号密码登录 —')).toBeInTheDocument();
-    expect(screen.getByLabelText(/用户名/)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '终端登录' })).toBeNull();
+    expect(screen.getByLabelText('用户名')).toBeInTheDocument();
+    expect(screen.getByLabelText('密码')).toBeInTheDocument();
+    expect(screen.queryByText(/USERNAME/)).toBeNull();
+    expect(screen.queryByText(/ACCESS KEY/)).toBeNull();
     expect(screen.queryByLabelText('游客口令')).toBeNull();
     expect(screen.queryByText('Discord 登录尚未配置')).toBeNull();
     expect(screen.queryByRole('button', { name: '选择主题配色' })).toBeNull();
@@ -70,13 +79,11 @@ describe('Landing', () => {
     expect(screen.getByLabelText(/用户名/)).toBeInTheDocument();
   });
 
-  it('标语下有三个亮点胶囊', () => {
+  it('不渲染产品亮点胶囊', () => {
     render(<Host />);
-    const pills = [...document.querySelectorAll('.lp-pill')].map((el) => el.textContent);
-    expect(pills).toEqual(['模块化串编排', '画师军火库', '端侧无损压缩']);
-    expect(document.querySelector('.lp-highlights')?.previousElementSibling).toHaveTextContent(
-      '把散落的灵感，收成可再咏的咒语',
-    );
+    expect(document.querySelector('.lp-highlights')).toBeNull();
+    expect(document.querySelectorAll('.lp-pill')).toHaveLength(0);
+    expect(screen.queryByText('模块化串编排')).toBeNull();
   });
 
   it('登录错误槽位常驻，避免卡片跳变', () => {
@@ -115,11 +122,21 @@ describe('Landing', () => {
     expect(svg.querySelector('.ring-outer')).toBeTruthy();
   });
 
-  it('SPELLCRAFT 用 pixel 字体，中文主标与登录标题用 display 字体', () => {
+  it('SPELLCRAFT 用 pixel 字体，中文主标用 display 字体落在顶栏', () => {
     render(<Host />);
     expect(document.querySelector('.font-pixel')).toHaveTextContent(/SPELLCRAFT/);
-    expect(screen.getByRole('heading', { name: '咒语构建终端' })).toHaveClass('font-display');
-    expect(screen.getByRole('heading', { name: '终端登录' })).toHaveClass('font-display');
+    const brand = screen.getByRole('heading', { name: '咒语构建终端' });
+    expect(brand).toHaveClass('font-display');
+    expect(brand.closest('.lp-top')).toBeTruthy();
+    expect(screen.queryByText(/PROMPT MANAGER/)).toBeNull();
+    expect(document.querySelector('.lp-hero')).toBeTruthy();
+    expect(document.querySelector('.lp-login-col .auth-submit')).toBeTruthy();
+  });
+
+  it('落地页绑定可视视口高度，供键盘弹出时收紧', () => {
+    render(<Host />);
+    const root = document.querySelector('.landing') as HTMLElement | null;
+    expect(root?.style.getPropertyValue('--vvh')).toMatch(/px$/);
   });
 
   it('提交走传入的 onSubmit，不自造登录', async () => {

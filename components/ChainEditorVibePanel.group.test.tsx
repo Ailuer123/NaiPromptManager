@@ -90,9 +90,9 @@ describe('ChainEditorVibePanel vibe groups', () => {
     render(<Host library={library} />);
 
     await user.click(screen.getByRole('button', { name: '本地库' }));
-    expect(screen.getByRole('dialog', { name: 'Vibe 本地库' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Vibe 库' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '关闭 Vibe 本地库' }));
-    expect(screen.queryByRole('dialog', { name: 'Vibe 本地库' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Vibe 库' })).not.toBeInTheDocument();
   });
 });

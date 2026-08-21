@@ -1,4 +1,5 @@
 import type { NAIParams, ResolvedVibe } from '../types';
+import { isV5Model, resolveNaiModel, withTransparentTags } from './naiModels';
 import { NAI_QUALITY_TAGS, NAI_UC_PRESETS } from './promptUtils';
 
 interface NAICharCaption {
@@ -48,11 +49,14 @@ export interface NAIImageGenerationParameters {
   reference_image_multiple?: string[];
   reference_strength_multiple?: number[];
   reference_information_extracted_multiple?: number[];
+  stream?: 'sse' | 'msgpack';
+  straight_alpha?: boolean;
+  tag_hint_transparent_background?: boolean;
 }
 
 export interface NAIImageGenerationPayload {
   input: string;
-  model: 'nai-diffusion-4-5-full';
+  model: string;
   action: 'generate';
   parameters: NAIImageGenerationParameters;
 }
@@ -67,7 +71,11 @@ export const buildGenerationPayload = (
     ? params.seed
     : undefined;
 
+  const model = resolveNaiModel(params);
+  const useTransparent = isV5Model(params) && !!params.transparent;
+
   let finalPrompt = prompt;
+  if (useTransparent) finalPrompt = withTransparentTags(finalPrompt);
   if (params.qualityToggle ?? true) {
     finalPrompt += NAI_QUALITY_TAGS;
   }
@@ -130,6 +138,12 @@ export const buildGenerationPayload = (
     prefer_brownian: true,
   };
 
+  if (params.stream) parameters.stream = 'sse';
+  if (useTransparent) {
+    parameters.tag_hint_transparent_background = true;
+    parameters.straight_alpha = params.alphaMode !== 'premultiplied';
+  }
+
   if (seed !== undefined) parameters.seed = seed;
   if (vibes.length > 0) {
     parameters.reference_image_multiple = vibes.map(vibe => vibe.encoding);
@@ -139,7 +153,7 @@ export const buildGenerationPayload = (
 
   return {
     input: finalPrompt,
-    model: 'nai-diffusion-4-5-full',
+    model,
     action: 'generate',
     parameters,
   };

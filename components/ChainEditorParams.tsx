@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { NAIParams } from '../types';
+import { isV5Model, NAI_MODEL_OPTIONS } from '../services/naiModels';
 import { Chip, Collapse, Field, Input, Select } from './ui';
 
 interface ChainEditorParamsProps {
@@ -7,6 +8,7 @@ interface ChainEditorParamsProps {
     setParams: (p: NAIParams) => void;
     canEdit: boolean;
     markChange: () => void;
+    notify?: (message: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
     compositionExtra?: React.ReactNode;
     compositionBody?: React.ReactNode;
     compositionOpen?: boolean;
@@ -24,6 +26,7 @@ export const ChainEditorParams: React.FC<ChainEditorParamsProps> = ({
     setParams,
     canEdit,
     markChange,
+    notify,
     compositionExtra,
     compositionBody,
     compositionOpen,
@@ -73,6 +76,74 @@ export const ChainEditorParams: React.FC<ChainEditorParamsProps> = ({
 
             <Collapse title="参数配置" defaultOpen>
                 <div className="stack">
+                    <div className="param-grid param-pair">
+                        <div className="param-group">
+                            <p className="param-group-label">模型</p>
+                            <div className="chips">
+                                {NAI_MODEL_OPTIONS.map((opt) => (
+                                    <Chip
+                                        key={opt.id}
+                                        active={isV5Model(params) ? opt.id === 'nai-diffusion-5-full' : opt.id === 'nai-diffusion-4-5-full'}
+                                        disabled={!canEdit}
+                                        onClick={() => patch({
+                                            model: opt.id,
+                                            ...(opt.id !== 'nai-diffusion-5-full' ? { transparent: false } : {}),
+                                        })}
+                                    >
+                                        {opt.label}
+                                    </Chip>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="param-group">
+                            <p className="param-group-label">
+                                透明背景
+                                <span className="help-tip" tabIndex={0}>
+                                    <span className="help-tip-mark" aria-label="透明模式说明">?</span>
+                                    <span className="help-tip-card" role="tooltip">
+                                        <p><strong>Straight（直通）</strong>：颜色和透明分开存。半透明的头发还是头发本身的颜色，叠在任何底上都正常。网页、Photoshop、本站预览用这个。</p>
+                                        <p><strong>Premultiplied（预乘）</strong>：颜色已经按透明度压暗过。半透明处会发暗。游戏引擎、视频合成常用。用错会出现黑边或亮边。</p>
+                                    </span>
+                                </span>
+                            </p>
+                            <div className="chips">
+                                <Chip
+                                    active={!!params.transparent && isV5Model(params)}
+                                    disabled={!canEdit}
+                                    className={!isV5Model(params) ? 'chip-locked' : undefined}
+                                    title={isV5Model(params) ? 'V5 透明背景' : '仅 V5 支持透明背景'}
+                                    onClick={() => {
+                                        if (!canEdit) return;
+                                        if (!isV5Model(params)) {
+                                            notify?.('透明背景仅 V5 支持，请先切换模型', 'warning');
+                                            return;
+                                        }
+                                        patch({ transparent: !params.transparent });
+                                    }}
+                                >
+                                    透明
+                                </Chip>
+                                {isV5Model(params) && params.transparent ? (
+                                    <>
+                                        <Chip
+                                            active={(params.alphaMode ?? 'straight') === 'straight'}
+                                            disabled={!canEdit}
+                                            onClick={() => patch({ alphaMode: 'straight' })}
+                                        >
+                                            Straight
+                                        </Chip>
+                                        <Chip
+                                            active={params.alphaMode === 'premultiplied'}
+                                            disabled={!canEdit}
+                                            onClick={() => patch({ alphaMode: 'premultiplied' })}
+                                        >
+                                            Premultiplied
+                                        </Chip>
+                                    </>
+                                ) : null}
+                            </div>
+                        </div>
+                    </div>
                     <div className="param-group">
                         <p className="param-group-label">构图</p>
                         <div className="chips">

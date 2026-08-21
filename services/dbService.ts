@@ -1,5 +1,5 @@
 
-import { PromptChain, Artist, Inspiration, User, ChainType, UsageStats } from '../types';
+import { PromptChain, Artist, Inspiration, User, ChainType, UsageStats, VibePreset, SharedVibeListItem } from '../types';
 import { api } from './api';
 
 class DBService {
@@ -146,6 +146,23 @@ class DBService {
 
   async clearOldLogs(): Promise<void> {
     await api.post('/admin/clear-logs', {});
+  }
+
+  async listSharedVibes(): Promise<SharedVibeListItem[]> {
+    const res = await api.get('/vibes');
+    return Array.isArray(res) ? res : (res.data || []);
+  }
+
+  async getSharedVibe(id: string): Promise<VibePreset> {
+    return await api.get(`/vibes/${encodeURIComponent(id)}`);
+  }
+
+  async shareVibe(localId: string, preset: VibePreset): Promise<{ id: string }> {
+    return await api.post('/vibes', { localId, sharedId: preset.sharedId, preset });
+  }
+
+  async unshareVibe(id: string): Promise<void> {
+    await api.delete(`/vibes/${encodeURIComponent(id)}`);
   }
 }
 

@@ -69,4 +69,40 @@ describe('buildGenerationPayload', () => {
       { char_caption: '', centers: [{ x: 0.2, y: 0.5 }] },
     ]);
   });
+
+  it('缺 model 时仍发 V4.5，V5 透明与流式写入对应字段', () => {
+    const legacy = buildGenerationPayload('1girl', '', params);
+    expect(legacy.model).toBe('nai-diffusion-4-5-full');
+    expect(legacy.parameters.straight_alpha).toBeUndefined();
+    expect(legacy.parameters.stream).toBeUndefined();
+
+    const v5 = buildGenerationPayload('1girl', '', {
+      ...params,
+      model: 'nai-diffusion-5-full',
+      stream: true,
+      transparent: true,
+      alphaMode: 'straight',
+    });
+    expect(v5.model).toBe('nai-diffusion-5-full');
+    expect(v5.parameters.stream).toBe('sse');
+    expect(v5.parameters.straight_alpha).toBe(true);
+    expect(v5.parameters.tag_hint_transparent_background).toBe(true);
+    expect(v5.input).toContain('transparent background');
+
+    const premul = buildGenerationPayload('1girl', '', {
+      ...params,
+      model: 'nai-diffusion-5-full',
+      transparent: true,
+      alphaMode: 'premultiplied',
+    });
+    expect(premul.parameters.straight_alpha).toBe(false);
+
+    const locked = buildGenerationPayload('1girl', '', {
+      ...params,
+      model: 'nai-diffusion-4-5-full',
+      transparent: true,
+    });
+    expect(locked.parameters.straight_alpha).toBeUndefined();
+    expect(locked.input).toBe('1girl');
+  });
 });

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import type { NAIParams, VibeMount, VibePreset } from '../types';
+import type { NAIParams, SharedVibeListItem, VibeMount, VibePreset } from '../types';
+import { db } from '../services/dbService';
 import { parseVibeFile } from '../services/vibeParse';
 import { vibeLibrary, VibeLibrary } from '../services/vibeLibrary';
 import { IconClose, IconWarn } from './ui/glyphs';
@@ -42,6 +43,10 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
   const [importing, setImporting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showLibrary, setShowLibrary] = useState(false);
+  const [libraryTab, setLibraryTab] = useState<'local' | 'shared'>('local');
+  const [sharedItems, setSharedItems] = useState<SharedVibeListItem[]>([]);
+  const [sharedLoading, setSharedLoading] = useState(false);
+  const [sharingId, setSharingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mounts = params.vibes ?? [];
@@ -167,6 +172,54 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
     }));
   };
 
+  const refreshShared = async () => {
+    setSharedLoading(true);
+    try {
+      setSharedItems(await db.listSharedVibes());
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '读取共享 Vibe 失败', 'error');
+    } finally {
+      setSharedLoading(false);
+    }
+  };
+
+  const toggleShare = async (preset: VibePreset, next: boolean) => {
+    if (sharingId) return;
+    setSharingId(preset.id);
+    try {
+      if (next) {
+        const res = await db.shareVibe(preset.id, preset);
+        await library.put({ ...preset, shared: true, sharedId: res.id, updatedAt: Date.now() });
+        notify(`已上传 Vibe「${preset.name}」`);
+      } else if (preset.sharedId) {
+        await db.unshareVibe(preset.sharedId);
+        await library.put({ ...preset, shared: false, sharedId: undefined, updatedAt: Date.now() });
+        notify(`已从服务器移除「${preset.name}」`);
+      }
+      await refreshLibrary();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '更新共享状态失败', 'error');
+    } finally {
+      setSharingId(null);
+    }
+  };
+
+  const importShared = async (item: SharedVibeListItem) => {
+    try {
+      const remote = await db.getSharedVibe(item.id);
+      let toSave: VibePreset = { ...remote, shared: false, sharedId: undefined };
+      const existing = await library.get(toSave.id);
+      if (existing) toSave = { ...toSave, id: crypto.randomUUID() };
+      toSave.createdAt = Date.now();
+      toSave.updatedAt = Date.now();
+      await library.put(toSave);
+      await refreshLibrary();
+      notify(`已导入共享 Vibe「${toSave.name}」`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '导入共享 Vibe 失败', 'error');
+    }
+  };
+
   const deletePreset = async (preset: VibePreset) => {
     const ok = await confirm({
       title: `确定从本地库删除「${preset.name}」吗？`,
@@ -175,6 +228,9 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
     });
     if (!ok) return;
     try {
+      if (preset.shared && preset.sharedId) {
+        try { await db.unshareVibe(preset.sharedId); } catch { /* 本地删除仍继续 */ }
+      }
       await library.delete(preset.id);
       updateMounts(mounts.filter(mount => mount.vibeId !== preset.id));
       await refreshLibrary();
@@ -329,13 +385,17 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
           <div className="modal-card vibe-lib-card surface-strong" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="vibe-lib-title">
             <div className="flex items-center justify-between border-b border-gray-200 p-4 dark:border-gray-700">
               <div>
-                <h3 id="vibe-lib-title" className="font-bold text-gray-900 dark:text-white">Vibe 本地库</h3>
+                <h3 id="vibe-lib-title" className="font-bold text-gray-900 dark:text-white">Vibe 库</h3>
               </div>
               <IconButton className="vibe-lib-close" label="关闭 Vibe 本地库" onClick={() => setShowLibrary(false)}>
                 <IconClose />
               </IconButton>
             </div>
             <div className="flex min-h-0 flex-1 flex-col p-4">
+              <div className="mb-3 flex gap-2">
+                <button type="button" className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${libraryTab === 'local' ? 'bg-indigo-600 text-white' : 'border border-gray-300 text-gray-600 dark:border-gray-600 dark:text-gray-300'}`} onClick={() => setLibraryTab('local')}>本地</button>
+                <button type="button" className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${libraryTab === 'shared' ? 'bg-indigo-600 text-white' : 'border border-gray-300 text-gray-600 dark:border-gray-600 dark:text-gray-300'}`} onClick={() => { setLibraryTab('shared'); void refreshShared(); }}>共享</button>
+              </div>
               <input
                 value={search}
                 onChange={event => setSearch(event.target.value)}
@@ -343,7 +403,32 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
                 className="mb-4 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
               />
               <div className="min-h-0 flex-1 overflow-y-auto">
-                {filteredPresets.length === 0 ? (
+                {libraryTab === 'shared' ? (
+                  sharedLoading ? (
+                    <p className="py-12 text-center text-sm text-gray-400">正在读取共享库…</p>
+                  ) : sharedItems.filter(item => item.name.toLowerCase().includes(search.trim().toLowerCase())).length === 0 ? (
+                    <p className="py-12 text-center text-sm text-gray-400">还没有人分享 Vibe</p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                      {sharedItems.filter(item => item.name.toLowerCase().includes(search.trim().toLowerCase())).map(item => (
+                        <div key={item.id} className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+                          {item.thumbnailUrl ? (
+                            <img src={item.thumbnailUrl} alt="" className="aspect-square w-full object-cover" />
+                          ) : (
+                            <div className="flex aspect-square items-center justify-center bg-gradient-to-br from-violet-500 to-indigo-600 text-3xl font-bold text-white">{item.name.slice(0, 1).toUpperCase()}</div>
+                          )}
+                          <div className="p-2">
+                            <p className="truncate text-xs font-semibold text-gray-800 dark:text-gray-100">{item.name}</p>
+                            <p className="truncate text-[10px] text-gray-400">{item.username || '匿名'}</p>
+                            {canEdit && (
+                              <button type="button" onClick={() => void importShared(item)} className="mt-2 w-full rounded bg-indigo-600 px-2 py-1 text-[11px] text-white">导入到本地</button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                ) : filteredPresets.length === 0 ? (
                   <p className="py-12 text-center text-sm text-gray-400">{loading ? '正在读取…' : '本地库中没有 Vibe'}</p>
                 ) : (
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
@@ -362,6 +447,15 @@ export const ChainEditorVibePanel: React.FC<ChainEditorVibePanelProps> = ({
                           {isVibeGroup(preset) && <span className="absolute left-1 top-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] text-white">组 · {preset.members?.length}</span>}
                           <div className="p-2">
                             <p className="truncate text-xs font-semibold text-gray-800 dark:text-gray-100">{preset.name}</p>
+                            <label className="mt-1 flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400">
+                              <input
+                                type="checkbox"
+                                checked={!!preset.shared}
+                                disabled={!canEdit || sharingId === preset.id}
+                                onChange={event => void toggleShare(preset, event.target.checked)}
+                              />
+                              上传供他人使用
+                            </label>
                             <div className="mt-2 flex gap-1">
                               <button type="button" disabled={!canMount} onClick={() => mountPreset(preset)} className="flex-1 rounded bg-indigo-600 px-2 py-1 text-[11px] text-white disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700">{mounted ? '已挂载' : '挂载'}</button>
                               <button

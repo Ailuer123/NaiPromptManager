@@ -51,6 +51,19 @@ CREATE TABLE artists (
   benchmarks TEXT
 );
 
+CREATE TABLE shared_vibes (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  username TEXT,
+  local_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  thumbnail_url TEXT,
+  payload_url TEXT NOT NULL,
+  size INTEGER DEFAULT 0,
+  created_at INTEGER,
+  updated_at INTEGER
+);
+
 CREATE TABLE inspirations (
   id TEXT PRIMARY KEY,
   user_id TEXT,
