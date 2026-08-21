@@ -10,7 +10,7 @@ import { dataUriHasAlpha } from '../services/pngAlpha';
 import { ApiKeySheet, Button, Chip, Collapse, Field, IconButton, IconClose, IconPalette, IconUser, Input, Portal, Seg, Select, Tag, Textarea, Toggle, useApiKeyConfigured } from './ui';
 import { cx } from './ui/cx';
 import { localHistory } from '../services/localHistory';
-import { compressPngToJpg } from '../services/imageCompression';
+import { compressPngToJpg, shouldApplyAutoJpgSave } from '../services/imageCompression';
 import { api } from '../services/api';
 import { extractMetadata, parseNovelAIMetadata, IMPORT_SESSION_KEY } from '../services/metadataService';
 import { ChainEditorParams } from './ChainEditorParams';
@@ -714,9 +714,13 @@ export const ChainEditor: React.FC<ChainEditorProps> = ({ chain, allChains, curr
             const finalParams = { ...activeParams, seed: result.seed };
             // 自动 JPG 保存：开启时在入库前把 PNG 转码为 JPG（仅作用于本地历史记录）
             // 失败时回退到原 PNG，绝不阻塞主流程 —— 元数据始终走 prompt/params 独立字段
+            // 仅 V5 透明背景需要保留 alpha；NAI 默认 RGBA PNG 不能当跳过依据
             let finalImage = result.image;
-            const skipJpg = (!!activeParams.transparent && isV5Model(activeParams)) || dataUriHasAlpha(result.image);
-            if (!skipJpg && localStorage.getItem('naipm.compaction.autoJpg') === 'true') {
+            const preserveAlpha = !!activeParams.transparent && isV5Model(activeParams);
+            if (shouldApplyAutoJpgSave({
+                enabled: localStorage.getItem('naipm.compaction.autoJpg') === 'true',
+                preserveAlpha,
+            })) {
                 try {
                     const q = parseFloat(localStorage.getItem('naipm.compaction.quality') || '0.85');
                     const quality = isNaN(q) ? 0.85 : Math.min(1, Math.max(0.01, q));

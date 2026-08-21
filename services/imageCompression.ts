@@ -31,6 +31,21 @@ export function isJpgDataUri(dataUri: string): boolean {
 }
 
 /**
+ * 自动 JPG 保存是否应对本张图生效。
+ *
+ * 只在用户明确要求保留透明通道时跳过（V5 透明背景）。
+ * **不要**用 PNG IHDR color type / `dataUriHasAlpha` 当跳过依据：NovelAI 默认
+ * 输出 RGBA PNG（color type 6），即使像素全不透明；用 color type 会让自动 JPG
+ * 对几乎所有生成图失效，而历史页手动压缩不受影响。
+ */
+export function shouldApplyAutoJpgSave(options: {
+    enabled: boolean;
+    preserveAlpha: boolean;
+}): boolean {
+    return options.enabled && !options.preserveAlpha;
+}
+
+/**
  * 从 base64 Data URI 估算原始字节数。
  *
  * base64 每 4 个字符表示 3 字节原始数据，末尾 `=` 是 padding。
