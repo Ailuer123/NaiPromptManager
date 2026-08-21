@@ -27,7 +27,7 @@ function PathProbe() {
   return <div data-testid="path">{loc.pathname}</div>;
 }
 
-function renderLayout(user: User, onLogout = vi.fn(), hideNav = false, initial = '/') {
+function renderLayout(user: User, onLogout = vi.fn(), initial = '/') {
   return {
     onLogout,
     ...render(
@@ -37,7 +37,7 @@ function renderLayout(user: User, onLogout = vi.fn(), hideNav = false, initial =
             <Route
               path="*"
               element={(
-                <Layout currentView="list" currentUser={user} onLogout={onLogout} hideNav={hideNav}>
+                <Layout currentView="list" currentUser={user} onLogout={onLogout}>
                   <div>看板内容</div>
                   <PathProbe />
                 </Layout>
@@ -50,27 +50,67 @@ function renderLayout(user: User, onLogout = vi.fn(), hideNav = false, initial =
   };
 }
 
+async function openSidebar(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: '打开侧边栏' }));
+}
+
 describe('Layout', () => {
-  it('游客更多菜单没有设置，点外部关闭', async () => {
+  it('移动端顶栏是侧栏开关 / LOGO / Anlas，没有底栏', async () => {
+    renderLayout(guest);
+
+    expect(screen.getByRole('button', { name: '打开侧边栏' })).toBeInTheDocument();
+    expect(screen.getAllByRole('img', { name: '符文矩阵' }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('navigation', { name: '移动导航' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '更多' })).toBeNull();
+    expect(document.querySelector('.bottom-nav')).toBeNull();
+  });
+
+  it('打开侧栏后是毛玻璃面板，点遮罩关闭', async () => {
+    const user = userEvent.setup();
+    renderLayout(guest);
+
+    await openSidebar(user);
+    expect(screen.getByRole('button', { name: '打开侧边栏' })).toHaveAttribute('aria-expanded', 'true');
+    expect(document.querySelector('.sidebar-panel')).toHaveClass('glass-strong');
+    expect(document.querySelector('.sidebar-overlay')).toHaveClass('open');
+
+    await user.click(document.querySelector('.sidebar-overlay')!);
+    expect(screen.getByRole('button', { name: '打开侧边栏' })).toHaveAttribute('aria-expanded', 'false');
+    expect(document.querySelector('.sidebar-overlay')).not.toHaveClass('open');
+  });
+
+  it('Esc 关闭侧栏并还原焦点', async () => {
+    const user = userEvent.setup();
+    renderLayout(guest);
+
+    const toggle = screen.getByRole('button', { name: '打开侧边栏' });
+    await user.click(toggle);
+    expect(screen.getByRole('button', { name: '关闭侧边栏' })).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveFocus();
+  });
+
+  it('游客侧栏含历史与设置，点外部关闭', async () => {
     const user = userEvent.setup();
     const { onLogout } = renderLayout(guest);
 
     expect(screen.getByRole('link', { name: '设置与管理' })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: '更多' }));
-    expect(screen.getByRole('menuitem', { name: '历史' })).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: '设置' })).toBeInTheDocument();
-    expect(screen.queryByRole('menuitem', { name: '实验室' })).toBeNull();
+    await openSidebar(user);
+    expect(screen.getByRole('link', { name: '生成历史' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '设置与管理' })).toBeInTheDocument();
 
-    await user.click(screen.getByText('看板内容'));
-    expect(screen.queryByRole('menu')).toBeNull();
+    await user.click(document.querySelector('.sidebar-overlay')!);
+    expect(document.querySelector('.sidebar')).not.toHaveClass('open');
 
-    await user.click(screen.getByRole('button', { name: '更多' }));
-    await user.click(screen.getByRole('menuitem', { name: '退出' }));
+    await openSidebar(user);
+    await user.click(screen.getByRole('button', { name: '退出登录' }));
     expect(onLogout).toHaveBeenCalledTimes(1);
   });
 
-  it('登录用户更多菜单含设置，存储条为 meter，导航不整页刷新', async () => {
+  it('登录用户侧栏含设置，存储条为 meter，导航不整页刷新', async () => {
     const user = userEvent.setup();
     renderLayout(member);
 
@@ -80,26 +120,21 @@ describe('Layout', () => {
     const meter = screen.getByRole('meter', { name: '存储配额' });
     expect(meter).toHaveAttribute('aria-valuenow', String(126 * 1024 * 1024));
 
-    await user.click(screen.getByRole('button', { name: '更多' }));
-    await user.click(screen.getByRole('menuitem', { name: '设置' }));
+    await openSidebar(user);
+    await user.click(screen.getByRole('link', { name: '设置与管理' }));
     expect(screen.getByTestId('path')).toHaveTextContent('/settings');
-  });
-
-  it('hideNav 时不渲染底栏与更多', () => {
-    renderLayout(member, vi.fn(), true);
-    expect(screen.queryByRole('navigation', { name: '移动导航' })).toBeNull();
-    expect(screen.queryByRole('button', { name: '更多' })).toBeNull();
   });
 
   it('顶栏展示权限组并提供退出登录', async () => {
     const user = userEvent.setup();
     const vip: User = { id: 'v', username: 'nova', role: 'vip', createdAt: 0 };
-    const { onLogout } = renderLayout(vip, vi.fn(), true);
+    const { onLogout } = renderLayout(vip);
 
-    expect(screen.getAllByText('VIP', { selector: '.vip-role-mobile' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('VIP', { selector: '.vip-label' }).length).toBeGreaterThan(0);
     expect(screen.queryByText('VIP VIP')).toBeNull();
     expect(screen.getAllByText('nova').length).toBeGreaterThan(0);
-    await user.click(screen.getAllByRole('button', { name: '退出登录' })[0]);
+    await openSidebar(user);
+    await user.click(screen.getByRole('button', { name: '退出登录' }));
     expect(onLogout).toHaveBeenCalledTimes(1);
   });
 

@@ -1,4 +1,4 @@
-import React, { ReactNode, useEffect, useRef, useState } from 'react';
+import React, { ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { pathFor } from '../app/paths';
 import { ROLE_POLICY } from '../config/rolePolicy';
@@ -8,6 +8,7 @@ import { Atmosphere } from './Atmosphere';
 import { BrandMark } from './BrandMark';
 import { Avatar } from './ui/Avatar';
 import { IconButton } from './ui/IconButton';
+import { Overlay } from './ui/Sheet';
 import { cx } from './ui/cx';
 
 export type LayoutView =
@@ -25,19 +26,7 @@ interface LayoutProps {
   currentView: string;
   currentUser?: User | null;
   onLogout?: () => void;
-  hideNav?: boolean;
 }
-
-const PAGE_LABEL: Record<string, string> = {
-  list: '串看板',
-  characters: '串看板',
-  edit: '串编辑器',
-  library: '军火库',
-  inspiration: '灵感图库',
-  playground: '实验室 · 对比试跑',
-  history: '生成历史',
-  admin: '设置与管理',
-};
 
 const ICONS = {
   chains: (
@@ -78,11 +67,15 @@ const ICONS = {
       <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9c.3.6.9 1 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
     </svg>
   ),
-  more: (
+  sidebar: (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
-      <circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M9 3v18" />
+    </svg>
+  ),
+  close: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 6l12 12M18 6L6 18" />
     </svg>
   ),
   logout: (
@@ -102,14 +95,6 @@ const CREATE_NAV: { id: LayoutView; label: string; icon: React.ReactNode }[] = [
   { id: 'history', label: '生成历史', icon: ICONS.history },
 ];
 
-const MOBILE_NAV: { id: LayoutView | '__more'; label: string; icon: React.ReactNode }[] = [
-  { id: 'list', label: '串', icon: ICONS.chains },
-  { id: 'library', label: '军火', icon: ICONS.library },
-  { id: 'playground', label: '实验室', icon: ICONS.playground },
-  { id: 'inspiration', label: '灵感', icon: ICONS.inspiration },
-  { id: '__more', label: '更多', icon: ICONS.more },
-];
-
 function isNavActive(itemId: string, view: string) {
   if (itemId === 'list') return view === 'list' || view === 'characters' || view === 'edit';
   return itemId === view;
@@ -125,11 +110,12 @@ export const Layout: React.FC<LayoutProps> = ({
   currentView,
   currentUser,
   onLogout,
-  hideNav,
 }) => {
-  const [moreOpen, setMoreOpen] = useState(false);
-  const moreRef = useRef<HTMLDivElement>(null);
-  const moreBtnRef = useRef<HTMLButtonElement>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
+  const sidebarId = useId();
 
   const getMaxStorage = () => {
     if (!currentUser) return 300 * 1024 * 1024;
@@ -144,74 +130,86 @@ export const Layout: React.FC<LayoutProps> = ({
     currentUser && !ROLE_POLICY.isUnlimitedStorage(currentUser.role) && currentUser.role !== 'guest',
   );
 
-  useEffect(() => {
-    if (hideNav) setMoreOpen(false);
-  }, [hideNav]);
+  const closeSidebar = () => setSidebarOpen(false);
 
   useEffect(() => {
-    if (!moreOpen) return;
-    const onDown = (e: MouseEvent) => {
-      const target = e.target;
-      if (!(target instanceof Node)) return;
-      if (moreRef.current?.contains(target) || moreBtnRef.current?.contains(target)) return;
-      setMoreOpen(false);
+    setSidebarOpen(false);
+  }, [currentView]);
+
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      setSidebarOpen(false);
     };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [moreOpen]);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [sidebarOpen]);
 
-  const closeMore = () => setMoreOpen(false);
-
-  const pageLabel = PAGE_LABEL[currentView] || '串看板';
+  useEffect(() => {
+    if (sidebarOpen) {
+      wasOpen.current = true;
+      closeRef.current?.focus();
+      return;
+    }
+    if (wasOpen.current) {
+      wasOpen.current = false;
+      toggleRef.current?.focus();
+    }
+  }, [sidebarOpen]);
 
   return (
-    <div className={cx('app-shell', hideNav && 'hide-nav')}>
+    <div className={cx('app-shell', sidebarOpen && 'sidebar-open')}>
       <Atmosphere />
 
       <header className="topbar">
         <div className="topbar-inner glass">
-          <div className="brand">
-            <BrandMark />
-            <div className="brand-text">
-              <strong>NAI 终端</strong>
-              <span>{pageLabel}</span>
-            </div>
+          <div className="topbar-start">
+            <IconButton
+              ref={toggleRef}
+              label="打开侧边栏"
+              aria-expanded={sidebarOpen}
+              aria-controls={sidebarId}
+              onClick={() => setSidebarOpen(true)}
+            >
+              {ICONS.sidebar}
+            </IconButton>
           </div>
-          <div className="top-actions">
+          <div className="topbar-brand">
+            <BrandMark />
+          </div>
+          <div className="topbar-end">
             <AnlasChip compact />
-            {currentUser ? (
-              <div className={cx('user-chip', currentUser.role === 'vip' && 'vip-badge')}>
-                <Avatar name={currentUser.username[0]?.toUpperCase()} />
-                <div className="meta">
-                  <strong className={currentUser.role === 'vip' ? 'vip-username' : undefined}>
-                    {currentUser.username}
-                  </strong>
-                  {currentUser.role === 'vip' ? (
-                    <span className="vip-role-mobile">VIP</span>
-                  ) : (
-                    <span className={ROLE_POLICY.getRoleBadgeClass(currentUser.role)}>
-                      {ROLE_POLICY.getRoleDisplayName(currentUser.role)}
-                    </span>
-                  )}
-                </div>
-                {onLogout ? (
-                  <IconButton label="退出登录" onClick={onLogout}>
-                    {ICONS.logout}
-                  </IconButton>
-                ) : null}
-              </div>
-            ) : null}
           </div>
         </div>
       </header>
 
-      <aside className="sidebar" aria-label="主导航">
-        <div className="sidebar-panel surface-strong">
+      <Overlay
+        open={sidebarOpen}
+        onClick={closeSidebar}
+        className="sidebar-overlay"
+      />
+
+      <aside
+        id={sidebarId}
+        className={cx('sidebar', sidebarOpen && 'open')}
+        aria-label="主导航"
+      >
+        <div className="sidebar-panel glass-strong">
           <div className="brand">
             <BrandMark />
             <div className="brand-text">
               <strong>NAI 咒语构建终端</strong>
             </div>
+            <IconButton
+              ref={closeRef}
+              className="sidebar-close"
+              label="关闭侧边栏"
+              onClick={closeSidebar}
+            >
+              {ICONS.close}
+            </IconButton>
           </div>
 
           <nav className="sidebar-nav">
@@ -221,7 +219,7 @@ export const Layout: React.FC<LayoutProps> = ({
                 key={item.id}
                 to={pathFor(item.id)}
                 className={cx('nav-item', isNavActive(item.id, currentView) && 'active')}
-                onClick={closeMore}
+                onClick={closeSidebar}
               >
                 {item.icon}
                 {item.label}
@@ -231,7 +229,7 @@ export const Layout: React.FC<LayoutProps> = ({
             <NavLink
               to={pathFor('admin')}
               className={cx('nav-item', currentView === 'admin' && 'active')}
-              onClick={closeMore}
+              onClick={closeSidebar}
             >
               {ICONS.admin}
               设置与管理
@@ -266,13 +264,13 @@ export const Layout: React.FC<LayoutProps> = ({
                   <strong className={currentUser.role === 'vip' ? 'vip-username' : undefined}>
                     {currentUser.username}
                   </strong>
-                {currentUser.role === 'vip' ? (
-                  <span className="vip-label">VIP</span>
-                ) : (
-                  <span className={ROLE_POLICY.getRoleBadgeClass(currentUser.role)}>
-                    {ROLE_POLICY.getRoleDisplayName(currentUser.role)}
-                  </span>
-                )}
+                  {currentUser.role === 'vip' ? (
+                    <span className="vip-label">VIP</span>
+                  ) : (
+                    <span className={ROLE_POLICY.getRoleBadgeClass(currentUser.role)}>
+                      {ROLE_POLICY.getRoleDisplayName(currentUser.role)}
+                    </span>
+                  )}
                 </div>
                 {onLogout ? (
                   <IconButton label="退出登录" onClick={onLogout}>
@@ -286,70 +284,6 @@ export const Layout: React.FC<LayoutProps> = ({
       </aside>
 
       <main className="main">{children}</main>
-
-      {!hideNav ? (
-        <nav className="bottom-nav glass-strong" aria-label="移动导航">
-          {MOBILE_NAV.map((item) => {
-            const navId = item.id;
-            if (navId === '__more') {
-              return (
-                <button
-                  key="more"
-                  type="button"
-                  ref={moreBtnRef}
-                  className={cx('bnav-item', 'bnav-more', moreOpen && 'active')}
-                  aria-expanded={moreOpen}
-                  aria-haspopup="menu"
-                  onClick={() => setMoreOpen((open) => !open)}
-                >
-                  {item.icon}
-                  <span>{item.label}</span>
-                </button>
-              );
-            }
-            return (
-              <NavLink
-                key={navId}
-                to={pathFor(navId)}
-                className={cx('bnav-item', isNavActive(navId, currentView) && 'active')}
-                onClick={closeMore}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-              </NavLink>
-            );
-          })}
-        </nav>
-      ) : null}
-
-      {moreOpen && !hideNav ? (
-        <>
-        <div className="more-backdrop" onClick={closeMore} aria-hidden="true" />
-        <div className="more-menu glass-strong open" id="moreMenu" role="menu" ref={moreRef}>
-          <NavLink to={pathFor('history')} role="menuitem" onClick={closeMore}>
-            {ICONS.history}
-            历史
-          </NavLink>
-          <NavLink to={pathFor('admin')} role="menuitem" onClick={closeMore}>
-            {ICONS.admin}
-            设置
-          </NavLink>
-          {onLogout ? (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMoreOpen(false);
-                onLogout();
-              }}
-            >
-              {ICONS.logout}
-              退出
-            </button>
-          ) : null}
-        </div>
-        </>
-      ) : null}
     </div>
   );
 };

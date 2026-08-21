@@ -370,7 +370,6 @@ const App = () => {
         currentView={view}
         currentUser={currentUser}
         onLogout={handleLogout}
-        hideNav={view === 'edit' || view === 'playground'}
       >
         {renderContent()}
       </Layout>
