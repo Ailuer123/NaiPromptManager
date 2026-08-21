@@ -1,119 +1,142 @@
-
 # NovelAI Image Generation API 文档
 
-本文档基于 `nai-prompt-manager` 项目中对接的 NovelAI V4.5 接口整理。
+本文档基于本仓库实测（2026-08-21）与 `https://image.novelai.net/docs/doc.json` 整理。Persistent token 必须打 **`image.novelai.net`**，不要打 `api.novelai.net`（会 `400`：`Please refresh NovelAI.net. If using a third-party tool, update to the image URL.`）。
+
+OpenAPI 真身：`https://image.novelai.net/docs/doc.json`（`/docs/index.html` 加载这份）。
+
+本应用封装：`services/naiPayload.ts` 组请求；Worker `/api/generate`、`/api/generate-stream`、`/api/nai/subscription` 透传 `Authorization`。
+
+---
 
 ## 1. 基础信息
 
-- **Endpoint**: `https://image.novelai.net/ai/generate-image`
-- **Method**: `POST`
-- **Content-Type**: `application/json`
-- **Authorization**: `Bearer <YOUR_API_KEY>`
+| | Zip 生图 | 流式生图 | 订阅 / 电量 / Anlas |
+| :--- | :--- | :--- | :--- |
+| Endpoint | `https://image.novelai.net/ai/generate-image` | `https://image.novelai.net/ai/generate-image-stream` | `https://image.novelai.net/user/subscription` |
+| Method | `POST` | `POST`（GET 为 405） | `GET` |
+| 成功 Content-Type | `binary/octet-stream`（zip） | `text/event-stream` | `application/json` |
+| Authorization | `Bearer <pst-...>` | 同左 | 同左 |
+
+请求体（两个生图端点共用）`Content-Type: application/json`。
+
+本仓库模型名：
+
+| UI | `model` |
+| :--- | :--- |
+| V4.5 | `nai-diffusion-4-5-full` |
+| V5 | `nai-diffusion-5-full` |
+
+V5 请求体可沿用 V4 的 `v4_prompt` / `v4_negative_prompt`，无需新必填字段。旧 Chain 无 `model` 时按 V4.5。
 
 ---
 
 ## 2. 请求结构 (Request Payload)
 
-请求体是一个 JSON 对象，核心字段如下：
-
 | 字段名 | 类型 | 必填 | 描述 | 示例值 |
 | :--- | :--- | :--- | :--- | :--- |
-| `input` | String | 是 | 最终拼接好的正面提示词（包含 Base + 变量 + 模块 + Quality Tags）。 | `"1girl, ..."` |
-| `model` | String | 是 | 模型名称。V4.5 模型代号。 | `"nai-diffusion-4-5-full"` |
+| `input` | String | 是 | 最终正面提示词（Base + 变量 + 模块 + Quality Tags；透明开启时追加透明词）。 | `"1girl, ..."` |
+| `model` | String | 是 | 模型代号。 | `"nai-diffusion-5-full"` |
 | `action` | String | 是 | 操作类型。 | `"generate"` |
-| `parameters` | Object | 是 | 详细生成参数对象，见下表。 | `{ ... }` |
+| `parameters` | Object | 是 | 生成参数，见下。 | `{ ... }` |
 
-### 2.1 Parameters 对象详解
-
-`parameters` 对象控制生成的具体细节：
+### 2.1 Parameters
 
 #### 基础生成参数
 | 字段名 | 类型 | 描述 | 默认/常见值 |
 | :--- | :--- | :--- | :--- |
-| `params_version` | Number | 参数版本号，V3/V4 通常为 3。 | `3` |
-| `width` | Number | 图片宽度。 | `832` |
-| `height` | Number | 图片高度。 | `1216` |
-| `scale` | Number | 提示词相关性 (CFG Scale)。 | `5` |
+| `params_version` | Number | 参数版本。V3/V4/V5 均为 3。 | `3` |
+| `width` | Number | 宽度。 | `832` |
+| `height` | Number | 高度。 | `1216` |
+| `scale` | Number | CFG Scale。 | `5` |
 | `sampler` | String | 采样器。 | `"k_euler_ancestral"` |
-| `steps` | Number | 步数 (V4 推荐 28)。 | `28` |
-| `seed` | Number | 随机种子。若不传或为 0 则由后端随机。 | `123456` |
-| `n_samples` | Number | 生成数量。本应用固定为 1。 | `1` |
+| `steps` | Number | 步数。 | `28` |
+| `seed` | Number | 随机种子。不传或 `-1` 表示随机。 | `123456` |
+| `n_samples` | Number | 张数。本应用固定 1。 | `1` |
 
-#### V4/V4.5 特性参数
+#### V4/V4.5/V5 共用
 | 字段名 | 类型 | 描述 |
 | :--- | :--- | :--- |
-| `skip_cfg_above_sigma` | Number \| null | **Variety+ (多样性)** 开关。<br>- `58`: 开启多样性 (Variety On)<br>- `null`: 关闭 (Variety Off) |
-| `cfg_rescale` | Number | **Rescale (CFG Correction)**。<br>范围 0.0 - 1.0，用于在高 CFG 下修正过拟合。 |
-| `use_coords` | Boolean | (旧字段兼容) 是否使用坐标控制。 |
-| `qualityToggle` | Boolean | **UI 状态字段**。<br>虽对生成结果无直接算法影响（逻辑在 `input` 拼接），但请求需携带以保持兼容性。 |
-| `ucPreset` | Number | **UI 状态字段**。<br>0: Heavy, 1: Light, 2: Furry, 3: Human, 4: None。请求需携带。 |
+| `skip_cfg_above_sigma` | Number \| null | Variety+：`58` 开，`null` 关。 |
+| `cfg_rescale` | Number | CFG Rescale，0.0–1.0。 |
+| `qualityToggle` | Boolean | UI 状态。画质词在 `input` 拼接，请求仍携带。 |
+| `ucPreset` | Number | UI 状态。0 Heavy / 1 Light / 2 Furry / 3 Human / 4 None。 |
+| `v4_prompt` | Object | 结构化正面提示。V5 字段名仍是 `v4_*`。 |
+| `v4_negative_prompt` | Object | 结构化负面提示。 |
 
-#### V4 结构化 Prompt (关键)
-V4 模型引入了分离式 Prompt 结构，用于支持多角色控制。
-
-| 字段名 | 类型 | 描述 |
-| :--- | :--- | :--- |
-| `v4_prompt` | Object | 正面提示词结构化对象。 |
-| `v4_negative_prompt` | Object | 负面提示词结构化对象。 |
-
-**`v4_prompt` 结构:**
+**`v4_prompt`：**
 ```json
 {
   "caption": {
-    "base_caption": "string",       // 基础提示词 (环境、风格、通用描述)
-    "char_captions": [              // 角色列表
-      {
-        "char_caption": "string",   // 角色 A 的描述 (如: 1girl, blue hair)
-        "centers": [                // 角色 A 在画面中的中心点 (0.0 - 1.0)
-          { "x": 0.5, "y": 0.5 }
-        ]
-      }
+    "base_caption": "string",
+    "char_captions": [
+      { "char_caption": "1girl, blue hair", "centers": [{ "x": 0.5, "y": 0.5 }] }
     ]
   },
-  "use_coords": boolean,            // 是否启用坐标引导 (AI Choice vs Manual)
-  "use_order": true                 // 固定为 true
+  "use_coords": false,
+  "use_order": true
 }
 ```
 
-**`v4_negative_prompt` 结构:**
+**`v4_negative_prompt`：**
 ```json
 {
   "caption": {
-    "base_caption": "string",       // 全局负面提示词
-    "char_captions": [              // 对应角色的专属负面 (索引必须与 v4_prompt 一致)
-      {
-        "char_caption": "string",   // 角色 A 的负面
-        "centers": [{ "x": 0.5, "y": 0.5 }] // 坐标需镜像
-      }
+    "base_caption": "string",
+    "char_captions": [
+      { "char_caption": "", "centers": [{ "x": 0.5, "y": 0.5 }] }
     ]
   },
   "legacy_uc": false
 }
 ```
 
-#### 其它固定参数 (Boilerplate)
-这些参数通常固定，用于保持模型行为稳定：
+#### 流式
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| `stream` | `"sse"` \| `"msgpack"` | 走 `/ai/generate-image-stream` 时用 `"sse"`。HTTP 层是 SSE；PNG Comment 里可能仍写 `"msgpack"`。 |
+
+#### 透明背景（仅 V5）
+官网 prompt 词：`transparent background` / `has alpha` / `alpha transparency`。本应用开启时往 `input` / `base_caption` 追加 `transparent background, has alpha`。
+
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| `straight_alpha` | Boolean | `true` = Straight（颜色与透明分开）；`false` = Premultiplied（颜色已乘过 alpha）。 |
+| `tag_hint_transparent_background` | Boolean | 告诉模型「这张要透明底」。网关不处理（OpenAPI：*Pure pass-through hint*）。 |
+
+zip 端点和 stream 端点都能出 RGBA PNG（color type 6）。预览器常把透明合成黑底，以像素 alpha 为准。JPG 压缩会丢掉 alpha。
+
+未测：`image_format` `"png"` \| `"webp"`。
+
+#### Vibe
+| 字段名 | 类型 | 描述 |
+| :--- | :--- | :--- |
+| `reference_image_multiple` | String[] | 预编码，顺序与挂载一致。 |
+| `reference_strength_multiple` | Number[] | Strength。 |
+| `reference_information_extracted_multiple` | Number[] | Information Extracted。 |
+
+#### Boilerplate
 | 字段名 | 值 | 描述 |
 | :--- | :--- | :--- |
-| `sm` | `false` | SMEA 开关 (V4 不用) |
-| `sm_dyn` | `false` | SMEA Dyn 开关 (V4 不用) |
+| `sm` / `sm_dyn` | `false` | SMEA（V4+ 不用） |
 | `dynamic_thresholding` | `false` | 动态阈值 |
-| `controlnet_strength` | `1` | ControlNet 强度 |
-| `legacy` | `false` | 是否使用旧版处理 |
-| `add_original_image` | `true` | 是否包含原图 (图生图相关) |
+| `controlnet_strength` | `1` | ControlNet |
+| `legacy` | `false` | 旧处理 |
+| `add_original_image` | `true` | 图生图相关 |
 | `uncond_scale` | `1` | 无条件 Scale |
-| `noise_schedule` | `"karras"` | 噪声调度器 |
-| `deliberate_euler_ancestral_bug` | `false` | 修复 Euler A 特定 Bug |
-| `prefer_brownian` | `true` | 布朗噪声偏好 |
+| `noise_schedule` | `"karras"` | 噪声调度 |
+| `deliberate_euler_ancestral_bug` | `false` | Euler A |
+| `prefer_brownian` | `true` | 布朗噪声 |
 
 ---
 
-## 3. 完整请求示例 (JSON)
+## 3. 完整请求示例
+
+V5 + 透明 Straight（zip 或 stream 体相同；stream 再加 `"stream": "sse"`）：
 
 ```json
 {
-  "input": "masterpiece, best quality, 1girl, solo, sitting, blue hair, cinematic lighting, very aesthetic, masterpiece, no text",
-  "model": "nai-diffusion-4-5-full",
+  "input": "1girl, looking at viewer, transparent background, has alpha",
+  "model": "nai-diffusion-5-full",
   "action": "generate",
   "parameters": {
     "params_version": 3,
@@ -123,10 +146,9 @@ V4 模型引入了分离式 Prompt 结构，用于支持多角色控制。
     "sampler": "k_euler_ancestral",
     "steps": 28,
     "n_samples": 1,
-    "seed": 123456789,
-    "skip_cfg_above_sigma": 58, 
+    "skip_cfg_above_sigma": null,
     "cfg_rescale": 0,
-    "qualityToggle": true,
+    "qualityToggle": false,
     "ucPreset": 4,
     "sm": false,
     "sm_dyn": false,
@@ -136,54 +158,114 @@ V4 模型引入了分离式 Prompt 结构，用于支持多角色控制。
     "add_original_image": true,
     "uncond_scale": 1,
     "noise_schedule": "karras",
-    "negative_prompt": "lowres, bad anatomy, bad hands, text, error...",
+    "negative_prompt": "lowres, bad anatomy, bad hands, text, error",
     "v4_prompt": {
       "caption": {
-        "base_caption": "masterpiece, best quality, cinematic lighting, very aesthetic, masterpiece, no text",
-        "char_captions": [
-          {
-            "char_caption": "1girl, solo, sitting, blue hair",
-            "centers": [{ "x": 0.5, "y": 0.5 }]
-          }
-        ]
+        "base_caption": "1girl, looking at viewer, transparent background, has alpha",
+        "char_captions": []
       },
       "use_coords": false,
       "use_order": true
     },
     "v4_negative_prompt": {
       "caption": {
-        "base_caption": "lowres, bad anatomy, bad hands, text, error...",
-        "char_captions": [
-          { "char_caption": "", "centers": [{ "x": 0.5, "y": 0.5 }] }
-        ]
+        "base_caption": "lowres, bad anatomy, bad hands, text, error",
+        "char_captions": []
       },
       "legacy_uc": false
     },
     "deliberate_euler_ancestral_bug": false,
-    "prefer_brownian": true
+    "prefer_brownian": true,
+    "straight_alpha": true,
+    "tag_hint_transparent_background": true
   }
 }
 ```
 
 ---
 
-## 4. 响应结构 (Response)
+## 4. 响应
 
-NovelAI API 返回的是 **二进制流 (Binary Stream)**，具体格式为 **ZIP 压缩包**。
+### 4.1 Zip（`/ai/generate-image`）
 
-### 处理流程
-1.  **Header Check**: 响应头 `Content-Type` 通常为 `application/zip` (或 `application/x-zip-compressed`)。
-2.  **Unzip**: 需要使用 `JSZip` 或类似库解压。
-3.  **File Extraction**: 压缩包内通常包含一个文件名格式为 `image_0.png` 的图片文件。
-4.  **Data Parsing**:
-    *   图片内容：直接读取为 Blob 或 Base64 用于显示。
-    *   元数据 (Metadata)：NovelAI 将生成参数写入了 PNG 的 `tEXt` chunk 中（关键字通常为 `Description` 或 `Comment`），格式为 JSON 字符串或纯文本。
+- HTTP `200`，`Content-Type: binary/octet-stream`，`Content-Disposition: attachment; filename=images.zip`。
+- 包内通常只有 `image_0.png`，**没有**伴随 `.json`。
+- 种子 / 模型写在 PNG `tEXt`：`Source`（如 `NovelAI Diffusion V5 0ADF9AB7`）、`Comment`（JSON，含 `model_name`、`seed`、`v4_prompt`、`straight_alpha` 等）。
 
-### 错误响应
-如果发生错误（如 400/401/402/500），API 通常返回 JSON 格式的错误信息：
+### 4.2 SSE（`/ai/generate-image-stream`）
+
+`Accept: text/event-stream`。28 steps 实测：27 条 `event: intermediate`（`step_ix` 0–26）+ 1 条 `event: final`。
+
 ```json
 {
-  "statusCode": 402,
-  "message": "Anlas depletion" 
+  "event_type": "intermediate",
+  "samp_ix": 0,
+  "step_ix": 0,
+  "gen_id": 6214152,
+  "sigma": 20000,
+  "image": "<base64>"
 }
 ```
+
+- `intermediate.image`：JPEG 缩图（`/9j/...`）。
+- `final.image`：全尺寸 PNG（`iVBORw0KGgo...`）。`final` 无 `step_ix` / `sigma`。
+- 文档还列了 `StreamingEventTypeError`，本次未碰到。
+- `EventSource` 不支持 POST，前端用 `fetch` + `ReadableStream`。Worker 必须 pipe，不能 `blob()`。
+
+### 4.3 错误
+
+JSON，例如：
+
+```json
+{ "statusCode": 402, "message": "Anlas depletion" }
+```
+
+---
+
+## 5. 订阅、Anlas、V5 电量
+
+```http
+GET https://image.novelai.net/user/subscription
+Authorization: Bearer <pst-...>
+```
+
+`GET /user/data` 里同一份在 `subscription`。没有独立 `/user/battery`、`/user/energy`、`/user/usage`（404）。生图响应头/zip 里没有电量。
+
+```json
+{
+  "tier": 3,
+  "active": true,
+  "trainingStepsLeft": {
+    "fixedTrainingStepsLeft": 9988,
+    "purchasedTrainingSteps": 0
+  },
+  "usage": {
+    "percent": 97,
+    "isNegative": false,
+    "timeUntilNextPercent": 7888
+  }
+}
+```
+
+| 字段 | 含义 |
+| :--- | :--- |
+| `trainingStepsLeft.fixedTrainingStepsLeft` | 订阅 Anlas |
+| `trainingStepsLeft.purchasedTrainingSteps` | 购买 Anlas |
+| `usage.percent` | 剩余电量 %（不是已消耗） |
+| `usage.isNegative` | 是否透支 |
+| `usage.timeUntilNextPercent` | 距 % +1 的秒数 |
+| `usage` 整段缺失 | 非 Opus，不要造电量 |
+
+Anlas = 两档之和。电量只对 **Opus + V5 + 普通分辨率 + ≤28 steps** 的免费张生效；更高分辨率/步数仍扣 Anlas。
+
+API **不返回张数**。官网文案校准：`1% ≈ 17.3 张`，满电约 1730 张。
+
+```
+remainingImages    = round(percent * 17.3)
+refillPctPerDay    = 86400 / timeUntilNextPercent
+refillImagesPerDay = round(round(refillPctPerDay) * 17.3)
+```
+
+`timeUntilNextPercent = 7888` 时约 11%/天、约 190 张/天；空到满约一周。
+
+本应用：`services/naiAccount.ts`；Worker `GET /api/nai/subscription`。
