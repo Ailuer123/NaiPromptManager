@@ -3,8 +3,9 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { db } from '../services/dbService';
 import { Inspiration, User, NAIParams } from '../types';
 import { extractMetadata, parseNovelAIMetadata, ParsedNAIData, IMPORT_SESSION_KEY } from '../services/metadataService';
+import { LightboxInfo } from './LightboxInfo';
 import { ParamsViewer } from './ParamsViewer';
-import { Button, Card, Empty, Field, IconButton, IconClose, Input, Portal, Sheet, Tag, Textarea } from './ui';
+import { Button, Card, Empty, Field, IconButton, IconClose, IconInfo, Input, Portal, Sheet, Tag, Textarea } from './ui';
 import { useFeedback } from './ui/Feedback';
 import { cx } from './ui/cx';
 
@@ -63,7 +64,7 @@ const LazyImage: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
     );
 };
 
-const InspirationLightbox: React.FC<InspirationLightboxProps> = ({
+export const InspirationLightbox: React.FC<InspirationLightboxProps> = ({
     lightboxImg,
     setLightboxImg,
     handleSaveEdit,
@@ -73,6 +74,7 @@ const InspirationLightbox: React.FC<InspirationLightboxProps> = ({
     notify,
     onNavigateToPlayground
 }) => {
+    const [infoOpen, setInfoOpen] = useState(false);
     // 尝试解析灵感图的 prompt 字符串，提取结构化参数，使用 useMemo 避免重复重排
     const parsedData: ParsedNAIData | null = useMemo(() => {
         try {
@@ -91,6 +93,12 @@ const InspirationLightbox: React.FC<InspirationLightboxProps> = ({
         return null;
     }, [lightboxImg.item.prompt, lightboxImg.item.params]);
 
+    const hasInfo = !!(parsedData || lightboxImg.item.prompt);
+
+    useEffect(() => {
+        setInfoOpen(false);
+    }, [lightboxImg.item.id, lightboxImg.isEditing]);
+
     return (
       <Portal>
         <div className="lbx" onClick={() => setLightboxImg(null)}>
@@ -103,30 +111,29 @@ const InspirationLightbox: React.FC<InspirationLightboxProps> = ({
                         {lightboxImg.isEditing ? (
                             <Input value={lightboxImg.item.title} onChange={e => setLightboxImg({...lightboxImg, item: {...lightboxImg.item, title: e.target.value}})} />
                         ) : (
-                            <div>
+                            <div style={{ minWidth: 0, flex: 1 }}>
                                 <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>{lightboxImg.item.title}</h2>
                                 <p className="hint">by {lightboxImg.item.username || 'Unknown'}</p>
                             </div>
                         )}
-                        <IconButton label="关闭" onClick={() => setLightboxImg(null)}><IconClose /></IconButton>
+                        <div className="pref-row" style={{ gap: 8, margin: 0 }}>
+                            {!lightboxImg.isEditing && hasInfo && (
+                                <Button variant="ghost" size="sm" onClick={() => setInfoOpen(true)}>
+                                    <IconInfo />
+                                    信息
+                                </Button>
+                            )}
+                            <IconButton label="关闭" onClick={() => setLightboxImg(null)}><IconClose /></IconButton>
+                        </div>
                     </div>
 
-                    <div className="page-scroll" style={{ flex: 1, marginBottom: 12 }}>
-                        {lightboxImg.isEditing ? (
+                    {lightboxImg.isEditing && (
+                        <div className="page-scroll" style={{ flex: 1, marginBottom: 12 }}>
                             <Textarea value={lightboxImg.item.prompt} onChange={e => setLightboxImg({...lightboxImg, item: {...lightboxImg.item, prompt: e.target.value}})} rows={10} />
-                        ) : parsedData ? (
-                            <ParamsViewer
-                                params={parsedData.params}
-                                prompt={parsedData.prompt}
-                                negativePrompt={parsedData.negativePrompt}
-                                notify={notify}
-                            />
-                        ) : (
-                            <div className="compiled">{lightboxImg.item.prompt}</div>
-                        )}
-                    </div>
+                        </div>
+                    )}
 
-                    <div className="create-form">
+                    <div className={cx('create-form', !lightboxImg.isEditing && 'lbx-actions')} style={{ marginTop: lightboxImg.isEditing ? undefined : 'auto' }}>
                         {lightboxImg.isEditing ? (
                             <div className="sheet-foot">
                                 <Button variant="ghost" onClick={() => setLightboxImg({...lightboxImg, isEditing: false})}>取消</Button>
@@ -159,6 +166,19 @@ const InspirationLightbox: React.FC<InspirationLightboxProps> = ({
                     </div>
                 </div>
             </div>
+            <LightboxInfo open={infoOpen} onClose={() => setInfoOpen(false)}>
+                {parsedData ? (
+                    <ParamsViewer
+                        params={parsedData.params}
+                        prompt={parsedData.prompt}
+                        negativePrompt={parsedData.negativePrompt}
+                        notify={notify}
+                        expanded
+                    />
+                ) : (
+                    <div className="compiled">{lightboxImg.item.prompt}</div>
+                )}
+            </LightboxInfo>
         </div>
       </Portal>
     );

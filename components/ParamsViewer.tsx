@@ -50,6 +50,8 @@ interface ParamsViewerProps {
     negativePrompt?: string;
     /** 通知回调（用于复制按钮） */
     notify?: (msg: string) => void;
+    /** 去掉提示词高度上限，给整屏/弹层完整展示 */
+    expanded?: boolean;
 }
 
 export const ParamsViewer: React.FC<ParamsViewerProps> = ({
@@ -57,11 +59,14 @@ export const ParamsViewer: React.FC<ParamsViewerProps> = ({
     prompt,
     negativePrompt,
     notify,
+    expanded,
 }) => {
     const handleCopy = (text: string, label: string) => {
         navigator.clipboard.writeText(text);
         notify?.(`${label} 已复制`);
     };
+
+    const promptBox = 'text-xs text-gray-700 dark:text-gray-300 font-mono break-words bg-gray-50 dark:bg-gray-850 border border-gray-100 dark:border-gray-800 p-3 rounded-lg leading-relaxed select-text';
 
     const copyAll = () => {
         const lines = [
@@ -115,7 +120,7 @@ export const ParamsViewer: React.FC<ParamsViewerProps> = ({
                             复制
                         </button>
                     </div>
-                    <div className="text-xs text-gray-700 dark:text-gray-300 font-mono break-words bg-gray-50 dark:bg-gray-850 border border-gray-100 dark:border-gray-800 p-3 rounded-lg leading-relaxed select-text max-h-32 overflow-y-auto custom-scrollbar">
+                    <div className={expanded ? promptBox : `${promptBox} max-h-32 overflow-y-auto custom-scrollbar`}>
                         {prompt || <span className="text-gray-400 italic">（空）</span>}
                     </div>
                 </div>
@@ -140,7 +145,7 @@ export const ParamsViewer: React.FC<ParamsViewerProps> = ({
                             </button>
                         )}
                     </div>
-                    <div className="text-xs text-gray-700 dark:text-gray-300 font-mono break-words bg-gray-50 dark:bg-gray-850 border border-gray-100 dark:border-gray-800 p-3 rounded-lg leading-relaxed select-text max-h-24 overflow-y-auto custom-scrollbar">
+                    <div className={expanded ? promptBox : `${promptBox} max-h-24 overflow-y-auto custom-scrollbar`}>
                         {negativePrompt || <span className="text-gray-400 italic">（空）</span>}
                     </div>
                 </div>

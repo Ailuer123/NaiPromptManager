@@ -5,12 +5,13 @@ import { db } from '../services/dbService';
 import { LocalGenItem, User } from '../types';
 import { PAGINATION_CONFIG } from '../config/pagination';
 import { IMPORT_SESSION_KEY } from '../services/metadataService';
+import { LightboxInfo } from './LightboxInfo';
 import { ParamsViewer } from './ParamsViewer';
 import {
     compressPngToJpg,
     isJpgDataUri,
 } from '../services/imageCompression';
-import { Button, Card, Empty, Field, IconButton, IconChart, IconClock, IconClose, IconPackage, IconTrash, Input, Portal, Sheet } from './ui';
+import { Button, Card, Empty, Field, IconButton, IconChart, IconClock, IconClose, IconInfo, IconPackage, IconTrash, Input, Portal, Sheet } from './ui';
 import { useFeedback } from './ui/Feedback';
 
 interface GenHistoryProps {
@@ -101,6 +102,7 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
     const { confirm } = useFeedback();
     const [items, setItems] = useState<LocalGenItem[]>([]);
     const [lightbox, setLightbox] = useState<LocalGenItem | null>(null);
+    const [infoOpen, setInfoOpen] = useState(false);
     const [isPublishing, setIsPublishing] = useState(false);
     const [publishTitle, setPublishTitle] = useState('');
     const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -544,6 +546,7 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
         setPreviewJpgDataUri(null);
         setPreviewing(false);
         setLightboxQuality(readQuality());
+        setInfoOpen(false);
     }, [lightbox?.id]);
 
     /** 触发软实时预览（debounce） */
@@ -752,27 +755,27 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
 
                         <div className="lbx-side">
                             <div className="pref-row" style={{ marginBottom: 12 }}>
-                                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>图片详情</h2>
-                                <IconButton label="关闭" onClick={() => setLightbox(null)}><IconClose /></IconButton>
+                                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, minWidth: 0, flex: 1 }}>图片详情</h2>
+                                <div className="pref-row" style={{ gap: 8, margin: 0 }}>
+                                    <Button variant="ghost" size="sm" onClick={() => setInfoOpen(true)}>
+                                        <IconInfo />
+                                        信息
+                                    </Button>
+                                    <IconButton label="关闭" onClick={() => setLightbox(null)}><IconClose /></IconButton>
+                                </div>
                             </div>
 
                             <div className="page-scroll" style={{ flex: 1 }}>
-                                <ParamsViewer
-                                    params={lightbox.params}
-                                    prompt={lightbox.prompt}
-                                    notify={notify}
-                                />
-
                                 {lightboxIsJpg ? (
-                                    <div className="notice ok" style={{ marginTop: 12 }}>
+                                    <div className="notice ok">
                                         <div className="pref-row">
                                             <span className="jpg-mark" style={{ position: 'static' }}>JPG</span>
                                             <strong>此图已压缩</strong>
                                         </div>
-                                        <p className="hint">下载后无法在外部工具中读取生成参数（应用内仍可查看上方的 Prompt / Params）。</p>
+                                        <p className="hint">下载后无法在外部工具中读取生成参数（应用内仍可在「信息」中查看 Prompt / Params）。</p>
                                     </div>
                                 ) : (
-                                    <div className="slot-card surface" style={{ marginTop: 12 }}>
+                                    <div className="slot-card surface">
                                         <div className="pref-row">
                                             <label>压缩为 JPG</label>
                                             <span className="hint" style={{ fontFamily: 'var(--mono)' }}>{lightboxQuality.toFixed(2)}</span>
@@ -792,9 +795,23 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
                                         <p className="hint">原 PNG 将被替换为 JPG；下载后无法在外部工具读取生成参数。</p>
                                     </div>
                                 )}
+
+                                <div className="notice mist" style={{ marginTop: 12 }}>
+                                    <h4>发布到灵感图库</h4>
+                                    <div className="pref-row">
+                                        <Input
+                                            placeholder="为这张图取个标题..."
+                                            value={publishTitle}
+                                            onChange={e => setPublishTitle(e.target.value)}
+                                        />
+                                        <Button size="sm" onClick={handlePublish} disabled={isPublishing}>
+                                            {isPublishing ? '发布中' : '发布'}
+                                        </Button>
+                                    </div>
+                                </div>
                             </div>
 
-                            <div className="create-form" style={{ marginTop: 12 }}>
+                            <div className="create-form lbx-actions" style={{ marginTop: 12 }}>
                                 <Button
                                     block
                                     onClick={() => {
@@ -811,20 +828,6 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
                                 >
                                     导入到编辑器
                                 </Button>
-
-                                <div className="notice mist">
-                                    <h4>发布到灵感图库</h4>
-                                    <div className="pref-row">
-                                        <Input
-                                            placeholder="为这张图取个标题..."
-                                            value={publishTitle}
-                                            onChange={e => setPublishTitle(e.target.value)}
-                                        />
-                                        <Button size="sm" onClick={handlePublish} disabled={isPublishing}>
-                                            {isPublishing ? '发布中' : '发布'}
-                                        </Button>
-                                    </div>
-                                </div>
                                 <a
                                     href={lightbox.imageUrl}
                                     download={getDownloadFilename(lightbox.imageUrl)}
@@ -835,6 +838,14 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
                             </div>
                         </div>
                     </div>
+                    <LightboxInfo open={infoOpen} onClose={() => setInfoOpen(false)}>
+                        <ParamsViewer
+                            params={lightbox.params}
+                            prompt={lightbox.prompt}
+                            notify={notify}
+                            expanded
+                        />
+                    </LightboxInfo>
                 </div>
               </Portal>
             )}

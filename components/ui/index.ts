@@ -34,6 +34,7 @@ export {
   IconWarn,
 } from './glyphs';
 export { Field, Input, Select, Textarea, type FieldProps, type InputProps, type SelectProps, type TextareaProps } from './Field';
+export { HelpTip, type HelpTipProps } from './HelpTip';
 export { IconButton, type IconButtonProps } from './IconButton';
 export { Panel, type PanelProps } from './Panel';
 export { FeedbackProvider, useFeedback, type ConfirmOptions, type ConfirmTone, type ToastTone as FeedbackToastTone } from './Feedback';

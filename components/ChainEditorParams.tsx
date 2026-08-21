@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { NAIParams } from '../types';
 import { isV5Model, NAI_MODEL_OPTIONS } from '../services/naiModels';
-import { Chip, Collapse, Field, Input, Select } from './ui';
+import { Chip, Collapse, Field, HelpTip, Input, Select } from './ui';
 
 interface ChainEditorParamsProps {
     params: NAIParams;
@@ -96,16 +96,13 @@ export const ChainEditorParams: React.FC<ChainEditorParamsProps> = ({
                             </div>
                         </div>
                         <div className="param-group">
-                            <p className="param-group-label">
+                            <div className="param-group-label">
                                 透明背景
-                                <span className="help-tip" tabIndex={0}>
-                                    <span className="help-tip-mark" aria-label="透明模式说明">?</span>
-                                    <span className="help-tip-card" role="tooltip">
-                                        <p><strong>Straight（直通）</strong>：颜色和透明分开存。半透明的头发还是头发本身的颜色，叠在任何底上都正常。网页、Photoshop、本站预览用这个。</p>
-                                        <p><strong>Premultiplied（预乘）</strong>：颜色已经按透明度压暗过。半透明处会发暗。游戏引擎、视频合成常用。用错会出现黑边或亮边。</p>
-                                    </span>
-                                </span>
-                            </p>
+                                <HelpTip label="透明模式说明">
+                                    <span><strong>Straight（直通）</strong>：颜色和透明分开存。半透明的头发还是头发本身的颜色，叠在任何底上都正常。网页、Photoshop、本站预览用这个。</span>
+                                    <span><strong>Premultiplied（预乘）</strong>：颜色已经按透明度压暗过。半透明处会发暗。游戏引擎、视频合成常用。用错会出现黑边或亮边。</span>
+                                </HelpTip>
+                            </div>
                             <div className="chips">
                                 <Chip
                                     active={!!params.transparent && isV5Model(params)}

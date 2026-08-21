@@ -1521,8 +1521,12 @@ html[data-theme-mode="dark"] .role-select {
 .help-tip-mark {
   width: 14px;
   height: 14px;
+  padding: 0;
+  margin: 0;
   border-radius: 50%;
   border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1530,15 +1534,15 @@ html[data-theme-mode="dark"] .role-select {
   font-weight: 700;
   line-height: 1;
   cursor: help;
+  box-sizing: border-box;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .help-tip-card {
-  display: none;
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
-  z-index: 30;
-  width: min(280px, 70vw);
+  position: fixed;
+  z-index: 500;
+  width: min(280px, calc(100vw - 32px));
   padding: 10px 12px;
   border-radius: var(--r-sm);
   background: var(--cream);
@@ -1550,13 +1554,8 @@ html[data-theme-mode="dark"] .role-select {
   line-height: 1.5;
 }
 
-.help-tip:hover .help-tip-card,
-.help-tip:focus-within .help-tip-card {
-  display: block;
-}
-
-.help-tip-card p { margin: 0 0 8px; }
-.help-tip-card p:last-child { margin: 0; }
+.help-tip-card > * { display: block; margin: 0 0 8px; }
+.help-tip-card > *:last-child { margin: 0; }
 .help-tip-card strong { font-weight: 600; }
 
 .param-grid {
@@ -5026,6 +5025,41 @@ svg.w-8 {
   right: 12px;
   z-index: 5;
   color: var(--cream);
+}
+
+.create-form.lbx-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.lbx-info {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  background: var(--glass-dark);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.lbx-info-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  border-radius: var(--r-xl);
+  overflow: hidden;
+}
+
+.lbx-info-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .compare-wrap {

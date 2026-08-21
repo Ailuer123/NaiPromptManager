@@ -3,6 +3,7 @@
 import '@testing-library/jest-dom/vitest';
 import React from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NAIParams } from '../types';
 import { ChainEditorParams } from './ChainEditorParams';
@@ -54,7 +55,27 @@ describe('ChainEditorParams', () => {
     expect(screen.getByRole('button', { name: 'V5' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '透明' })).toBeEnabled();
     expect(screen.getByText('透明背景')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '透明模式说明' })).toBeInTheDocument();
+    expect(screen.queryByRole('tooltip')).toBeNull();
     expect(screen.queryByRole('button', { name: '流式预览' })).toBeNull();
+  });
+
+  it('点击透明模式问号显示说明', async () => {
+    const user = userEvent.setup();
+    render(
+      <ChainEditorParams
+        params={{ ...params, model: 'nai-diffusion-5-full', transparent: true }}
+        setParams={vi.fn()}
+        canEdit
+        markChange={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '透明模式说明' }));
+    const tip = screen.getByRole('tooltip');
+    expect(tip).toHaveClass('help-tip-card');
+    expect(tip).toHaveTextContent('Straight（直通）');
+    expect(tip).toHaveTextContent('Premultiplied（预乘）');
   });
 
   it('V5 才允许透明背景，切回 V4.5 会关掉透明；V4.5 点击透明会提示', async () => {
