@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { PromptChain, ChainType } from '../types';
 import { compilePrompt } from '../services/promptUtils';
+import { isV5Model } from '../services/naiModels';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 import { Chip, Seg } from './ui/Chip';
@@ -447,6 +448,13 @@ export const ChainList: React.FC<ChainListProps> = ({ chains, type, onTypeChange
                         )}
                       </div>
                     )}
+                    <span
+                      className={cx('board-model-badge', isV5Model(chain.params) ? 'is-v5' : 'is-v45')}
+                      aria-label={`模型版本：${isV5Model(chain.params) ? 'V5' : 'V4.5'}`}
+                      title={`模型版本：${isV5Model(chain.params) ? 'V5' : 'V4.5'}`}
+                    >
+                      {isV5Model(chain.params) ? 'V5' : 'V4.5'}
+                    </span>
                     <IconButton
                       size="sm"
                       className="board-copy"
