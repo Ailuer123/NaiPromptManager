@@ -11,6 +11,8 @@ export interface User {
   lastLogin?: number; // 最后登录时间
   storageUsage?: number; // Bytes used
   maxStorage?: number; // 最大存储配额（字节）
+  discordId?: string | null;
+  discordUsername?: string | null;
 }
 
 export interface PromptModule {
@@ -30,6 +32,69 @@ export interface CharacterParams {
   y: number; // 0.0 to 1.0
 }
 
+export interface VibeEncoding {
+  /** NovelAI 文件中的编码模型分组，例如 v4full。 */
+  model: string;
+  informationExtracted: number;
+  encoding: string;
+}
+
+export interface VibeMember {
+  id: string;
+  name: string;
+  thumbnailUrl?: string;
+  encodings: VibeEncoding[];
+  defaultStrength: number;
+  defaultInformationExtracted: number;
+}
+
+export interface VibePreset {
+  id: string;
+  name: string;
+  thumbnailUrl?: string;
+  encodings: VibeEncoding[];
+  /** 来自 vibebundle / vibes[] 的组。挂载占 1 槽，生成时整组展开。 */
+  members?: VibeMember[];
+  defaultStrength: number;
+  defaultInformationExtracted: number;
+  sourceFilename?: string;
+  /** 是否已上传到服务器供其他用户使用。默认 false。 */
+  shared?: boolean;
+  /** 云端共享记录 id，取消共享时用来删除。 */
+  sharedId?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** 随 Chain 保存的轻量挂载，不包含体积较大的预编码数据。 */
+export interface VibeMount {
+  vibeId: string;
+  name: string;
+  strength: number;
+  informationExtracted: number;
+}
+
+export interface SharedVibeListItem {
+  id: string;
+  name: string;
+  username?: string;
+  thumbnailUrl?: string;
+  ownerId: string;
+  updatedAt: number;
+}
+
+/** 仅在生成前由本地库解析出的运行时数据。 */
+export interface ResolvedVibe {
+  vibeId: string;
+  name: string;
+  strength: number;
+  informationExtracted: number;
+  encoding: string;
+}
+
+export type NAIModelId = 'nai-diffusion-4-5-full' | 'nai-diffusion-5-full';
+export type NAIAlphaMode = 'straight' | 'premultiplied';
+
 export interface NAIParams {
   width: number;
   height: number;
@@ -46,6 +111,15 @@ export interface NAIParams {
   useCoords?: boolean; // true = Manual Coords, false = AI's Choice
   variety?: boolean; // Variety+ (controlled via skip_cfg_above_sigma)
   cfgRescale?: number; // Prompt Guidance Rescale (0.0 - 1.0)
+  vibes?: VibeMount[];
+  /** 缺省按 V4.5 Full，兼容旧 Chain。 */
+  model?: NAIModelId;
+  /** 走 /ai/generate-image-stream，中间帧预览。 */
+  stream?: boolean;
+  /** 仅 V5：透明背景。 */
+  transparent?: boolean;
+  /** 仅透明开启时有效。默认 straight。 */
+  alphaMode?: NAIAlphaMode;
 }
 
 export type ChainType = 'style' | 'character';
@@ -70,6 +144,9 @@ export interface PromptChain {
   // New: Persist variable inputs (Now used for the single Subject/Variable prompt)
   variableValues?: Record<string, string>;
 
+  guestHidden?: boolean; // 游客不可见标记，默认 false
+  isPrivate?: boolean; // 私人串：仅 VIP（仅本人）和 admin 可见，默认 false
+
   createdAt: number;
   updatedAt: number;
 }
@@ -91,6 +168,7 @@ export interface Inspiration {
   title: string;
   imageUrl: string; // Base64 Data URI
   prompt: string;
+  params?: NAIParams; // 完整生成参数（含 characters），可选字段兼容旧数据
   createdAt: number;
 }
 

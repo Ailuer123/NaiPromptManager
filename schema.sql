@@ -37,6 +37,8 @@ CREATE TABLE chains (
   modules TEXT DEFAULT '[]',
   params TEXT DEFAULT '{}',
   variable_values TEXT DEFAULT '{}', -- 新增字段
+  guest_hidden INTEGER NOT NULL DEFAULT 0, -- 游客不可见标记
+  is_private INTEGER NOT NULL DEFAULT 0, -- 私人串：VIP仅本人可见，admin可见全部
   created_at INTEGER,
   updated_at INTEGER
 );
@@ -49,6 +51,19 @@ CREATE TABLE artists (
   benchmarks TEXT
 );
 
+CREATE TABLE shared_vibes (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  username TEXT,
+  local_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  thumbnail_url TEXT,
+  payload_url TEXT NOT NULL,
+  size INTEGER DEFAULT 0,
+  created_at INTEGER,
+  updated_at INTEGER
+);
+
 CREATE TABLE inspirations (
   id TEXT PRIMARY KEY,
   user_id TEXT,
@@ -56,6 +71,7 @@ CREATE TABLE inspirations (
   title TEXT NOT NULL,
   image_url TEXT,
   prompt TEXT,
+  params TEXT,
   created_at INTEGER
 );
 

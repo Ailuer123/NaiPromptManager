@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "aegis.schema.v0",
+  "taskId": "2026-07-17-vibe-feature",
+  "lastCheckpointRef": "docs/aegis/work/2026-07-17-vibe-feature/todo-checkpoint-draft.json",
+  "resumeInstruction": "功能已完成；后续仅按新需求继续迭代",
+  "knownPartialWork": [
+    "Vibe 文件解析与真实格式边界",
+    "IndexedDB 本地库与挂载规则",
+    "NovelAI payload contract",
+    "编辑器面板、生成接线与垃圾桶图标",
+    "24 项自动化、完整构建、官方 schema 与用户全量手动验收"
+  ],
+  "mustReadBeforeContinuing": [
+    "docs/aegis/work/2026-07-17-vibe-feature/10-intent.md",
+    "docs/aegis/work/2026-07-17-vibe-feature/20-checkpoint.md",
+    "docs/aegis/work/2026-07-17-vibe-feature/todo-checkpoint-draft.json"
+  ],
+  "unsafeToAssume": [
+    "无"
+  ]
+}

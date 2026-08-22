@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "aegis.schema.v0",
+  "taskId": "2026-07-17-vibe-feature",
+  "taskIntentRef": "docs/aegis/work/2026-07-17-vibe-feature/task-intent-draft.json",
+  "baselineRefs": [
+    "docs/aegis/baseline/2026-06-22-initial-baseline.md"
+  ],
+  "scopeStatus": "一期功能与全部验收项已完成",
+  "compatStatus": "旧 Chain 兼容；Worker、D1、R2 未改；encoded 不入云",
+  "retirementStatus": "无 inline encoded、runtime nearest fallback 或旧 owner",
+  "newRiskSignals": [],
+  "decision": "continue"
+}

@@ -19,3 +19,8 @@ bucket_name = "nai-assets" # 请替换为你真实创建的 Bucket 名称
 
 [vars]
 GUEST_PASSCODE = "kklovenai123" # 默认游客口令，部署后请在后台修改或修改此处
+DISCORD_CLIENT_ID = "1539667441397801071"
+DISCORD_GUILD_ID = "1134557553011998840"
+# Client Secret 不要写进本文件。
+# 本地：.dev.vars（已 gitignore）
+# 线上：wrangler pages secret put DISCORD_CLIENT_SECRET --project-name=nai-prompt-manager

@@ -1,6 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
+import { RouterProvider } from 'react-router-dom';
+import { router } from './app/router';
+import { lockMobileViewport } from './app/viewportLock';
+import { FeedbackProvider } from './components/ui/Feedback';
+import { ThemeProvider } from './theme';
+
+lockMobileViewport();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -10,6 +16,10 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <App />
+    <ThemeProvider>
+      <FeedbackProvider>
+        <RouterProvider router={router} />
+      </FeedbackProvider>
+    </ThemeProvider>
   </React.StrictMode>
 );

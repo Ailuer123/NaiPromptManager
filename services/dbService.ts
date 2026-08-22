@@ -1,15 +1,11 @@
 
-import { PromptChain, Artist, Inspiration, User, ChainType, UsageStats } from '../types';
+import { PromptChain, Artist, Inspiration, User, ChainType, UsageStats, VibePreset, SharedVibeListItem } from '../types';
 import { api } from './api';
 
 class DBService {
   // --- Auth ---
   async login(username: string, password: string): Promise<{ success: boolean, user: User }> {
     return await api.post('/auth/login', { username, password });
-  }
-
-  async guestLogin(passcode: string): Promise<{ success: boolean, user: User }> {
-    return await api.post('/auth/guest-login', { passcode });
   }
 
   async logout(): Promise<void> {
@@ -57,16 +53,11 @@ class DBService {
     return await api.put(`/users/${userId}/role`, { role, resetQuota });
   }
 
-  // --- Admin: Guest Settings & Import ---
-  async getGuestCode(): Promise<string> {
-    const res = await api.get('/admin/guest-setting');
-    return res.passcode;
+  async demoteStaleUsers(): Promise<{ success: boolean; count: number }> {
+    return await api.post('/users/demote-stale', {});
   }
 
-  async updateGuestCode(passcode: string): Promise<void> {
-    await api.put('/admin/guest-setting', { passcode });
-  }
-
+  // --- Admin: Import ---
   async importArtistFromGithub(name: string, url: string): Promise<void> {
     await api.post('/admin/import-github', { name, url });
   }
@@ -77,7 +68,7 @@ class DBService {
   }
 
   async createChain(name: string, description: string, copyFrom?: PromptChain, type: ChainType = 'style'): Promise<string> {
-    const payload: any = { name, description, type };
+    const payload: any = { name, description, type, isPrivate: false };
     if (copyFrom) {
       payload.basePrompt = copyFrom.basePrompt;
       payload.negativePrompt = copyFrom.negativePrompt;
@@ -91,6 +82,7 @@ class DBService {
       payload.variableValues = copyFrom.variableValues;
       // Copy tags from the source chain
       payload.tags = copyFrom.tags || [];
+      // Fork 默认创建为公开串，避免把私人状态意外扩散到新串
     } else {
       // Create Default Modules for new chain
       payload.modules = [];
@@ -154,6 +146,23 @@ class DBService {
 
   async clearOldLogs(): Promise<void> {
     await api.post('/admin/clear-logs', {});
+  }
+
+  async listSharedVibes(): Promise<SharedVibeListItem[]> {
+    const res = await api.get('/vibes');
+    return Array.isArray(res) ? res : (res.data || []);
+  }
+
+  async getSharedVibe(id: string): Promise<VibePreset> {
+    return await api.get(`/vibes/${encodeURIComponent(id)}`);
+  }
+
+  async shareVibe(localId: string, preset: VibePreset): Promise<{ id: string }> {
+    return await api.post('/vibes', { localId, sharedId: preset.sharedId, preset });
+  }
+
+  async unshareVibe(id: string): Promise<void> {
+    await api.delete(`/vibes/${encodeURIComponent(id)}`);
   }
 }
 

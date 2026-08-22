@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "aegis.schema.v0",
+  "affectedLayers": [
+    "React UI、前端服务、生成 API contract、本地持久化"
+  ],
+  "owners": [
+    "services/vibeFile.ts、services/vibeLibrary.ts、services/naiPayload.ts、components/ChainEditorVibePanel.tsx"
+  ],
+  "invariants": [
+    "encoded 仅保存在 IndexedDB，不写入 Chain 或 D1；生成前必须解析到准确的编码档位"
+  ],
+  "compatBoundary": "旧 Chain 无 vibes 时行为不变；不改变 Worker、D1、R2；现有登录与历史功能不受影响",
+  "nonGoals": [
+    "不上传原图编码、不做云端同步、不支持 Precise Reference、不新增独立导航页"
+  ]
+}

@@ -1,0 +1,11 @@
+#!/bin/sh
+# 根据约定式提交标题升级 package.json 与 app/version.ts。
+# $1 = COMMIT_EDITMSG；$2 = message|template|merge|squash|commit
+if [ "$2" = "merge" ] || [ "$2" = "squash" ]; then
+  exit 0
+fi
+if [ -n "$SKIP_VERSION_BUMP" ]; then
+  exit 0
+fi
+ROOT="$(git rev-parse --show-toplevel)"
+exec node "$ROOT/scripts/bump-version.mjs" --from-msg "$1" --git-add

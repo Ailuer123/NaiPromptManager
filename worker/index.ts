@@ -1,5 +1,16 @@
 
 import bcrypt from 'bcryptjs';
+import { APP_REPO_URL, APP_VERSION } from '../app/version';
+import { STALE_GUEST_IDLE_MS } from '../config/staleUsers';
+import {
+  discordAuthorizeUrl,
+  exchangeDiscordCode,
+  fetchDiscordIdentity,
+  isDiscordConfigured,
+  pickDiscordUsername,
+  verifyDiscordGuildMembership,
+  type DiscordEnv,
+} from './discordOAuth';
 
 // Add missing D1 type definitions locally
 interface D1Result<T = unknown> {
@@ -32,7 +43,7 @@ interface R2ObjectBody {
 }
 
 interface R2Bucket {
-    put(key: string, body: ReadableStream | ArrayBuffer | string, options?: any): Promise<any>;
+    put(key: string, body: ReadableStream | ArrayBuffer | Uint8Array | string, options?: any): Promise<any>;
     get(key: string): Promise<R2ObjectBody | null>;
     delete(key: string): Promise<void>;
 }
@@ -43,7 +54,9 @@ interface Env {
   BUCKET?: R2Bucket; // R2 Binding
   MASTER_KEY: string; 
   R2_PUBLIC_URL?: string; // Kept for legacy compatibility if needed
-  // GUEST_PASSCODE removed, now stored in DB
+  DISCORD_CLIENT_ID?: string;
+  DISCORD_CLIENT_SECRET?: string;
+  DISCORD_GUILD_ID?: string;
 }
 
 // ==================== 角色策略配置 ====================
@@ -124,6 +137,8 @@ const INIT_SQL = `
     modules TEXT DEFAULT '[]',
     params TEXT DEFAULT '{}',
     variable_values TEXT DEFAULT '{}',
+    guest_hidden INTEGER NOT NULL DEFAULT 0,
+    is_private INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER,
     updated_at INTEGER
   );
@@ -141,6 +156,7 @@ const INIT_SQL = `
     title TEXT NOT NULL,
     image_url TEXT,
     prompt TEXT,
+    params TEXT,
     created_at INTEGER
   );
   CREATE TABLE IF NOT EXISTS settings (
@@ -163,6 +179,14 @@ function parseCookies(request: Request) {
     });
   }
   return cookies;
+}
+
+// Helper: 判断是否为缺失列错误（SQLite/D1 不同版本的报错格式）
+function isMissingColumnError(e: any): boolean {
+  if (!e || !e.message) return false;
+  const msg = e.message;
+  // SQLite 可能报 'no column named xxx' 或 'no such column: xxx'
+  return msg.includes('no column named') || msg.includes('no such column');
 }
 
 // Helper: 记录登录日志
@@ -196,6 +220,25 @@ async function incrementDailyStat(db: D1Database, field: string) {
   } catch (e) {
     console.error('Failed to update daily stat:', e);
   }
+}
+
+async function adjustStorageUsage(db: D1Database, userId: string, delta: number) {
+  if (!delta) return;
+  if (delta > 0) {
+    await db.prepare('UPDATE users SET storage_usage = COALESCE(storage_usage, 0) + ? WHERE id = ?').bind(delta, userId).run();
+    return;
+  }
+  const drop = -delta;
+  await db.prepare(
+    'UPDATE users SET storage_usage = CASE WHEN COALESCE(storage_usage, 0) > ? THEN COALESCE(storage_usage, 0) - ? ELSE 0 END WHERE id = ?'
+  ).bind(drop, drop, userId).run();
+}
+
+async function deleteSharedVibeRow(env: Env, db: D1Database, row: { id: string; user_id: string; thumbnail_url?: string; payload_url?: string; size?: number }) {
+  if (row.payload_url) await deleteR2File(env, row.payload_url);
+  if (row.thumbnail_url) await deleteR2File(env, row.thumbnail_url);
+  if (row.size && row.user_id) await adjustStorageUsage(db, row.user_id, -row.size);
+  await db.prepare('DELETE FROM shared_vibes WHERE id = ?').bind(row.id).run();
 }
 
 // Helper: Delete File from R2
@@ -362,14 +405,48 @@ export default {
           try { await db.prepare(sql).run(); } catch(e) {}
       }
       try { await db.prepare("ALTER TABLE users ADD COLUMN storage_usage INTEGER DEFAULT 0").run(); } catch (e) {}
+      try { await db.prepare("ALTER TABLE users ADD COLUMN last_login INTEGER").run(); } catch (e) {}
+      try { await db.prepare("ALTER TABLE users ADD COLUMN max_storage INTEGER DEFAULT 314572800").run(); } catch (e) {}
       try { await db.prepare("ALTER TABLE chains ADD COLUMN user_id TEXT").run(); } catch (e) {}
       try { await db.prepare("ALTER TABLE chains ADD COLUMN username TEXT").run(); } catch (e) {}
       try { await db.prepare("ALTER TABLE inspirations ADD COLUMN user_id TEXT").run(); } catch (e) {}
       try { await db.prepare("ALTER TABLE inspirations ADD COLUMN username TEXT").run(); } catch (e) {}
+      try { await db.prepare("ALTER TABLE inspirations ADD COLUMN params TEXT").run(); } catch (e) {}
       try { await db.prepare("ALTER TABLE chains ADD COLUMN variable_values TEXT DEFAULT '{}'").run(); } catch (e) {}
       try { await db.prepare("ALTER TABLE artists ADD COLUMN preview_url TEXT").run(); } catch (e) {}
       try { await db.prepare("ALTER TABLE artists ADD COLUMN benchmarks TEXT DEFAULT '[]'").run(); } catch (e) {}
       try { await db.prepare("ALTER TABLE chains ADD COLUMN type TEXT DEFAULT 'style'").run(); } catch (e) {}
+      try { await db.prepare("ALTER TABLE chains ADD COLUMN guest_hidden INTEGER NOT NULL DEFAULT 0").run(); } catch (e) {}
+      try { await db.prepare("ALTER TABLE chains ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0").run(); } catch (e) {}
+      try { await db.prepare("ALTER TABLE users ADD COLUMN discord_id TEXT").run(); } catch (e) {}
+      try { await db.prepare("ALTER TABLE users ADD COLUMN discord_username TEXT").run(); } catch (e) {}
+      try {
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS shared_vibes (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            username TEXT,
+            local_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            thumbnail_url TEXT,
+            payload_url TEXT NOT NULL,
+            size INTEGER DEFAULT 0,
+            created_at INTEGER,
+            updated_at INTEGER
+          )
+        `).run();
+        await db.prepare('CREATE INDEX IF NOT EXISTS idx_shared_vibes_user ON shared_vibes(user_id)').run();
+      } catch (e) {}
+      try {
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS oauth_states (
+            state TEXT PRIMARY KEY,
+            user_id TEXT,
+            expires_at INTEGER NOT NULL
+          )
+        `).run();
+      } catch (e) {}
+      
 
       // 创建访问日志表
       try {
@@ -413,16 +490,12 @@ export default {
         }
       } catch (e) { console.error('Admin init failed', e) }
 
-      // Default Guest
+      // 共享 guest 账号已退役：游客走 Discord OAuth。只清种子账号，不动 Discord 游客。
       try {
-        const guestName = 'guest';
-        const existing = await db.prepare('SELECT * FROM users WHERE username = ?').bind(guestName).first<{id: string, role: string}>();
-        if (!existing) {
-             const guestId = 'guest-0000-0000-0000-000000000000';
-             await db.prepare("INSERT INTO users (id, username, password, role, created_at, storage_usage) VALUES (?, ?, 'nai_guest_123', 'guest', ?, 0)")
-               .bind(guestId, guestName, Date.now()).run();
-        }
-      } catch (e) { console.error('Guest init failed', e) }
+        const legacyGuestId = 'guest-0000-0000-0000-000000000000';
+        await db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(legacyGuestId).run();
+        await db.prepare('DELETE FROM users WHERE id = ?').bind(legacyGuestId).run();
+      } catch (e) { console.error('Legacy guest user cleanup failed', e) }
     };
 
     // --- Authentication Middleware ---
@@ -434,13 +507,13 @@ export default {
             .bind(sessionId, Date.now()).first<{user_id: string}>();
         if (!session) return null;
         try {
-            return await db.prepare('SELECT id, username, role, storage_usage, max_storage FROM users WHERE id = ?')
-                .bind(session.user_id).first<{id: string, username: string, role: string, storage_usage: number, max_storage: number}>();
+            return await db.prepare('SELECT id, username, role, storage_usage, max_storage, discord_id, discord_username FROM users WHERE id = ?')
+                .bind(session.user_id).first<{id: string, username: string, role: string, storage_usage: number, max_storage: number, discord_id?: string, discord_username?: string}>();
         } catch (e: any) {
              if (e.message && e.message.includes('no such column')) {
                  await initDB();
-                 return await db.prepare('SELECT id, username, role, storage_usage, max_storage FROM users WHERE id = ?')
-                    .bind(session.user_id).first<{id: string, username: string, role: string, storage_usage: number, max_storage: number}>();
+                 return await db.prepare('SELECT id, username, role, storage_usage, max_storage, discord_id, discord_username FROM users WHERE id = ?')
+                    .bind(session.user_id).first<{id: string, username: string, role: string, storage_usage: number, max_storage: number, discord_id?: string, discord_username?: string}>();
              }
              throw e;
         }
@@ -455,21 +528,112 @@ export default {
           return json({ config: res ? JSON.parse(res.value) : null });
       }
 
-      // Guest Login & Normal Login Logic
-      if (path === '/api/auth/guest-login' && method === 'POST') {
-          const { passcode } = await request.json() as any;
-          if (!passcode) return error('请输入访问口令', 400);
-          let guestUser = await db.prepare('SELECT * FROM users WHERE role = ?').bind('guest').first<{id: string, username: string, role: string, password: string}>();
-          if (!guestUser) { await initDB(); guestUser = await db.prepare('SELECT * FROM users WHERE role = ?').bind('guest').first<{id: string, username: string, role: string, password: string}>(); }
-          if (!guestUser) return error('System Error', 500);
-          if (passcode !== guestUser.password) return error('访问口令错误', 401);
-          const sessionId = crypto.randomUUID();
-          const expiresAt = Date.now() + 86400000;
-          await db.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)').bind(sessionId, guestUser.id, expiresAt).run();
-          // 记录登录日志和每日统计
-          await logAccess(db, { id: guestUser.id, username: guestUser.username, role: 'guest' }, request, 'guest_login');
-          await incrementDailyStat(db, 'guest_logins');
-          return json({ success: true, user: { id: guestUser.id, username: guestUser.username, role: 'guest', storageUsage: 0 } }, 200, { 'Set-Cookie': `session_id=${sessionId}; Expires=${new Date(expiresAt).toUTCString()}; Path=/; SameSite=Lax; HttpOnly` });
+      if (path === '/api/meta' && method === 'GET') {
+          return json({
+            version: APP_VERSION,
+            repo: APP_REPO_URL,
+            discordEnabled: isDiscordConfigured(env as DiscordEnv),
+            discord: {
+              clientId: Boolean(env.DISCORD_CLIENT_ID),
+              clientSecret: Boolean(env.DISCORD_CLIENT_SECRET),
+              guildId: Boolean(env.DISCORD_GUILD_ID),
+            },
+          });
+      }
+
+      if (path === '/api/auth/discord' && method === 'GET') {
+          if (!isDiscordConfigured(env as DiscordEnv)) {
+            return error('Discord 登录尚未配置', 503);
+          }
+          await initDB();
+          const link = url.searchParams.get('link') === '1';
+          const sessionUser = link ? await getSessionUser() : null;
+          if (link && !sessionUser) return error('请先登录再关联 Discord', 401);
+          const state = crypto.randomUUID();
+          await db.prepare('DELETE FROM oauth_states WHERE expires_at < ?').bind(Date.now()).run();
+          await db.prepare('INSERT INTO oauth_states (state, user_id, expires_at) VALUES (?, ?, ?)')
+            .bind(state, sessionUser?.id ?? null, Date.now() + 10 * 60 * 1000).run();
+          const redirectUri = `${url.origin}/api/auth/discord/callback`;
+          return Response.redirect(discordAuthorizeUrl(env as DiscordEnv, redirectUri, state), 302);
+      }
+
+      if (path === '/api/auth/discord/callback' && method === 'GET') {
+          const fail = (message: string, dest = '/') => {
+            const next = new URL(dest, url.origin);
+            next.searchParams.set('discord_error', message);
+            return Response.redirect(next.toString(), 302);
+          };
+          if (!isDiscordConfigured(env as DiscordEnv)) return fail('Discord 登录尚未配置');
+          const code = url.searchParams.get('code');
+          const state = url.searchParams.get('state');
+          if (!code || !state) return fail('缺少 Discord 授权参数');
+          await initDB();
+          const record = await db.prepare('SELECT user_id, expires_at FROM oauth_states WHERE state = ?')
+            .bind(state).first<{ user_id?: string; expires_at: number }>();
+          await db.prepare('DELETE FROM oauth_states WHERE state = ?').bind(state).run();
+          if (!record || record.expires_at < Date.now()) return fail('登录状态已过期，请重试');
+
+          try {
+            const redirectUri = `${url.origin}/api/auth/discord/callback`;
+            const accessToken = await exchangeDiscordCode(env as DiscordEnv, code, redirectUri);
+            const identity = await fetchDiscordIdentity(accessToken);
+            const allowed = await verifyDiscordGuildMembership(env as DiscordEnv, accessToken);
+            if (!allowed) return fail('未加入指定 Discord 服务器，无法登录');
+
+            const existing = await db.prepare('SELECT id, username, role, storage_usage, max_storage FROM users WHERE discord_id = ?')
+              .bind(identity.id).first<{ id: string; username: string; role: string; storage_usage: number; max_storage: number }>();
+
+            let userId = existing?.id;
+            let username = existing?.username;
+            let role = existing?.role || 'guest';
+            let storageUsage = existing?.storage_usage || 0;
+            let maxStorage = existing?.max_storage ?? ROLE_POLICY.getDefaultQuota('guest');
+
+            if (record.user_id) {
+              if (existing && existing.id !== record.user_id) return fail('该 Discord 已绑定其他账号', '/settings');
+              await db.prepare('UPDATE users SET discord_id = ?, discord_username = ? WHERE id = ?')
+                .bind(identity.id, identity.username, record.user_id).run();
+              const linked = await db.prepare('SELECT id, username, role, storage_usage, max_storage FROM users WHERE id = ?')
+                .bind(record.user_id).first<{ id: string; username: string; role: string; storage_usage: number; max_storage: number }>();
+              if (!linked) return fail('关联账号不存在', '/settings');
+              userId = linked.id;
+              username = linked.username;
+              role = linked.role;
+              storageUsage = linked.storage_usage;
+              maxStorage = linked.max_storage;
+            } else if (!existing) {
+              const taken = async (name: string) => Boolean(
+                await db.prepare('SELECT id FROM users WHERE username = ?').bind(name).first()
+              );
+              username = await pickDiscordUsername(identity, taken);
+              userId = crypto.randomUUID();
+              role = 'guest';
+              maxStorage = ROLE_POLICY.getDefaultQuota('guest');
+              const hashed = await bcrypt.hash(crypto.randomUUID(), 8);
+              await db.prepare('INSERT INTO users (id, username, password, role, created_at, last_login, storage_usage, max_storage, discord_id, discord_username) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)')
+                .bind(userId, username, hashed, role, Date.now(), Date.now(), maxStorage, identity.id, identity.username).run();
+            } else {
+              await db.prepare('UPDATE users SET last_login = ?, discord_username = ? WHERE id = ?')
+                .bind(Date.now(), identity.username, existing.id).run();
+            }
+
+            const sessionId = crypto.randomUUID();
+            const expiresAt = Date.now() + 604800000;
+            await db.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)').bind(sessionId, userId, expiresAt).run();
+            const action = record.user_id ? 'discord_link' : (existing ? 'discord_login' : 'discord_register');
+            await logAccess(db, { id: userId!, username: username!, role }, request, action);
+            await incrementDailyStat(db, role === 'guest' ? 'guest_logins' : 'user_logins');
+            const dest = record.user_id ? '/settings' : '/';
+            return new Response(null, {
+              status: 302,
+              headers: {
+                Location: dest,
+                'Set-Cookie': `session_id=${sessionId}; Expires=${new Date(expiresAt).toUTCString()}; Path=/; SameSite=Lax; HttpOnly`,
+              },
+            });
+          } catch (e: any) {
+            return fail(e?.message || 'Discord 登录失败');
+          }
       }
 
       if (path === '/api/auth/login' && method === 'POST') {
@@ -501,7 +665,15 @@ export default {
       if (path === '/api/auth/me' && method === 'GET') {
           const user = await getSessionUser();
           if (!user) return error('Unauthorized', 401);
-          return json({ id: user.id, username: user.username, role: user.role, storageUsage: user.storage_usage || 0, maxStorage: user.max_storage || 314572800 });
+          return json({
+            id: user.id,
+            username: user.username,
+            role: user.role,
+            storageUsage: user.storage_usage || 0,
+            maxStorage: user.max_storage || 314572800,
+            discordId: (user as any).discord_id || null,
+            discordUsername: (user as any).discord_username || null,
+          });
       }
 
       // --- Authenticated Logic ---
@@ -546,20 +718,6 @@ export default {
           }
 
           return json({ success: true, id: existing?.id || id, imageUrl: r2Url });
-      }
-
-      // --- Admin Guest Setting ---
-      if (path === '/api/admin/guest-setting' && method === 'GET') {
-          if (currentUser.role !== 'admin') return error('Forbidden', 403);
-          let guest = await db.prepare('SELECT password FROM users WHERE role = ?').bind('guest').first<{password: string}>();
-          if (!guest) { await initDB(); guest = await db.prepare('SELECT password FROM users WHERE role = ?').bind('guest').first<{password: string}>(); }
-          return json({ passcode: guest?.password });
-      }
-      if (path === '/api/admin/guest-setting' && method === 'PUT') {
-          if (currentUser.role !== 'admin') return error('Forbidden', 403);
-          const { passcode } = await request.json() as any;
-          await db.prepare('UPDATE users SET password = ? WHERE role = ?').bind(passcode, 'guest').run();
-          return json({ success: true });
       }
 
       // --- ADMIN: Usage Statistics ---
@@ -638,6 +796,31 @@ export default {
         return new Response(blob, { headers: { ...corsHeaders, 'Content-Type': 'application/zip' } });
       }
 
+      if (path === '/api/generate-stream' && method === 'POST') {
+        const body = await request.json();
+        const clientAuth = request.headers.get('Authorization');
+        if (!clientAuth) return error('Missing API Key', 401);
+        const naiRes = await fetch("https://image.novelai.net/ai/generate-image-stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": clientAuth, "Accept": "text/event-stream" },
+          body: JSON.stringify(body),
+        });
+        if (!naiRes.ok) return error(await naiRes.text(), naiRes.status);
+        return new Response(naiRes.body, {
+          headers: { ...corsHeaders, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+        });
+      }
+
+      if (path === '/api/nai/subscription' && method === 'GET') {
+        const clientAuth = request.headers.get('Authorization');
+        if (!clientAuth) return error('Missing API Key', 401);
+        const naiRes = await fetch("https://image.novelai.net/user/subscription", {
+          headers: { "Authorization": clientAuth, "Accept": "application/json" },
+        });
+        if (!naiRes.ok) return error(await naiRes.text(), naiRes.status);
+        return json(await naiRes.json());
+      }
+
       // --- File Upload ---
       if (path === '/api/upload' && method === 'POST') {
           if (!env.BUCKET) return error('R2 Bucket not configured', 503);
@@ -683,6 +866,8 @@ export default {
           }
       }
       if (path === '/api/users/password' && method === 'PUT') {
+          // Guest cannot change password (guest uses shared passcode, not personal password)
+          if (currentUser.role === 'guest') return error('Forbidden: Guest cannot change password', 403);
           const { password } = await request.json() as any;
           const hashedPassword = await bcrypt.hash(password, 10);
           await db.prepare('UPDATE users SET password = ? WHERE id = ?').bind(hashedPassword, currentUser.id).run();
@@ -701,7 +886,7 @@ export default {
           const total = countResult?.total || 0;
           
           // 分页查询
-          const res = await db.prepare('SELECT id, username, role, created_at, last_login, storage_usage, max_storage FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?')
+          const res = await db.prepare('SELECT id, username, role, created_at, last_login, storage_usage, max_storage, discord_id, discord_username FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?')
             .bind(pageSize, offset).all();
           
           // 将数据库字段名（下划线）映射为前端字段名（驼峰）
@@ -713,7 +898,9 @@ export default {
                   createdAt: u.created_at,
                   lastLogin: u.last_login,
                   storageUsage: u.storage_usage,
-                  maxStorage: u.max_storage
+                  maxStorage: u.max_storage,
+                  discordId: u.discord_id || null,
+                  discordUsername: u.discord_username || null,
               })),
               pagination: {
                   page,
@@ -723,10 +910,36 @@ export default {
               }
           });
       }
+      if (path === '/api/users/demote-stale' && method === 'POST') {
+          if (currentUser.role !== 'admin') return error('Forbidden', 403);
+          const cutoff = Date.now() - STALE_GUEST_IDLE_MS;
+          const guestQuota = ROLE_POLICY.getDefaultQuota('guest');
+          const listed = await db.prepare(
+            `SELECT id FROM users
+             WHERE role = 'user'
+               AND id != ?
+               AND IFNULL(storage_usage, 0) = 0
+               AND (last_login IS NULL OR last_login < ?)`
+          ).bind(currentUser.id, cutoff).all();
+          const count = listed.results?.length ?? 0;
+          if (count === 0) return json({ success: true, count: 0 });
+          await db.prepare(
+            `UPDATE users SET role = 'guest', max_storage = ?
+             WHERE role = 'user'
+               AND id != ?
+               AND IFNULL(storage_usage, 0) = 0
+               AND (last_login IS NULL OR last_login < ?)`
+          ).bind(guestQuota, currentUser.id, cutoff).run();
+          return json({ success: true, count });
+      }
       if (path.startsWith('/api/users/') && method === 'DELETE') {
          if (currentUser.role !== 'admin') return error('Forbidden', 403);
          const id = path.split('/').pop();
          if (id === currentUser.id) return error('Cannot delete self', 400);
+         const ownedVibes = await db.prepare('SELECT id, user_id, thumbnail_url, payload_url, size FROM shared_vibes WHERE user_id = ?').bind(id).all();
+         for (const row of ownedVibes.results || []) {
+           await deleteSharedVibeRow(env, db, row as any);
+         }
          await db.prepare('DELETE FROM users WHERE id = ?').bind(id).run();
          return json({ success: true });
       }
@@ -774,8 +987,8 @@ export default {
          const { role, resetQuota = false } = await request.json() as any;
 
          // 使用统一的角色策略验证角色值
-         if (!ROLE_POLICY.VALID_ROLES.includes(role as any) || role === 'guest') {
-           return error('Invalid role value: must be user, vip, or admin', 400);
+         if (!ROLE_POLICY.VALID_ROLES.includes(role as any)) {
+           return error('Invalid role value: must be guest, user, vip, or admin', 400);
          }
 
          // 不能修改自己的角色
@@ -789,8 +1002,8 @@ export default {
            return error('User not found', 404);
          }
 
-         // 只有显式请求重置配额时才更新配额，避免隐藏副作用
-         if (resetQuota) {
+         // 改回游客时套用游客默认配额；其余角色仅在显式 resetQuota 时改配额
+         if (role === 'guest' || resetQuota) {
            const defaultQuota = ROLE_POLICY.getDefaultQuota(role);
            await db.prepare('UPDATE users SET role = ?, max_storage = ? WHERE id = ?').bind(role, defaultQuota, userId).run();
            return json({ success: true, role, maxStorage: defaultQuota });
@@ -803,13 +1016,35 @@ export default {
 
       // Chains
       if (path === '/api/chains' && method === 'GET') {
-        const chainsResult = await db.prepare('SELECT * FROM chains ORDER BY updated_at DESC').all();
+        // 私人串权限：admin 可见全部；VIP 仅可见自己的私人串；普通用户/游客不可见私人串。
+        const isGuestUser = currentUser.role === 'guest';
+        const isAdmin = currentUser.role === 'admin';
+        const isVip = currentUser.role === 'vip';
+        const privateVisibilityClause = isAdmin
+          ? ''
+          : isVip
+            ? ' AND (is_private = 0 OR user_id = ?)'
+            : ' AND is_private = 0';
+        const privateVisibilityParams = isVip && !isAdmin ? [currentUser.id] : [];
+        const visibilityClause = isGuestUser ? ' AND guest_hidden = 0' : '';
+        const queryChains = () => db.prepare(`SELECT * FROM chains WHERE 1 = 1${visibilityClause}${privateVisibilityClause} ORDER BY updated_at DESC`).bind(...privateVisibilityParams);
+        let chainsResult;
+        try {
+          chainsResult = await queryChains().all();
+        } catch (e: any) {
+          if (isMissingColumnError(e)) {
+            await initDB();
+            chainsResult = await queryChains().all();
+          } else {
+            throw e;
+          }
+        }
         const data = chainsResult.results.map((c: any) => ({
           id: c.id, userId: c.user_id, username: c.username, type: c.type || 'style', name: c.name, description: c.description,
           tags: JSON.parse(c.tags || '[]'), previewImage: c.preview_image, base_prompt: c.base_prompt, // raw DB column needed? No, mapping below
           basePrompt: c.base_prompt,
           negativePrompt: c.negative_prompt, modules: JSON.parse(c.modules || '[]'), params: JSON.parse(c.params || '{}'),
-          variableValues: JSON.parse(c.variable_values || '{}'), createdAt: c.created_at, updatedAt: c.updated_at
+          variableValues: JSON.parse(c.variable_values || '{}'), guestHidden: c.guest_hidden === 1, isPrivate: c.is_private === 1, createdAt: c.created_at, updatedAt: c.updated_at
         }));
         return json(data);
       }
@@ -818,6 +1053,9 @@ export default {
         const body = await request.json() as any;
         const id = crypto.randomUUID();
         const type = body.type || 'style'; // Default to style
+        const guestHidden = body.guestHidden ? 1 : 0;
+        if (body.isPrivate && !['admin', 'vip'].includes(currentUser.role)) return error('只有 VIP 或管理员可以创建私人串', 403);
+        const isPrivate = body.isPrivate ? 1 : 0;
         // Sanitize and validate tags
         let tags = '[]';
         if (Array.isArray(body.tags)) {
@@ -826,14 +1064,24 @@ export default {
             .filter(tag => tag.length > 0);
           tags = JSON.stringify(sanitizedTags);
         }
-        await db.prepare(`INSERT INTO chains (id, user_id, username, type, name, description, tags, preview_image, base_prompt, negative_prompt, modules, params, variable_values, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, currentUser.id, currentUser.username, type, body.name, body.description, tags, null, body.basePrompt || '', body.negativePrompt || '', body.modules ? JSON.stringify(body.modules) : '[]', body.params ? JSON.stringify(body.params) : '{}', body.variableValues ? JSON.stringify(body.variableValues) : '{}', Date.now(), Date.now()).run();
-        return json({ id });
+        try {
+          await db.prepare(`INSERT INTO chains (id, user_id, username, type, name, description, tags, preview_image, base_prompt, negative_prompt, modules, params, variable_values, guest_hidden, is_private, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, currentUser.id, currentUser.username, type, body.name, body.description, tags, null, body.basePrompt || '', body.negativePrompt || '', body.modules ? JSON.stringify(body.modules) : '[]', body.params ? JSON.stringify(body.params) : '{}', body.variableValues ? JSON.stringify(body.variableValues) : '{}', guestHidden, isPrivate, Date.now(), Date.now()).run();
+          return json({ id });
+        } catch (e: any) {
+          if (isMissingColumnError(e)) {
+            await initDB();
+            await db.prepare(`INSERT INTO chains (id, user_id, username, type, name, description, tags, preview_image, base_prompt, negative_prompt, modules, params, variable_values, guest_hidden, is_private, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, currentUser.id, currentUser.username, type, body.name, body.description, tags, null, body.basePrompt || '', body.negativePrompt || '', body.modules ? JSON.stringify(body.modules) : '[]', body.params ? JSON.stringify(body.params) : '{}', body.variableValues ? JSON.stringify(body.variableValues) : '{}', guestHidden, isPrivate, Date.now(), Date.now()).run();
+            return json({ id });
+          }
+          throw e;
+        }
       }
       const chainIdMatch = path.match(/^\/api\/chains\/([^\/]+)$/);
       if (chainIdMatch && method === 'PUT') {
         if (currentUser.role === 'guest') return error('Forbidden', 403);
         const id = chainIdMatch[1];
         const updates = await request.json() as any;
+        if (updates.isPrivate === true && !['admin', 'vip'].includes(currentUser.role)) return error('只有 VIP 或管理员可以设置私人串', 403);
         const chain = await db.prepare('SELECT user_id, preview_image FROM chains WHERE id = ?').bind(id).first<{user_id: string, preview_image: string}>();
         if (!chain) return error('Not Found', 404);
         if (chain.user_id && chain.user_id !== currentUser.id && currentUser.role !== 'admin') return error('Permission Denied', 403);
@@ -860,7 +1108,23 @@ export default {
         if (updates.params !== undefined) { fields.push('params = ?'); values.push(JSON.stringify(updates.params)); }
         if (updates.variableValues !== undefined) { fields.push('variable_values = ?'); values.push(JSON.stringify(updates.variableValues)); }
         if (updates.tags !== undefined) { fields.push('tags = ?'); values.push(JSON.stringify(updates.tags)); }
-        if (fields.length > 0) { fields.push('updated_at = ?'); values.push(Date.now()); values.push(id); await db.prepare(`UPDATE chains SET ${fields.join(', ')} WHERE id = ?`).bind(...values).run(); }
+        if (updates.guestHidden !== undefined) { fields.push('guest_hidden = ?'); values.push(updates.guestHidden ? 1 : 0); }
+        if (updates.isPrivate !== undefined) { fields.push('is_private = ?'); values.push(updates.isPrivate ? 1 : 0); }
+        if (fields.length > 0) {
+          fields.push('updated_at = ?');
+          values.push(Date.now());
+          values.push(id);
+          try {
+            await db.prepare(`UPDATE chains SET ${fields.join(', ')} WHERE id = ?`).bind(...values).run();
+          } catch (e: any) {
+            if (isMissingColumnError(e)) {
+              await initDB();
+              await db.prepare(`UPDATE chains SET ${fields.join(', ')} WHERE id = ?`).bind(...values).run();
+            } else {
+              throw e;
+            }
+          }
+        }
         return json({ success: true });
       }
       if (chainIdMatch && method === 'DELETE') {
@@ -967,15 +1231,57 @@ export default {
       // Inspirations
       if (path === '/api/inspirations' && method === 'GET') {
         const res = await db.prepare('SELECT * FROM inspirations ORDER BY created_at DESC').all();
-        return json(res.results.map((i: any) => ({ id: i.id, userId: i.user_id, username: i.username, title: i.title, imageUrl: i.image_url, prompt: i.prompt, createdAt: i.created_at })));
+        return json(res.results.map((i: any) => ({
+          id: i.id,
+          userId: i.user_id,
+          username: i.username,
+          title: i.title,
+          imageUrl: i.image_url,
+          prompt: i.prompt,
+          params: i.params ? JSON.parse(i.params) : undefined,
+          createdAt: i.created_at
+        })));
       }
       if (path === '/api/inspirations' && method === 'POST') {
         if (currentUser.role === 'guest') return error('Forbidden', 403);
+        
         const body = await request.json() as any;
         let imageUrl = body.imageUrl;
-        if (imageUrl && imageUrl.startsWith('data:')) { try { imageUrl = await processImageUpload(env, imageUrl, 'inspirations', body.id || crypto.randomUUID(), currentUser); } catch (e: any) { return error(e.message, 413); } }
-        await db.prepare('INSERT OR REPLACE INTO inspirations (id, user_id, username, title, image_url, prompt, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(body.id, currentUser.id, currentUser.username, body.title, imageUrl, body.prompt, body.createdAt).run();
-        return json({ success: true });
+        if (imageUrl && imageUrl.startsWith('data:')) { 
+          try { imageUrl = await processImageUpload(env, imageUrl, 'inspirations', body.id || crypto.randomUUID(), currentUser); } 
+          catch (e: any) { return error(e.message, 413); } 
+        }
+        
+        let paramsJson: string | null = null;
+        if (body.params) {
+          try {
+            paramsJson = JSON.stringify(body.params);
+          } catch (e: any) {
+            console.error('Failed to serialize params:', e);
+            paramsJson = null;
+          }
+        }
+        
+        try {
+          await db.prepare('INSERT OR REPLACE INTO inspirations (id, user_id, username, title, image_url, prompt, params, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+            .bind(body.id, currentUser.id, currentUser.username, body.title, imageUrl, body.prompt, paramsJson, body.createdAt)
+            .run();
+          return json({ success: true });
+        } catch (e: any) {
+          if (isMissingColumnError(e)) {
+            await initDB();
+            try {
+              await db.prepare('INSERT OR REPLACE INTO inspirations (id, user_id, username, title, image_url, prompt, params, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+                .bind(body.id, currentUser.id, currentUser.username, body.title, imageUrl, body.prompt, paramsJson, body.createdAt)
+                .run();
+              return json({ success: true });
+            } catch (retryError: any) {
+              return error(retryError.message || 'Database initialization failed', 500);
+            }
+          }
+          console.error('POST /api/inspirations error:', e.message, e.stack);
+          return error(e.message || 'Internal Server Error', 500);
+        }
       }
       if (path === '/api/inspirations/bulk-delete' && method === 'POST') {
           if (currentUser.role === 'guest') return error('Forbidden', 403);
@@ -1013,7 +1319,129 @@ export default {
          return json({ success: true });
       }
 
+      if (path === '/api/vibes' && method === 'GET') {
+        const rows = await db.prepare('SELECT id, user_id, username, name, thumbnail_url, updated_at FROM shared_vibes ORDER BY updated_at DESC').all();
+        return json((rows.results || []).map((r: any) => ({
+          id: r.id,
+          name: r.name,
+          username: r.username,
+          thumbnailUrl: r.thumbnail_url,
+          ownerId: r.user_id,
+          updatedAt: r.updated_at,
+        })));
+      }
+
+      if (path === '/api/vibes' && method === 'POST') {
+        if (currentUser.role === 'guest') return error('Guests cannot share vibes', 403);
+        if (!env.BUCKET) return error('R2 Bucket not configured', 503);
+        const body = await request.json() as any;
+        const preset = body.preset;
+        const localId = String(body.localId || preset?.id || '');
+        if (!preset || !localId || !preset.name || !Array.isArray(preset.encodings)) {
+          return error('Invalid vibe payload', 400);
+        }
+        const existing = body.sharedId
+          ? await db.prepare('SELECT * FROM shared_vibes WHERE id = ?').bind(body.sharedId).first<any>()
+          : await db.prepare('SELECT * FROM shared_vibes WHERE user_id = ? AND local_id = ?').bind(currentUser.id, localId).first<any>();
+        if (existing && existing.user_id !== currentUser.id && currentUser.role !== 'admin') {
+          return error('Permission Denied', 403);
+        }
+        const id = existing?.id || crypto.randomUUID();
+        const payloadJson = JSON.stringify({
+          name: preset.name,
+          encodings: preset.encodings,
+          members: preset.members || [],
+          defaultStrength: preset.defaultStrength,
+          defaultInformationExtracted: preset.defaultInformationExtracted,
+          sourceFilename: preset.sourceFilename,
+        });
+        const payloadBytes = new TextEncoder().encode(payloadJson);
+        const payloadKey = `vibes/${currentUser.id}/${localId}.json`;
+        let thumbnailUrl = existing?.thumbnail_url || null;
+        let thumbBytes = 0;
+        let thumbKey: string | null = null;
+        let thumbBody: Uint8Array | null = null;
+        let thumbType = 'image/png';
+        if (typeof preset.thumbnailUrl === 'string' && preset.thumbnailUrl.startsWith('data:')) {
+          const matches = preset.thumbnailUrl.match(/^data:image\/([a-zA-Z]+);base64,(.+)$/);
+          if (matches) {
+            const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+            const raw = atob(matches[2]);
+            thumbBody = new Uint8Array(raw.length);
+            for (let i = 0; i < raw.length; i++) thumbBody[i] = raw.charCodeAt(i);
+            thumbBytes = thumbBody.length;
+            thumbType = `image/${matches[1]}`;
+            thumbKey = `vibes/${currentUser.id}/${localId}.thumb.${ext}`;
+            thumbnailUrl = `/api/assets/${thumbKey}`;
+          }
+        } else if (typeof preset.thumbnailUrl === 'string' && preset.thumbnailUrl.startsWith('/api/assets/')) {
+          thumbnailUrl = preset.thumbnailUrl;
+        }
+        const totalSize = payloadBytes.byteLength + thumbBytes;
+        const extra = totalSize - (existing?.size || 0);
+        if (extra > 0 && !ROLE_POLICY.isUnlimitedStorage(currentUser.role)) {
+          const currentUsage = currentUser.storage_usage || 0;
+          const maxStorage = currentUser.max_storage || ROLE_POLICY.getDefaultQuota(currentUser.role) || 314572800;
+          if (currentUsage + extra > maxStorage) return error('Storage quota exceeded', 413);
+        }
+        await env.BUCKET.put(payloadKey, payloadBytes, { httpMetadata: { contentType: 'application/json' } });
+        if (thumbKey && thumbBody) {
+          await env.BUCKET.put(thumbKey, thumbBody, { httpMetadata: { contentType: thumbType } });
+        }
+        const now = Date.now();
+        if (existing) {
+          await db.prepare('UPDATE shared_vibes SET name = ?, thumbnail_url = ?, payload_url = ?, size = ?, updated_at = ?, username = ? WHERE id = ?')
+            .bind(preset.name, thumbnailUrl, `/api/assets/${payloadKey}`, totalSize, now, currentUser.username, id).run();
+        } else {
+          await db.prepare('INSERT INTO shared_vibes (id, user_id, username, local_id, name, thumbnail_url, payload_url, size, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .bind(id, currentUser.id, currentUser.username, localId, preset.name, thumbnailUrl, `/api/assets/${payloadKey}`, totalSize, now, now).run();
+        }
+        await adjustStorageUsage(db, currentUser.id, extra);
+        return json({ id, thumbnailUrl });
+      }
+
+      if (path.startsWith('/api/vibes/') && method === 'GET') {
+        const id = decodeURIComponent(path.replace('/api/vibes/', ''));
+        const row = await db.prepare('SELECT * FROM shared_vibes WHERE id = ?').bind(id).first<any>();
+        if (!row) return error('Not Found', 404);
+        if (!env.BUCKET) return error('R2 Bucket not configured', 503);
+        const key = String(row.payload_url || '').replace('/api/assets/', '');
+        const obj = await env.BUCKET.get(decodeURIComponent(key));
+        if (!obj) {
+          await deleteSharedVibeRow(env, db, row);
+          return error('Not Found', 404);
+        }
+        const payload = JSON.parse(await new Response(obj.body).text());
+        return json({
+          id: row.local_id,
+          name: payload.name || row.name,
+          thumbnailUrl: row.thumbnail_url,
+          encodings: payload.encodings || [],
+          members: payload.members || [],
+          defaultStrength: payload.defaultStrength ?? 0.6,
+          defaultInformationExtracted: payload.defaultInformationExtracted ?? 0.7,
+          sourceFilename: payload.sourceFilename,
+          shared: false,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        });
+      }
+
+      if (path.startsWith('/api/vibes/') && method === 'DELETE') {
+        if (currentUser.role === 'guest') return error('Forbidden', 403);
+        const id = decodeURIComponent(path.replace('/api/vibes/', ''));
+        const row = await db.prepare('SELECT * FROM shared_vibes WHERE id = ?').bind(id).first<any>();
+        if (!row) return json({ success: true });
+        if (row.user_id !== currentUser.id && currentUser.role !== 'admin') return error('Permission Denied', 403);
+        await deleteSharedVibeRow(env, db, row);
+        return json({ success: true });
+      }
+
       if (path.startsWith('/api/')) return error('Not Found', 404);
+      const looksLikeFile = /\.[a-zA-Z0-9]+$/.test(path);
+      if (!looksLikeFile) {
+        return env.ASSETS.fetch(new Request(new URL('/index.html', request.url), { method: 'GET' }));
+      }
       return env.ASSETS.fetch(request);
 
     } catch (e: any) {

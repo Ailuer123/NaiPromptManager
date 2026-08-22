@@ -119,6 +119,15 @@ export const parseNovelAIMetadata = (
             if (json.sampler) newParams.sampler = json.sampler;
             if (json.width != null) newParams.width = json.width;
             if (json.height != null) newParams.height = json.height;
+            if (json.model === 'nai-diffusion-5-full' || json.model_name === 'NovelAI Diffusion V5') {
+                newParams.model = 'nai-diffusion-5-full';
+            } else if (json.model === 'nai-diffusion-4-5-full') {
+                newParams.model = 'nai-diffusion-4-5-full';
+            }
+            if (json.straight_alpha === true || json.tag_hint_transparent_background === true) {
+                newParams.transparent = true;
+                newParams.alphaMode = json.straight_alpha === false ? 'premultiplied' : 'straight';
+            }
 
             // Variety+ 开关（通过 skip_cfg_above_sigma 探测）
             if (json.skip_cfg_above_sigma !== undefined && json.skip_cfg_above_sigma !== null) {

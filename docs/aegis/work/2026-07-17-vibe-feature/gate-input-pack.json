@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "aegis.schema.v0",
+  "baselineRefs": [
+    "docs/aegis/baseline/2026-06-22-initial-baseline.md"
+  ],
+  "impactStatement": "docs/aegis/work/2026-07-17-vibe-feature/impact-statement-draft.json",
+  "compatPlan": "旧 Chain 无 vibes 时行为不变；不改变 Worker、D1、R2；现有登录与历史功能不受影响",
+  "retirementPlan": "无 inline encoded、runtime nearest fallback 或旧 owner",
+  "evidenceBundle": [
+    "docs/aegis/work/2026-07-17-vibe-feature/evidence-bundle-draft-browser-unavailable.json",
+    "docs/aegis/work/2026-07-17-vibe-feature/evidence-bundle-draft-full-test-suite.json",
+    "docs/aegis/work/2026-07-17-vibe-feature/evidence-bundle-draft-novelai-contract.json",
+    "docs/aegis/work/2026-07-17-vibe-feature/evidence-bundle-draft-parser-library-rules-tests.json",
+    "docs/aegis/work/2026-07-17-vibe-feature/evidence-bundle-draft-production-build.json",
+    "docs/aegis/work/2026-07-17-vibe-feature/evidence-bundle-draft-read-only-ui-regression.json",
+    "docs/aegis/work/2026-07-17-vibe-feature/evidence-bundle-draft-user-manual-acceptance.json"
+  ]
+}

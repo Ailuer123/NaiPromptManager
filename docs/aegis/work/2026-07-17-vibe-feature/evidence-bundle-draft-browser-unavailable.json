@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "aegis.schema.v0",
+  "artifactKey": "browser-unavailable",
+  "type": "manual-verification",
+  "source": "in-app Browser discovery",
+  "summary": "Browser 实例列表为空，亮暗色与窄屏截图验收未执行",
+  "verifier": "browser runtime discovery"
+}

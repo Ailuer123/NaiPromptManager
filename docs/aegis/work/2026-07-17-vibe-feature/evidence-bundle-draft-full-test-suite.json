@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "aegis.schema.v0",
+  "artifactKey": "full-test-suite",
+  "type": "test",
+  "source": "npm test",
+  "summary": "5 个测试文件、23 个测试覆盖 parser、IndexedDB、规则、payload 与 React 主流程",
+  "verifier": "Vitest 4.1.10"
+}

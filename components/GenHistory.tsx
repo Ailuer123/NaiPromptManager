@@ -5,17 +5,104 @@ import { db } from '../services/dbService';
 import { LocalGenItem, User } from '../types';
 import { PAGINATION_CONFIG } from '../config/pagination';
 import { IMPORT_SESSION_KEY } from '../services/metadataService';
+import { LightboxInfo } from './LightboxInfo';
 import { ParamsViewer } from './ParamsViewer';
+import {
+    compressPngToJpg,
+    isJpgDataUri,
+} from '../services/imageCompression';
+import { Button, Card, Empty, Field, IconButton, IconChart, IconClock, IconClose, IconInfo, IconPackage, IconTrash, Input, Portal, Sheet } from './ui';
+import { useFeedback } from './ui/Feedback';
 
 interface GenHistoryProps {
     currentUser: User;
     notify: (msg: string, type?: 'success' | 'error') => void;
     onNavigateToPlayground?: () => void;
+    onRefreshInspiration?: () => void;
 }
 
-export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onNavigateToPlayground }) => {
+// --- 历史压缩相关常量 ---
+/** JPG 质量默认值（与 ArtistAdmin "偏好设置" 共享） */
+const DEFAULT_QUALITY = 0.85;
+/** Lightbox 预览的 debounce 时长（毫秒） */
+const PREVIEW_DEBOUNCE_MS = 400;
+/** 平均耗时滑动窗口大小（用于"预计剩余 T 秒"估算） */
+const TIMING_WINDOW = 10;
+
+/** 从 LocalStorage 读取当前 JPG 质量；做边界保护 */
+const readQuality = (): number => {
+    const raw = localStorage.getItem('naipm.compaction.quality');
+    if (!raw) return DEFAULT_QUALITY;
+    const v = parseFloat(raw);
+    if (isNaN(v)) return DEFAULT_QUALITY;
+    return Math.min(1, Math.max(0.01, v));
+};
+
+/** 字节数 → MB 友好显示 */
+const formatMB = (bytes: number): string => {
+    if (bytes <= 0) return '0';
+    const mb = bytes / (1024 * 1024);
+    return mb < 0.01 ? mb.toFixed(3) : mb.toFixed(2);
+};
+
+function RollingMB({ bytes }: { bytes: number }) {
+    const target = bytes / (1024 * 1024);
+    const [shown, setShown] = useState(0);
+    const shownRef = useRef(0);
+    useEffect(() => {
+        const start = shownRef.current;
+        const t0 = performance.now();
+        let raf = 0;
+        const tick = (now: number) => {
+            const t = Math.min(1, (now - t0) / 280);
+            const ease = 1 - (1 - t) * (1 - t);
+            const next = start + (target - start) * ease;
+            shownRef.current = next;
+            setShown(next);
+            if (t < 1) raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+    }, [target]);
+    const digits = shown < 0.01 && shown > 0 ? 3 : 2;
+    return <strong className="rolling-mb">~{shown.toFixed(digits)} MB</strong>;
+}
+
+function CompareSplit({ png, jpg, quality }: { png: string; jpg: string; quality: number }) {
+    const [pct, setPct] = useState(50);
+    const boxRef = useRef<HTMLDivElement>(null);
+    const move = (clientX: number) => {
+        const box = boxRef.current?.getBoundingClientRect();
+        if (!box || box.width <= 0) return;
+        setPct(Math.round(Math.min(100, Math.max(0, ((clientX - box.left) / box.width) * 100))));
+    };
+    return (
+        <div
+            ref={boxRef}
+            className="compare-split"
+            onPointerDown={(e) => {
+                e.currentTarget.setPointerCapture(e.pointerId);
+                move(e.clientX);
+            }}
+            onPointerMove={(e) => {
+                if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+                move(e.clientX);
+            }}
+        >
+            <img src={jpg} alt="JPG" />
+            <img src={png} alt="PNG" style={{ clipPath: `inset(0 ${100 - pct}% 0 0)` }} />
+            <div className="compare-split-handle" style={{ left: `${pct}%` }} />
+            <span className="compare-label">PNG</span>
+            <span className="compare-label jpg">JPG {quality.toFixed(2)}</span>
+        </div>
+    );
+}
+
+export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onNavigateToPlayground, onRefreshInspiration }) => {
+    const { confirm } = useFeedback();
     const [items, setItems] = useState<LocalGenItem[]>([]);
     const [lightbox, setLightbox] = useState<LocalGenItem | null>(null);
+    const [infoOpen, setInfoOpen] = useState(false);
     const [isPublishing, setIsPublishing] = useState(false);
     const [publishTitle, setPublishTitle] = useState('');
     const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -25,7 +112,7 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
     const [totalPages, setTotalPages] = useState(0);
     const [totalCount, setTotalCount] = useState(0);
     const [isLoading, setIsLoading] = useState(false);
-    
+
     // 缓存管理
     const [pageCache, setPageCache] = useState<Record<number, LocalGenItem[]>>({});
     const pageCacheRef = useRef<Record<number, LocalGenItem[]>>({});
@@ -39,9 +126,64 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
     const [cleanCount, setCleanCount] = useState<number>(PAGINATION_CONFIG.CLEANUP.DEFAULT_COUNT);
     const [cleanPreviewCount, setCleanPreviewCount] = useState(0);
 
+    // --- 历史压缩状态 ---
+    /** 库内待压缩 PNG 的数量（用于 disabled 判定） */
+    const [pendingPngCount, setPendingPngCount] = useState(0);
+    /** 批量压缩确认弹窗 */
+    const [showCompactConfirm, setShowCompactConfirm] = useState(false);
+    /** 批量压缩进度模态 */
+    const [compactProgress, setCompactProgress] = useState<{
+        total: number;
+        processed: number;
+        savedBytes: number;
+        failed: number;
+        remainingSec: number;
+    } | null>(null);
+    /** 批量压缩取消标志（ref 以便循环内同步读取） */
+    const compactCancelRef = useRef<boolean>(false);
+    /** 批量压缩完成摘要 */
+    const [compactSummary, setCompactSummary] = useState<{
+        success: number;
+        failed: number;
+        savedBytes: number;
+        originalTotal: number;
+    } | null>(null);
+
+    // --- Lightbox 单张压缩状态 ---
+    /** 实时预览的 JPG Data URI（仅 Lightbox 内、原图为 PNG 时使用） */
+    const [previewJpgDataUri, setPreviewJpgDataUri] = useState<string | null>(null);
+    /** Lightbox 滑块当前的 JPG 质量（独立 state，避免每次 keystroke 都写 LocalStorage） */
+    const [lightboxQuality, setLightboxQuality] = useState<number>(() => readQuality());
+    /** 当前正在生成预览 */
+    const [previewing, setPreviewing] = useState(false);
+    /** 单张压缩进行中 */
+    const [singleCompacting, setSingleCompacting] = useState(false);
+    /** 预览 debounce timer */
+    const previewTimerRef = useRef<number | null>(null);
+
+    // --- 引导弹窗 ---
+    const [showOnboarding, setShowOnboarding] = useState(false);
+
+    // 初次挂载：加载第一页 + 检查是否需要引导
     useEffect(() => {
         goToPage(1);
+        // 仅登录用户、未展示过 → 弹引导
+        if (currentUser.role !== 'guest' && localStorage.getItem('naipm.compaction.onboarded') !== 'true') {
+            setShowOnboarding(true);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // ESC 关闭引导弹窗（任意关闭语义都等于"暂不启用 + 标记已展示"）
+    useEffect(() => {
+        if (!showOnboarding) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') dismissOnboarding(false);
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showOnboarding]);
 
     const { PAGE_SIZE } = PAGINATION_CONFIG;
 
@@ -111,30 +253,44 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
         }
     };
 
+    /**
+     * 扫描全库统计未压缩 PNG 数量。
+     * 用于"压缩 PNG..."按钮的 disabled 判定。本地数据，O(n) 但 n 一般 ≤ 几千条可接受。
+     */
+    const refreshPendingPngCount = async () => {
+        try {
+            const all = await localHistory.getAll();
+            const pending = all.filter(it => !isJpgDataUri(it.imageUrl)).length;
+            setPendingPngCount(pending);
+        } catch (e) {
+            console.warn('统计未压缩 PNG 数量失败:', e);
+        }
+    };
+
     // 跳转到指定页
     const goToPage = async (page: number, force: boolean = false) => {
         if (isLoading) return;
-        
+
         // 计算总页数
         const count = await localHistory.getCount();
         const calculatedTotalPages = Math.max(1, Math.ceil(count / PAGE_SIZE));
-        
+
         // 边界检查
         const targetPage = Math.max(1, Math.min(page, calculatedTotalPages));
-        
+
         // 如果不是强制刷新，且目标页与当前页相同，则跳过
         if (!force && targetPage === currentPage && items.length > 0) return;
-        
+
         setIsLoading(true);
         setCurrentPage(targetPage);
         setTotalPages(calculatedTotalPages);
         setTotalCount(count);
-        
+
         try {
             // 获取页面数据
             const data = await getPageData(targetPage);
             setItems(data);
-            
+
             // 更新缓存并清理
             const nextCache = {
                 ...pageCacheRef.current,
@@ -142,7 +298,7 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
             };
             setCacheState(nextCache);
             trimCacheAroundPage(targetPage, calculatedTotalPages, nextCache);
-            
+
             // 预加载相邻页面（当前页 +1 和 -1）
             if (targetPage > 1) {
                 void preloadPage(targetPage - 1, calculatedTotalPages);
@@ -150,7 +306,10 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
             if (targetPage < calculatedTotalPages) {
                 void preloadPage(targetPage + 1, calculatedTotalPages);
             }
-            
+
+            // 同时更新待压缩 PNG 计数（用于按钮 disabled 判定）
+            void refreshPendingPngCount();
+
         } catch (e) {
             console.error('加载页面失败:', e);
             notify('加载失败，请重试', 'error');
@@ -163,7 +322,7 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
     const getPageButtons = (): number[] => {
         const buttons: number[] = [];
         const maxButtons = 7; // 最多显示7个页码按钮
-        
+
         if (totalPages <= maxButtons) {
             // 总页数较少，显示所有页码
             for (let i = 1; i <= totalPages; i++) {
@@ -173,47 +332,62 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
             // 总页数较多，显示当前页附近的页码
             const start = Math.max(1, currentPage - 3);
             const end = Math.min(totalPages, start + maxButtons - 1);
-            
+
             for (let i = start; i <= end; i++) {
                 buttons.push(i);
             }
         }
-        
+
         return buttons;
     };
 
-    const getDownloadFilename = () => {
+    /**
+     * 根据 Lightbox 当前图片的 Data URI 前缀生成下载文件名。
+     *
+     * 历史压缩为 JPG 后下载扩展名也要对应改变 —— 见 ADR-0001。
+     */
+    const getDownloadFilename = (imageUrl?: string) => {
         const now = new Date();
         const pad = (n: number) => String(n).padStart(2, '0');
         const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
-        return `NAI-${timestamp}.png`;
+        const ext = imageUrl && isJpgDataUri(imageUrl) ? 'jpg' : 'png';
+        return `NAI-${timestamp}.${ext}`;
     };
 
     const handleDelete = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        if (confirm('确定删除这张图片记录吗？(无法恢复)')) {
-            await localHistory.delete(id);
-            if (lightbox?.id === id) setLightbox(null);
-            // 清空缓存并强制刷新当前页
-            setCacheState({});
-            await goToPage(currentPage, true);
-        }
+        const ok = await confirm({
+            title: '确定删除这张图片记录吗？',
+            description: '无法恢复。',
+            confirmLabel: '删除',
+            tone: 'danger',
+        });
+        if (!ok) return;
+        await localHistory.delete(id);
+        if (lightbox?.id === id) setLightbox(null);
+        setCacheState({});
+        await goToPage(currentPage, true);
     };
 
     const handleClearAll = async () => {
-        if (confirm('确定清空所有本地生图历史吗？')) {
-            await localHistory.clear();
-            setItems([]);
-            setTotalCount(0);
-            setShowCleanMenu(false);
-        }
+        const ok = await confirm({
+            title: '确定清空所有本地生图历史吗？',
+            confirmLabel: '清空',
+            tone: 'danger',
+        });
+        if (!ok) return;
+        await localHistory.clear();
+        setItems([]);
+        setTotalCount(0);
+        setShowCleanMenu(false);
+        setPendingPngCount(0);
     };
 
     const handleCleanMenuClick = (mode: 'days' | 'count') => {
         setCleanMode(mode);
         setShowCleanMenu(false);
         setShowCleanModal(true);
-        
+
         // 预览将删除的数量
         if (mode === 'days') {
             localHistory.countOlderThan(cleanDays).then(setCleanPreviewCount);
@@ -254,6 +428,7 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
                 title: publishTitle,
                 imageUrl: lightbox.imageUrl,
                 prompt: lightbox.prompt,
+                params: lightbox.params,
                 userId: currentUser.id,
                 username: currentUser.username,
                 createdAt: Date.now()
@@ -261,131 +436,242 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
             notify('发布成功！已加入灵感图库');
             setIsPublishing(false);
             setPublishTitle('');
-            setLightbox(null); // Close lightbox
-            setShowSuccessModal(true); // Show Success Modal
+            setLightbox(null);
+            setShowSuccessModal(true);
+            onRefreshInspiration?.();
         } catch (e: any) {
             notify('发布失败: ' + e.message, 'error');
             setIsPublishing(false);
         }
     };
 
+    // --- 引导弹窗：关闭语义统一 ---
+    /**
+     * 关闭引导弹窗：无论"启用"还是"暂不启用 / X / ESC / 遮罩"都写 onboarded='true'。
+     * @param enable true=同时打开"自动 JPG 保存"开关；false=仅标记已展示
+     */
+    const dismissOnboarding = (enable: boolean) => {
+        localStorage.setItem('naipm.compaction.onboarded', 'true');
+        if (enable) {
+            localStorage.setItem('naipm.compaction.autoJpg', 'true');
+            notify('已开启"自动 JPG 保存"');
+        }
+        setShowOnboarding(false);
+    };
+
+    // --- 批量压缩主流程 ---
+    const handleStartBatchCompact = () => {
+        setShowCleanMenu(false);
+        if (pendingPngCount === 0) return; // 二次保险
+        setShowCompactConfirm(true);
+    };
+
+    const handleConfirmBatchCompact = async () => {
+        setShowCompactConfirm(false);
+        const quality = readQuality();
+
+        // 拉全库做主循环。批量压缩与分页解耦：直接走 getAll 一遍。
+        const all = await localHistory.getAll();
+        const total = all.length;
+        compactCancelRef.current = false;
+        const timings: number[] = [];
+        let processed = 0;
+        let savedBytes = 0;
+        let originalTotal = 0;
+        let failed = 0;
+        let success = 0;
+
+        setCompactProgress({ total, processed: 0, savedBytes: 0, failed: 0, remainingSec: 0 });
+
+        for (const item of all) {
+            if (compactCancelRef.current) break;
+
+            // 幂等：已是 JPG 跳过；processed 仍 +1 让用户感知"扫过了"
+            if (isJpgDataUri(item.imageUrl)) {
+                processed++;
+                setCompactProgress({ total, processed, savedBytes, failed, remainingSec: computeRemaining(timings, total, processed) });
+                continue;
+            }
+
+            const start = performance.now();
+            try {
+                const { jpgDataUri, originalBytes, compressedBytes } = await compressPngToJpg(item.imageUrl, quality);
+                await localHistory.updateImage(item.id, jpgDataUri);
+                const saved = Math.max(0, originalBytes - compressedBytes);
+                savedBytes += saved;
+                originalTotal += originalBytes;
+                success++;
+                timings.push(performance.now() - start);
+                if (timings.length > TIMING_WINDOW) timings.shift();
+            } catch (e) {
+                console.warn('压缩失败 id=' + item.id, e);
+                failed++;
+            }
+
+            processed++;
+            setCompactProgress({ total, processed, savedBytes, failed, remainingSec: computeRemaining(timings, total, processed) });
+            // 让出主线程，避免锁死 UI
+            await new Promise(r => setTimeout(r, 0));
+        }
+
+        // 完成 / 取消都进摘要
+        setCompactProgress(null);
+        setCompactSummary({ success, failed, savedBytes, originalTotal });
+        compactCancelRef.current = false;
+
+        // 刷新当前页和待压缩计数
+        setCacheState({});
+        await goToPage(currentPage, true);
+    };
+
+    const computeRemaining = (timings: number[], total: number, processed: number): number => {
+        if (timings.length === 0) return 0;
+        const avg = timings.reduce((a, b) => a + b, 0) / timings.length;
+        const remainingMs = avg * (total - processed);
+        return Math.max(0, Math.round(remainingMs / 1000));
+    };
+
+    const handleCancelBatchCompact = () => {
+        compactCancelRef.current = true;
+    };
+
+    // --- Lightbox 单张压缩 ---
+    /** Lightbox 打开 / 切图时，重置预览相关状态 */
+    useEffect(() => {
+        // 清掉旧 timer / 预览
+        if (previewTimerRef.current) {
+            window.clearTimeout(previewTimerRef.current);
+            previewTimerRef.current = null;
+        }
+        setPreviewJpgDataUri(null);
+        setPreviewing(false);
+        setLightboxQuality(readQuality());
+        setInfoOpen(false);
+    }, [lightbox?.id]);
+
+    /** 触发软实时预览（debounce） */
+    const schedulePreview = (quality: number) => {
+        if (!lightbox || isJpgDataUri(lightbox.imageUrl)) return;
+        if (previewTimerRef.current) {
+            window.clearTimeout(previewTimerRef.current);
+        }
+        previewTimerRef.current = window.setTimeout(async () => {
+            if (!lightbox) return;
+            setPreviewing(true);
+            try {
+                const { jpgDataUri } = await compressPngToJpg(lightbox.imageUrl, quality);
+                setPreviewJpgDataUri(jpgDataUri);
+            } catch (e) {
+                console.warn('预览生成失败:', e);
+            } finally {
+                setPreviewing(false);
+            }
+        }, PREVIEW_DEBOUNCE_MS);
+    };
+
+    const handleLightboxQualityChange = (v: number) => {
+        const clamped = Math.min(1, Math.max(0.01, v));
+        setLightboxQuality(clamped);
+        schedulePreview(clamped);
+    };
+
+    /** 单张：把当前 Lightbox 的 PNG 就地替换为 JPG */
+    const handleSingleCompact = async () => {
+        if (!lightbox || isJpgDataUri(lightbox.imageUrl)) return;
+        setSingleCompacting(true);
+        try {
+            const { jpgDataUri, originalBytes, compressedBytes } = await compressPngToJpg(lightbox.imageUrl, lightboxQuality);
+            await localHistory.updateImage(lightbox.id, jpgDataUri);
+            const savedKB = Math.max(0, (originalBytes - compressedBytes) / 1024);
+            notify(`已压缩，节省 ${savedKB < 1024 ? savedKB.toFixed(0) + ' KB' : (savedKB / 1024).toFixed(2) + ' MB'}`);
+
+            // Lightbox 内同步更新展示
+            const updated: LocalGenItem = { ...lightbox, imageUrl: jpgDataUri };
+            setLightbox(updated);
+            setPreviewJpgDataUri(null);
+
+            // 主网格同步：清空缓存并强制重载当前页
+            setCacheState({});
+            await goToPage(currentPage, true);
+        } catch (e: any) {
+            notify('压缩失败: ' + (e.message || e), 'error');
+        } finally {
+            setSingleCompacting(false);
+        }
+    };
+
+    // 当前 Lightbox 图是否已经压缩过
+    const lightboxIsJpg = lightbox ? isJpgDataUri(lightbox.imageUrl) : false;
+
     return (
-        <div className="flex-1 flex flex-col h-full bg-gray-50 dark:bg-gray-900 overflow-hidden">
-            <header className="p-4 md:p-6 bg-white dark:bg-gray-800 shadow-md border-b border-gray-200 dark:border-gray-700 z-10 flex-shrink-0">
-                <div className="flex justify-between items-center mb-4">
+        <div className="page-fill">
+            <header className="board-head hist-head">
+                <div className="board-head-top">
                     <div>
-                        <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">本地生图历史</h1>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">仅存储在您的浏览器中</p>
+                        <h1>本地生图历史</h1>
                     </div>
-                    <div className="flex gap-2 md:gap-3 items-center">
-                        <div className="text-sm text-gray-500 dark:text-gray-400 flex items-center">共 {totalCount} 张</div>
+                    <div className="board-tools">
+                        <span className="hint">共 {totalCount} 张</span>
                         <div className="relative">
-                            <button 
-                                onClick={() => setShowCleanMenu(!showCleanMenu)} 
-                                className="px-3 py-1 md:px-4 md:py-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded text-xs md:text-sm hover:bg-red-200 dark:hover:bg-red-900/50 flex items-center gap-1"
-                            >
+                            <Button variant="danger" size="sm" onClick={() => setShowCleanMenu(!showCleanMenu)}>
                                 清理
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                </svg>
-                            </button>
+                            </Button>
                             {showCleanMenu && (
-                                <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
-                                    <button 
-                                        onClick={handleClearAll} 
-                                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 rounded-t-lg"
+                                <div className="hist-menu surface-strong">
+                                    <button type="button" onClick={handleClearAll}><IconTrash /> 清空全部</button>
+                                    <button type="button" onClick={() => handleCleanMenuClick('days')}><IconClock /> 删除 X 天前的...</button>
+                                    <button type="button" onClick={() => handleCleanMenuClick('count')}><IconChart /> 只保留最近 N 张...</button>
+                                    <button
+                                        type="button"
+                                        onClick={pendingPngCount === 0 ? undefined : handleStartBatchCompact}
+                                        disabled={pendingPngCount === 0}
+                                        title={pendingPngCount === 0 ? '无需压缩' : `压缩 ${pendingPngCount} 张 PNG 为 JPG`}
                                     >
-                                        🗑️ 清空全部
-                                    </button>
-                                    <button 
-                                        onClick={() => handleCleanMenuClick('days')} 
-                                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-                                    >
-                                        ⏰ 删除 X 天前的...
-                                    </button>
-                                    <button 
-                                        onClick={() => handleCleanMenuClick('count')} 
-                                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 rounded-b-lg"
-                                    >
-                                        📊 只保留最近 N 张...
+                                        <IconPackage /> 压缩 PNG... {pendingPngCount > 0 && <span className="hint">（{pendingPngCount} 张）</span>}
                                     </button>
                                 </div>
                             )}
                         </div>
-                        <button onClick={() => goToPage(currentPage)} className="px-3 py-1 md:px-4 md:py-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded text-xs md:text-sm hover:bg-gray-200 dark:hover:bg-gray-600">
-                            刷新
-                        </button>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            className="hist-compact-desk"
+                            onClick={pendingPngCount === 0 ? undefined : handleStartBatchCompact}
+                            disabled={pendingPngCount === 0}
+                            title={pendingPngCount === 0 ? '无需压缩' : `压缩 ${pendingPngCount} 张 PNG 为 JPG`}
+                        >
+                            <span className="inline-ico"><IconPackage />压缩</span>
+                            {pendingPngCount > 0 && <span className="hint">{pendingPngCount}</span>}
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => goToPage(currentPage)}>刷新</Button>
                     </div>
                 </div>
 
-                {/* 分页控件 */}
                 {totalCount > 0 && (
-                    <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
-                        {/* 分页按钮 */}
-                        <div className="flex items-center gap-2">
-                            {/* 首页 */}
-                            <button
-                                onClick={() => goToPage(1)}
-                                disabled={currentPage === 1 || isLoading}
-                                className="px-2 py-1 text-xs bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
-                            >
-                                首页
-                            </button>
-
-                            {/* 上一页 */}
-                            <button
-                                onClick={() => goToPage(currentPage - 1)}
-                                disabled={currentPage === 1 || isLoading}
-                                className="px-2 py-1 text-xs bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
-                            >
-                                上一页
-                            </button>
-
-                            {/* 页码按钮 */}
-                            <div className="flex gap-1">
-                                {getPageButtons().map(page => (
-                                    <button
-                                        key={page}
-                                        onClick={() => goToPage(page)}
-                                        className={`px-2 py-1 text-xs rounded border transition-colors ${
-                                            page === currentPage
-                                                ? 'bg-indigo-500 text-white border-indigo-500'
-                                                : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
-                                        }`}
-                                    >
-                                        {page}
-                                    </button>
-                                ))}
-                            </div>
-
-                            {/* 下一页 */}
-                            <button
-                                onClick={() => goToPage(currentPage + 1)}
-                                disabled={currentPage === totalPages || isLoading}
-                                className="px-2 py-1 text-xs bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
-                            >
-                                下一页
-                            </button>
-
-                            {/* 末页 */}
-                            <button
-                                onClick={() => goToPage(totalPages)}
-                                disabled={currentPage === totalPages || isLoading}
-                                className="px-2 py-1 text-xs bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
-                            >
-                                末页
-                            </button>
+                    <div className="hist-pager surface">
+                        <div className="hist-pages">
+                            <Button size="sm" variant="ghost" onClick={() => goToPage(1)} disabled={currentPage === 1 || isLoading}>首页</Button>
+                            <Button size="sm" variant="ghost" onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1 || isLoading}>上一页</Button>
+                            {getPageButtons().map(page => (
+                                <Button
+                                    key={page}
+                                    size="sm"
+                                    variant={page === currentPage ? 'primary' : 'ghost'}
+                                    onClick={() => goToPage(page)}
+                                >
+                                    {page}
+                                </Button>
+                            ))}
+                            <Button size="sm" variant="ghost" onClick={() => goToPage(currentPage + 1)} disabled={currentPage === totalPages || isLoading}>下一页</Button>
+                            <Button size="sm" variant="ghost" onClick={() => goToPage(totalPages)} disabled={currentPage === totalPages || isLoading}>末页</Button>
                         </div>
-
-                        {/* 页码输入框 */}
-                        <div className="flex items-center gap-2">
-                            <span className="text-sm text-gray-600 dark:text-gray-300">跳至</span>
-                            <input
+                        <div className="hist-jump">
+                            <span>跳至</span>
+                            <Input
                                 type="number"
                                 min="1"
                                 max={totalPages}
                                 placeholder="页码"
-                                className="w-16 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
                                         const page = parseInt((e.target as HTMLInputElement).value);
@@ -395,7 +681,8 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
                                     }
                                 }}
                             />
-                            <button
+                            <Button
+                                size="sm"
                                 onClick={() => {
                                     const input = document.querySelector('input[placeholder="页码"]') as HTMLInputElement;
                                     const page = parseInt(input.value);
@@ -403,99 +690,134 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
                                         goToPage(page);
                                     }
                                 }}
-                                className="px-2 py-1 text-xs bg-indigo-500 text-white rounded hover:bg-indigo-600 transition-colors"
                             >
                                 跳转
-                            </button>
+                            </Button>
                         </div>
                     </div>
                 )}
             </header>
 
-            <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-20">
+            <div className="page-scroll">
                 {isLoading ? (
-                    <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                        <div className="text-4xl mb-2 animate-spin">⏳</div>
-                        <p>加载中...</p>
-                    </div>
+                    <Empty title="加载中..." />
                 ) : items.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                        <div className="text-4xl mb-2">🕰️</div>
-                        <p>暂无生成记录</p>
-                        <p className="text-sm mt-2">在 Chain 编辑器中生成图片会自动保存到这里</p>
-                    </div>
+                    <Empty title="暂无生成记录" />
                 ) : (
                     <>
-                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
+                        <div className="hist-grid">
                             {items.map(item => (
-                                <div
+                                <Card
                                     key={item.id}
-                                    className="group relative aspect-square bg-gray-200 dark:bg-gray-800 rounded-lg overflow-hidden cursor-pointer border border-gray-200 dark:border-gray-700 hover:border-indigo-500 transition-colors"
-                                    onClick={() => setLightbox(item)}
-                                >
-                                    <img src={item.imageUrl} className="w-full h-full object-cover" loading="lazy" />
-                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
-                                    <div className="absolute top-2 right-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button onClick={(e) => handleDelete(item.id, e)} className="p-1.5 bg-red-500 text-white rounded-full shadow hover:bg-red-600">
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                        </button>
-                                    </div>
-                                    <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent text-white text-[10px] opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity truncate">
-                                        {new Date(item.createdAt).toLocaleString()}
-                                    </div>
-                                </div>
+                                    mediaRatio="sq"
+                                    onOpen={() => setLightbox(item)}
+                                    media={(
+                                        <>
+                                            <img src={item.imageUrl} alt="" loading="lazy" />
+                                            {isJpgDataUri(item.imageUrl) && <span className="jpg-mark">JPG</span>}
+                                            <div className="card-hover-del" data-card-action>
+                                                <IconButton size="sm" danger label="删除" onClick={(e) => handleDelete(item.id, e)}><IconClose /></IconButton>
+                                            </div>
+                                            <div className="card-hover-time">{new Date(item.createdAt).toLocaleString()}</div>
+                                        </>
+                                    )}
+                                />
                             ))}
                         </div>
-                        
-                        {/* 底部分页信息 */}
-                        <div className="flex flex-col items-center justify-center py-6">
+                        <div className="hist-foot">
                             {isLoading ? (
-                                <div className="text-gray-500 dark:text-gray-400">⏳ 加载中...</div>
+                                <p>加载中...</p>
                             ) : (
-                                <div className="text-sm text-gray-500 dark:text-gray-400 text-center">
+                                <>
                                     <p>当前显示第 {Math.min((currentPage - 1) * PAGE_SIZE + 1, totalCount)} - {Math.min(currentPage * PAGE_SIZE, totalCount)} 张</p>
-                                    <p className="mt-1">共 {totalCount} 张，已缓存 {Object.keys(pageCache).length} 页</p>
-                                </div>
+                                    <p>共 {totalCount} 张，已缓存 {Object.keys(pageCache).length} 页</p>
+                                </>
                             )}
                         </div>
                     </>
                 )}
             </div>
 
-            {/* Lightbox */}
             {lightbox && (
-                <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 md:p-8" onClick={() => setLightbox(null)}>
-                    <div className="bg-white dark:bg-gray-900 w-full max-w-6xl h-[85vh] md:h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row" onClick={e => e.stopPropagation()}>
-                        {/* Image Area */}
-                        <div className="flex-1 bg-gray-100 dark:bg-black/50 flex items-center justify-center p-4 relative h-[45%] md:h-auto border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-800">
-                            <img src={lightbox.imageUrl} className="max-w-full max-h-full object-contain shadow-lg" />
+              <Portal>
+                <div className="lbx" onClick={() => setLightbox(null)}>
+                    <div className="lbx-split glass-strong" onClick={e => e.stopPropagation()}>
+                        <div className="lbx-media">
+                            {previewJpgDataUri && !lightboxIsJpg ? (
+                                <CompareSplit png={lightbox.imageUrl} jpg={previewJpgDataUri} quality={lightboxQuality} />
+                            ) : (
+                                <img src={lightbox.imageUrl} alt="" />
+                            )}
+                            {previewing && (
+                                <div className="jpg-mark" style={{ top: 'auto', bottom: 8, right: 8, left: 'auto' }}>生成预览中...</div>
+                            )}
                         </div>
 
-                        {/* Details Area */}
-                        <div className="w-full md:w-[400px] bg-white dark:bg-gray-900 flex flex-col p-4 md:p-6 h-[55%] md:h-auto overflow-hidden">
-                            <div className="flex justify-between items-center mb-4 flex-shrink-0">
-                                <h2 className="text-xl font-bold text-gray-900 dark:text-white">图片详情</h2>
-                                <button onClick={() => setLightbox(null)} className="text-gray-500 hover:text-gray-900 dark:hover:text-white p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                                </button>
+                        <div className="lbx-side">
+                            <div className="pref-row" style={{ marginBottom: 12 }}>
+                                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, minWidth: 0, flex: 1 }}>图片详情</h2>
+                                <div className="pref-row" style={{ gap: 8, margin: 0 }}>
+                                    <Button variant="ghost" size="sm" onClick={() => setInfoOpen(true)}>
+                                        <IconInfo />
+                                        信息
+                                    </Button>
+                                    <IconButton label="关闭" onClick={() => setLightbox(null)}><IconClose /></IconButton>
+                                </div>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto space-y-6 pr-2 custom-scrollbar">
-                                <ParamsViewer
-                                    params={lightbox.params}
-                                    prompt={lightbox.prompt}
-                                    notify={notify}
-                                />
+                            <div className="page-scroll" style={{ flex: 1 }}>
+                                {lightboxIsJpg ? (
+                                    <div className="notice ok">
+                                        <div className="pref-row">
+                                            <span className="jpg-mark" style={{ position: 'static' }}>JPG</span>
+                                            <strong>此图已压缩</strong>
+                                        </div>
+                                        <p className="hint">下载后无法在外部工具中读取生成参数（应用内仍可在「信息」中查看 Prompt / Params）。</p>
+                                    </div>
+                                ) : (
+                                    <div className="slot-card surface">
+                                        <div className="pref-row">
+                                            <label>压缩为 JPG</label>
+                                            <span className="hint" style={{ fontFamily: 'var(--mono)' }}>{lightboxQuality.toFixed(2)}</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            className="range"
+                                            min="0.1"
+                                            max="1"
+                                            step="0.01"
+                                            value={lightboxQuality}
+                                            onChange={e => handleLightboxQualityChange(parseFloat(e.target.value))}
+                                        />
+                                        <Button block onClick={handleSingleCompact} disabled={singleCompacting}>
+                                            {singleCompacting ? '压缩中...' : '压缩此图'}
+                                        </Button>
+                                        <p className="hint">原 PNG 将被替换为 JPG；下载后无法在外部工具读取生成参数。</p>
+                                    </div>
+                                )}
+
+                                <div className="notice mist" style={{ marginTop: 12 }}>
+                                    <h4>发布到灵感图库</h4>
+                                    <div className="pref-row">
+                                        <Input
+                                            placeholder="为这张图取个标题..."
+                                            value={publishTitle}
+                                            onChange={e => setPublishTitle(e.target.value)}
+                                        />
+                                        <Button size="sm" onClick={handlePublish} disabled={isPublishing}>
+                                            {isPublishing ? '发布中' : '发布'}
+                                        </Button>
+                                    </div>
+                                </div>
                             </div>
 
-                            <div className="border-t border-gray-200 dark:border-gray-800 pt-4 mt-4 space-y-3 flex-shrink-0">
-                                {/* 导入到编辑器 */}
-                                <button
+                            <div className="create-form lbx-actions" style={{ marginTop: 12 }}>
+                                <Button
+                                    block
                                     onClick={() => {
-                                        // 将完整参数存入 sessionStorage
                                         const importData = {
                                             prompt: lightbox.prompt,
-                                            negativePrompt: '', // 历史记录中负面词已融合在 params 里
+                                            negativePrompt: '',
                                             params: lightbox.params,
                                         };
                                         sessionStorage.setItem(IMPORT_SESSION_KEY, JSON.stringify(importData));
@@ -503,133 +825,146 @@ export const GenHistory: React.FC<GenHistoryProps> = ({ currentUser, notify, onN
                                         notify('参数已准备就绪，正在跳转到编辑器...');
                                         onNavigateToPlayground?.();
                                     }}
-                                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-lg text-sm font-bold transition-all shadow-lg"
                                 >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                    </svg>
                                     导入到编辑器
-                                </button>
-
-                                <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
-                                    <label className="block text-xs font-bold text-indigo-600 dark:text-indigo-400 mb-2">发布到灵感图库</label>
-                                    <div className="flex gap-2">
-                                        <input
-                                            type="text"
-                                            placeholder="为这张图取个标题..."
-                                            className="flex-1 px-3 py-2 rounded border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-800 text-sm outline-none dark:text-white focus:border-indigo-500 transition-colors"
-                                            value={publishTitle}
-                                            onChange={e => setPublishTitle(e.target.value)}
-                                        />
-                                        <button
-                                            onClick={handlePublish}
-                                            disabled={isPublishing}
-                                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-sm font-bold whitespace-nowrap disabled:opacity-50 transition-colors shadow-sm"
-                                        >
-                                            {isPublishing ? '发布中' : '发布'}
-                                        </button>
-                                    </div>
-                                </div>
+                                </Button>
                                 <a
                                     href={lightbox.imageUrl}
-                                    download={getDownloadFilename()}
-                                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-gray-800 hover:bg-gray-700 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900 rounded-lg text-sm font-bold transition-colors shadow-lg"
+                                    download={getDownloadFilename(lightbox.imageUrl)}
+                                    className="btn btn-secondary btn-block"
                                 >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                                    下载原图
+                                    下载{lightboxIsJpg ? ' JPG' : '原图'}
                                 </a>
                             </div>
                         </div>
                     </div>
+                    <LightboxInfo open={infoOpen} onClose={() => setInfoOpen(false)}>
+                        <ParamsViewer
+                            params={lightbox.params}
+                            prompt={lightbox.prompt}
+                            notify={notify}
+                            expanded
+                        />
+                    </LightboxInfo>
                 </div>
+              </Portal>
             )}
 
 
-            {/* Clean Modal */}
-            {showCleanModal && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-sm w-full shadow-2xl">
-                        <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">⚠️ 确认清理</h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                            {cleanMode === 'days' 
-                                ? `将删除 ${cleanDays} 天前的 ${cleanPreviewCount} 张图片`
-                                : `当前共 ${totalCount} 张，将删除 ${cleanPreviewCount} 张，只保留最近 ${cleanCount} 张`
-                            }
-                        </p>
-                        <p className="text-xs text-red-500 mb-4">此操作无法恢复</p>
-                        
-                        <div className="mb-4">
-                            {cleanMode === 'days' ? (
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">天数</label>
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        value={cleanDays}
-                                        onChange={e => {
-                                            setCleanDays(Number(e.target.value));
-                                            localHistory.countOlderThan(Number(e.target.value)).then(setCleanPreviewCount);
-                                        }}
-                                        className="w-full px-3 py-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm outline-none dark:text-white"
-                                    />
-                                </div>
-                            ) : (
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">保留数量</label>
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        value={cleanCount}
-                                        onChange={e => {
-                                            setCleanCount(Number(e.target.value));
-                                            localHistory.getCount().then(count => {
-                                                setCleanPreviewCount(Math.max(0, count - Number(e.target.value)));
-                                            });
-                                        }}
-                                        className="w-full px-3 py-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm outline-none dark:text-white"
-                                    />
-                                </div>
-                            )}
+            <Sheet open={showCleanModal} onClose={() => setShowCleanModal(false)} title="确认清理">
+                <p className="hint">
+                    {cleanMode === 'days'
+                        ? `将删除 ${cleanDays} 天前的 ${cleanPreviewCount} 张图片`
+                        : `当前共 ${totalCount} 张，将删除 ${cleanPreviewCount} 张，只保留最近 ${cleanCount} 张`
+                    }
+                </p>
+                <p className="hint" style={{ color: 'var(--danger)' }}>此操作无法恢复</p>
+                {cleanMode === 'days' ? (
+                    <Field label="天数">
+                        <Input
+                            type="number"
+                            min="1"
+                            value={cleanDays}
+                            onChange={e => {
+                                setCleanDays(Number(e.target.value));
+                                localHistory.countOlderThan(Number(e.target.value)).then(setCleanPreviewCount);
+                            }}
+                        />
+                    </Field>
+                ) : (
+                    <Field label="保留数量">
+                        <Input
+                            type="number"
+                            min="1"
+                            value={cleanCount}
+                            onChange={e => {
+                                setCleanCount(Number(e.target.value));
+                                localHistory.getCount().then(count => {
+                                    setCleanPreviewCount(Math.max(0, count - Number(e.target.value)));
+                                });
+                            }}
+                        />
+                    </Field>
+                )}
+                <div className="sheet-foot">
+                    <Button variant="ghost" onClick={() => setShowCleanModal(false)}>取消</Button>
+                    <Button variant="danger" onClick={handleCleanConfirm}>确认删除</Button>
+                </div>
+            </Sheet>
+
+            <Sheet open={showSuccessModal} onClose={() => setShowSuccessModal(false)} title="发布成功">
+                <p className="hint">您的作品已添加到灵感图库，其他用户可以查看并引用您的 Prompt。</p>
+                <div className="sheet-foot">
+                    <Button onClick={() => setShowSuccessModal(false)}>确定</Button>
+                </div>
+            </Sheet>
+
+            <Sheet open={showOnboarding} onClose={() => dismissOnboarding(false)} title="体积太大？试试自动 JPG 保存">
+                <p className="hint">
+                    开启后，新生成的图片在保存到本地前会先转码为 JPG（默认质量 0.85），通常能节省 50%–80% 空间。
+                    应用内仍可查看完整的 Prompt 与生成参数。
+                </p>
+                <div className="notice warn">
+                    想先看效果？点开任意一张历史图的详情，拖动 <strong>JPG 质量</strong> 滑块就能并排预览压缩前后的真实差异。
+                </div>
+                <div className="sheet-foot">
+                    <Button variant="ghost" onClick={() => dismissOnboarding(false)}>暂不启用</Button>
+                    <Button onClick={() => dismissOnboarding(true)}>启用</Button>
+                </div>
+            </Sheet>
+
+            <Sheet open={showCompactConfirm} onClose={() => setShowCompactConfirm(false)} title="确认批量压缩">
+                <p className="hint">
+                    即将把 <strong>{pendingPngCount}</strong> 张未压缩的 PNG 重编码为 JPG，
+                    质量 <strong>{readQuality().toFixed(2)}</strong>。已是 JPG 的项会自动跳过。
+                </p>
+                <div className="notice warn">压缩后的图片在外部工具中无法读取生成参数（本应用内不受影响）。</div>
+                <div className="sheet-foot">
+                    <Button variant="ghost" onClick={() => setShowCompactConfirm(false)}>取消</Button>
+                    <Button onClick={handleConfirmBatchCompact}>开始压缩</Button>
+                </div>
+            </Sheet>
+
+            {compactProgress && (
+                <div className="lbx" style={{ zIndex: 110 }}>
+                    <div className="surface-strong" style={{ width: 'min(420px, 92vw)', padding: 20, borderRadius: 'var(--r-lg)' }}>
+                        <h3 style={{ margin: '0 0 12px', fontSize: 20 }}>正在压缩...</h3>
+                        <div className="usage-bar" style={{ height: 8, marginBottom: 12 }}>
+                            <i style={{ width: `${compactProgress.total === 0 ? 0 : (compactProgress.processed / compactProgress.total) * 100}%` }} />
                         </div>
-                        
-                        <div className="flex gap-2">
-                            <button
-                                onClick={() => setShowCleanModal(false)}
-                                className="flex-1 py-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg font-bold"
-                            >
-                                取消
-                            </button>
-                            <button
-                                onClick={handleCleanConfirm}
-                                className="flex-1 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold"
-                            >
-                                确认删除
-                            </button>
+                        <div className="create-form">
+                            <div className="pref-row"><span>已处理</span><strong>{compactProgress.processed} / {compactProgress.total}</strong></div>
+                            <div className="pref-row"><span>节省空间</span><RollingMB bytes={compactProgress.savedBytes} /></div>
+                            <div className="pref-row"><span>失败</span><strong>{compactProgress.failed} 张</strong></div>
+                            <div className="pref-row"><span>预计剩余</span><strong>{compactProgress.remainingSec}s</strong></div>
                         </div>
+                        <Button variant="ghost" block style={{ marginTop: 14 }} onClick={handleCancelBatchCompact} disabled={compactCancelRef.current}>
+                            {compactCancelRef.current ? '正在停止...' : '取消（当前张完成后停止）'}
+                        </Button>
                     </div>
                 </div>
             )}
 
-            {/* Success Modal */}
-            {showSuccessModal && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-sm w-full shadow-2xl flex flex-col items-center text-center animate-bounce-in">
-                        <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 text-green-500 rounded-full flex items-center justify-center text-3xl mb-4">
-                            ✨
+            <Sheet open={!!compactSummary} onClose={() => setCompactSummary(null)} title="压缩完成">
+                {compactSummary && (
+                    <div className="create-form">
+                        <div className="pref-row"><span>成功</span><strong>{compactSummary.success} 张</strong></div>
+                        <div className="pref-row"><span>失败</span><strong>{compactSummary.failed} 张</strong></div>
+                        <div className="pref-row"><span>节省总量</span><strong>~{formatMB(compactSummary.savedBytes)} MB</strong></div>
+                        <div className="pref-row">
+                            <span>压缩率</span>
+                            <strong>
+                                {compactSummary.originalTotal > 0
+                                    ? `${Math.round((compactSummary.savedBytes / compactSummary.originalTotal) * 100)}%`
+                                    : '—'}
+                            </strong>
                         </div>
-                        <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">发布成功！</h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                            您的作品已添加到灵感图库，其他用户可以查看并引用您的 Prompt。
-                        </p>
-                        <button
-                            onClick={() => setShowSuccessModal(false)}
-                            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold shadow-lg transition-all"
-                        >
-                            好哒喵~
-                        </button>
                     </div>
+                )}
+                <div className="sheet-foot">
+                    <Button onClick={() => setCompactSummary(null)}>确定</Button>
                 </div>
-            )}
+            </Sheet>
         </div>
     );
 };

@@ -14,62 +14,67 @@ export const NAI_UC_PRESETS = {
     3: 'nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, @_@, mismatched pupils, glowing eyes, bad anatomy, '
 };
 
+export type CompiledPromptSegments = {
+  base: string;
+  pre: string;
+  subject: string;
+  post: string;
+};
+
+const joinParts = (parts: Array<string | undefined | null>): string =>
+  parts
+    .map((part) => (part ?? '').trim())
+    .filter(Boolean)
+    .join(', ');
+
+const cleanupCommas = (prompt: string): string =>
+  prompt
+    .replace(/,\s*,/g, ',')
+    .replace(/^,\s*/, '')
+    .replace(/,\s*$/, '');
+
+/**
+ * Splits the compile pipeline into labeled segments.
+ * Order is Base → Pre-Modules → Subject → Post-Modules (missing position = post).
+ */
+export const compilePromptSegments = (
+  chain: Pick<PromptChain, 'basePrompt' | 'modules'>,
+  subjectPrompt: string = '',
+  activeModulesOnly: boolean = true
+): CompiledPromptSegments => {
+  const modules = chain.modules ?? [];
+  const keep = (active: boolean) => !activeModulesOnly || active;
+
+  return {
+    base: (chain.basePrompt ?? '').trim(),
+    pre: joinParts(
+      modules
+        .filter((m) => keep(m.isActive) && m.position === 'pre')
+        .map((m) => m.content)
+    ),
+    subject: (subjectPrompt ?? '').trim(),
+    post: joinParts(
+      modules
+        .filter((m) => keep(m.isActive) && (m.position === 'post' || !m.position))
+        .map((m) => m.content)
+    ),
+  };
+};
+
 /**
  * Compiles the final prompt string by combining parts in a fixed order:
  * 1. Base Prompt
  * 2. Pre-Modules (isActive & position='pre')
  * 3. Subject/Variable Prompt (User Input)
  * 4. Post-Modules (isActive & position='post' or undefined)
+ *
+ * Implemented as the join of compilePromptSegments so the two cannot drift.
  */
 export const compilePrompt = (
   chain: Pick<PromptChain, 'basePrompt' | 'modules'>,
   subjectPrompt: string = '',
   activeModulesOnly: boolean = true
 ): string => {
-  let promptParts: string[] = [];
-
-  // 1. Add Base Prompt
-  if (chain.basePrompt && chain.basePrompt.trim()) {
-      promptParts.push(chain.basePrompt.trim());
-  }
-
-  // 2. Add Pre-Modules
-  if (chain.modules) {
-      const preModules = chain.modules.filter(m => {
-          const isActive = !activeModulesOnly || m.isActive;
-          return isActive && m.position === 'pre';
-      });
-      preModules.forEach(m => {
-          if (m.content.trim()) promptParts.push(m.content.trim());
-      });
-  }
-
-  // 3. Add Subject/Variable Prompt
-  if (subjectPrompt && subjectPrompt.trim()) {
-      promptParts.push(subjectPrompt.trim());
-  }
-
-  // 4. Add Post-Modules (Default to post if position is missing)
-  if (chain.modules) {
-      const postModules = chain.modules.filter(m => {
-          const isActive = !activeModulesOnly || m.isActive;
-          return isActive && (m.position === 'post' || !m.position);
-      });
-      postModules.forEach(m => {
-          if (m.content.trim()) promptParts.push(m.content.trim());
-      });
-  }
-
-  // 5. Join with commas and clean up
-  // NAI generally prefers comma separation.
-  // We join with ", " then clean up potential double commas.
-  let fullPrompt = promptParts.join(', ');
-
-  // Cleanup: remove double commas, leading/trailing commas/spaces
-  fullPrompt = fullPrompt
-      .replace(/,\s*,/g, ',')
-      .replace(/^,\s*/, '')
-      .replace(/,\s*$/, '');
-
-  return fullPrompt;
+  const segs = compilePromptSegments(chain, subjectPrompt, activeModulesOnly);
+  return cleanupCommas(joinParts([segs.base, segs.pre, segs.subject, segs.post]));
 };

@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <style>
+    :root {
+      --logo-from: #0284c7;
+      --logo-mid: #4f46e5;
+      --logo-to: #db2777;
+      --logo-ring: rgba(79, 70, 229, 0.38);
+      --logo-ring-outer: rgba(79, 70, 229, 0.22);
+      --logo-tick: #4f46e5;
+      --logo-star-a: #db2777;
+      --logo-star-b: #0284c7;
+      --logo-sheen: rgba(255, 255, 255, 0.55);
+      --logo-core: #ffffff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --logo-from: #38bdf8;
+        --logo-mid: #818cf8;
+        --logo-to: #ec4899;
+        --logo-ring: rgba(129, 140, 248, 0.4);
+        --logo-ring-outer: rgba(129, 140, 248, 0.25);
+        --logo-tick: #818cf8;
+        --logo-star-a: #ec4899;
+        --logo-star-b: #38bdf8;
+        --logo-sheen: rgba(255, 255, 255, 0.4);
+        --logo-core: #ffffff;
+      }
+    }
+  </style>
+  <defs>
+    <linearGradient id="grimoire-grad" x1="20" y1="20" x2="80" y2="80" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="var(--logo-from)" />
+      <stop offset="50%" stop-color="var(--logo-mid)" />
+      <stop offset="100%" stop-color="var(--logo-to)" />
+    </linearGradient>
+  </defs>
+  <circle cx="50" cy="50" r="44" stroke="var(--logo-ring-outer)" stroke-width="1" stroke-dasharray="2 4" />
+  <circle cx="50" cy="50" r="38" stroke="var(--logo-ring)" stroke-width="1.5" />
+  <path d="M50 6v6M50 88v6M6 50h6M88 50h6" stroke="var(--logo-tick)" stroke-width="2" stroke-linecap="square" />
+  <circle cx="26" cy="26" r="1.5" fill="var(--logo-star-a)" />
+  <circle cx="74" cy="26" r="1.5" fill="var(--logo-star-b)" />
+  <circle cx="26" cy="74" r="1.5" fill="var(--logo-star-b)" />
+  <circle cx="74" cy="74" r="1.5" fill="var(--logo-star-a)" />
+  <path d="M30 68V32h10l20 30V32h10v36H60L40 38v30H30z" fill="url(#grimoire-grad)" stroke="var(--logo-sheen)" stroke-width="1" />
+  <circle cx="50" cy="50" r="2.5" fill="var(--logo-core)" />
+</svg>

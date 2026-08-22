@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "aegis.schema.v0",
+  "artifactKey": "production-build",
+  "type": "build",
+  "source": "npm run build",
+  "summary": "TypeScript、Vite 前端与 Cloudflare Worker 构建通过",
+  "verifier": "tsc、Vite 6.4.1、esbuild"
+}

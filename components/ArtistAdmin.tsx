@@ -3,6 +3,17 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../services/dbService';
 import { Artist, User, UsageStats, AccessLog, DailyStat } from '../types';
 import { ROLE_POLICY } from '../config/rolePolicy';
+import { isStaleZeroQuotaUser } from '../config/staleUsers';
+import { AboutPage } from './AboutPage';
+import { AppearanceSettings } from './AppearanceSettings';
+import { ApiKeyFields, Button, Empty, Field, IconButton, IconChart, IconCrown, IconDiscord, IconInbox, IconPackage, IconPalette, IconPencil, IconTrash, IconUser, Input, Panel, Seg, Select, Switch } from './ui';
+import { useFeedback } from './ui/Feedback';
+import { cx } from './ui/cx';
+
+type ArtistWeightSyntax = 'numeric' | 'bracket';
+
+const ARTIST_WEIGHT_SYNTAX_KEY = 'naipm.artistLibrary.weightSyntax';
+const ARTIST_WEIGHT_SYNTAX_CHANGE_EVENT = 'naipm-artist-weight-syntax-change';
 
 interface ExtendedArtistAdminProps {
     currentUser: User;
@@ -10,22 +21,17 @@ interface ExtendedArtistAdminProps {
     usersData: User[] | null;
     onRefreshArtists: () => Promise<void>;
     onRefreshUsers: () => Promise<void>;
-    isDark?: boolean;
-    toggleTheme?: () => void;
-    onLogout?: () => void;
 }
 
 export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
     currentUser, artistsData, usersData, onRefreshArtists, onRefreshUsers,
-    isDark, toggleTheme, onLogout
 }) => {
+  const { toast, confirm } = useFeedback();
   // 使用统一的角色策略
   const isAdmin = currentUser.role === 'admin';
   const isVip = currentUser.role === 'vip';
   const canManageArtists = ROLE_POLICY.canManageArtists(currentUser.role);
-  const [activeTab, setActiveTab] = useState<'artist' | 'users' | 'profile' | 'stats'>(
-    isAdmin ? 'artist' : (isVip ? 'artist' : 'profile')
-  );
+  const [activeTab, setActiveTab] = useState<'artist' | 'users' | 'profile' | 'stats' | 'about'>('profile');
   
   // Artist State (Managed via props now, filtered here if needed)
   const artists = artistsData || [];
@@ -45,10 +51,7 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
   const [editingQuotaUserId, setEditingQuotaUserId] = useState<string | null>(null);
   const [newQuotaMB, setNewQuotaMB] = useState<string>('');
 
-  // Guest Code State
-  const [guestCode, setGuestCode] = useState('');
-  const [isUpdatingGuest, setIsUpdatingGuest] = useState(false);
-  const [showGuestCode, setShowGuestCode] = useState(false); // Visibility toggle
+
 
   // Import State
   const [isImporting, setIsImporting] = useState(false);
@@ -58,23 +61,46 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
   // Profile State
   const [myNewPassword, setMyNewPassword] = useState('');
 
+  // 图片压缩偏好（与"历史压缩 / 自动 JPG 保存"共享）
+  // 存储：LocalStorage `naipm.compaction.*` 命名空间
+  const [jpgQuality, setJpgQuality] = useState<number>(() => {
+      const raw = localStorage.getItem('naipm.compaction.quality');
+      const v = raw ? parseFloat(raw) : 0.85;
+      return isNaN(v) ? 0.85 : v;
+  });
+  const [autoJpg, setAutoJpg] = useState<boolean>(
+      () => localStorage.getItem('naipm.compaction.autoJpg') === 'true'
+  );
+  const handleQualityChange = (v: number) => {
+      const clamped = Math.min(1, Math.max(0.01, v));
+      setJpgQuality(clamped);
+      localStorage.setItem('naipm.compaction.quality', clamped.toFixed(2));
+  };
+  const handleAutoJpgChange = (v: boolean) => {
+      setAutoJpg(v);
+      localStorage.setItem('naipm.compaction.autoJpg', v ? 'true' : 'false');
+  };
+
+  // 军火库偏好：控制复制画师 tag 时使用数字权重或括号权重
+  const [artistWeightSyntax, setArtistWeightSyntax] = useState<ArtistWeightSyntax>(() => {
+      const raw = localStorage.getItem(ARTIST_WEIGHT_SYNTAX_KEY);
+      return raw === 'bracket' ? 'bracket' : 'numeric';
+  });
+  const handleArtistWeightSyntaxChange = (syntax: ArtistWeightSyntax) => {
+      setArtistWeightSyntax(syntax);
+      localStorage.setItem(ARTIST_WEIGHT_SYNTAX_KEY, syntax);
+      window.dispatchEvent(new Event(ARTIST_WEIGHT_SYNTAX_CHANGE_EVENT));
+  };
+
   // Usage Stats State
   const [usageStats, setUsageStats] = useState<UsageStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [clearingLogs, setClearingLogs] = useState(false);
 
   // Storage calculation helpers - 使用统一的角色策略
-  const getMaxStorage = () => {
-    if (ROLE_POLICY.isUnlimitedStorage(currentUser.role)) return Infinity;
-    return currentUser?.maxStorage || ROLE_POLICY.getDefaultQuota(currentUser.role) || 300 * 1024 * 1024;
-  };
   const formatBytes = (bytes?: number) => {
       if (!bytes) return '0 MB';
       return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  };
-  const getUsagePercentage = () => {
-      if (!currentUser || !currentUser.storageUsage) return 0;
-      return Math.min(100, (currentUser.storageUsage / getMaxStorage()) * 100);
   };
 
   const handleRefresh = async () => {
@@ -121,12 +147,12 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
   };
 
   const handleArtistDelete = async (id: string) => {
-      if(confirm('确定删除该画师吗？')) {
-          setIsLoading(true);
-          await db.deleteArtist(id);
-          await onRefreshArtists();
-          setIsLoading(false);
-      }
+      const ok = await confirm({ title: '确定删除该画师吗？', confirmLabel: '删除', tone: 'danger' });
+      if (!ok) return;
+      setIsLoading(true);
+      await db.deleteArtist(id);
+      await onRefreshArtists();
+      setIsLoading(false);
   };
 
   const handleCreateUser = async () => {
@@ -136,31 +162,31 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
         await db.createUser(newUsername, newPassword);
         setNewUsername(''); setNewPassword('');
         await onRefreshUsers();
-        alert('用户创建成功');
-      } catch(e) { alert('创建失败：用户名可能已存在'); }
+        toast('用户创建成功', 'success');
+      } catch(e) { toast('创建失败：用户名可能已存在', 'error'); }
       setIsLoading(false);
   };
 
   const handleDeleteUser = async (id: string) => {
-      if(confirm('删除用户？')) {
-          setIsLoading(true);
-          await db.deleteUser(id);
-          await onRefreshUsers();
-          setIsLoading(false);
-      }
+      const ok = await confirm({ title: '删除这个用户？', description: '此操作无法撤销。', confirmLabel: '删除', tone: 'danger' });
+      if (!ok) return;
+      setIsLoading(true);
+      await db.deleteUser(id);
+      await onRefreshUsers();
+      setIsLoading(false);
   };
 
   const handleUpdateQuota = async (userId: string) => {
       const mb = parseFloat(newQuotaMB);
       if (isNaN(mb) || mb < 0) {
-          alert('请输入有效的配额数值（非负数）');
+          toast('请输入有效的配额数值（非负数）', 'warning');
           return;
       }
       
       // 验证配额上限（100GB）
       const MAX_QUOTA_MB = 100 * 1024; // 100GB in MB
       if (mb > MAX_QUOTA_MB) {
-          alert(`配额值超出上限，最大允许 ${MAX_QUOTA_MB} MB (100GB)`);
+          toast(`配额值超出上限，最大允许 ${MAX_QUOTA_MB} MB (100GB)`, 'warning');
           return;
       }
       
@@ -171,7 +197,7 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
           await onRefreshUsers();
           setEditingQuotaUserId(null);
           setNewQuotaMB('');
-          alert('配额更新成功');
+          toast('配额更新成功', 'success');
       } catch(e: any) {
           // 提供更具体的错误信息
           let errorMessage = '更新失败';
@@ -188,18 +214,11 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                   errorMessage = `更新失败: ${e.message}`;
               }
           }
-          alert(errorMessage);
+          toast(errorMessage, 'error');
           console.error('配额更新失败:', e);
       }
       setIsLoading(false);
   };
-
-  // Fetch Guest Code when Users Tab is active
-  useEffect(() => {
-      if (isAdmin && activeTab === 'users') {
-          db.getGuestCode().then(setGuestCode).catch(console.error);
-      }
-  }, [activeTab, isAdmin]);
 
   // Fetch Usage Stats when Stats Tab is active
   useEffect(() => {
@@ -214,16 +233,16 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
 
   // 清理旧日志
   const handleClearLogs = async () => {
-      if (!confirm('确定要清理 30 天前的登录日志吗？')) return;
+      const ok = await confirm({ title: '清理 30 天前的登录日志？', confirmLabel: '清理', tone: 'danger' });
+      if (!ok) return;
       setClearingLogs(true);
       try {
           await db.clearOldLogs();
-          // 刷新统计数据
           const newStats = await db.getUsageStats();
           setUsageStats(newStats);
-          alert('旧日志已清理');
+          toast('旧日志已清理', 'success');
       } catch (e) {
-          alert('清理失败');
+          toast('清理失败', 'error');
       }
       setClearingLogs(false);
   };
@@ -244,21 +263,11 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
       return new Date(Number(timestamp)).toLocaleDateString('zh-CN');
   };
 
-  const handleUpdateGuestCode = async () => {
-      if (!guestCode) return;
-      setIsUpdatingGuest(true);
-      try {
-          await db.updateGuestCode(guestCode);
-          alert('游客口令已更新');
-      } catch(e) { alert('更新失败'); }
-      setIsUpdatingGuest(false);
-  };
-
   const handleChangePassword = async () => {
       if(!myNewPassword) return;
       await db.updatePassword(myNewPassword);
       setMyNewPassword('');
-      alert('密码修改成功');
+      toast('密码修改成功', 'success');
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -271,8 +280,32 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
   };
 
   // --- GitHub Import Logic ---
+  const handleBatchDemote = async () => {
+      const ok = await confirm({
+          title: '批量改回游客？',
+          description: '将普通用户中 15 天未登录、且配额使用为 0 的账号改回游客权限组，并套用游客默认配额。当前登录账号不会被改动。',
+          confirmLabel: '改回游客',
+          tone: 'danger',
+      });
+      if (!ok) return;
+      setIsLoading(true);
+      try {
+          const { count } = await db.demoteStaleUsers();
+          await onRefreshUsers();
+          toast(count ? `已将 ${count} 名用户改回游客` : '没有符合条件的用户', count ? 'success' : 'info');
+      } catch (e) {
+          toast('批量更新失败', 'error');
+      }
+      setIsLoading(false);
+  };
+
   const handleGithubImport = async () => {
-      if (!confirm('这将从 twoearcat/nai-artists 仓库抓取所有图片并导入数据库。\n过程可能较慢，请勿关闭页面。')) return;
+      const ok = await confirm({
+          title: '从 GitHub 导入画师？',
+          description: '将从 twoearcat/nai-artists 仓库抓取所有图片并导入数据库。过程可能较慢，请勿关闭页面。',
+          confirmLabel: '开始导入',
+      });
+      if (!ok) return;
       
       setIsImporting(true);
       setImportProgress(0);
@@ -326,234 +359,212 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
       }
   };
 
+  const staleUserCount = users.filter((u) => isStaleZeroQuotaUser(u, Date.now(), currentUser.id)).length;
+
+  const tabOptions = [
+      { value: 'profile' as const, label: '偏好设置' },
+      ...((isAdmin || isVip) ? [{ value: 'artist' as const, label: '画师管理' }] : []),
+      ...(isAdmin ? [
+          { value: 'users' as const, label: '用户管理' },
+          { value: 'stats' as const, label: '使用统计' },
+      ] : []),
+      { value: 'about' as const, label: '关于' },
+  ];
+
   return (
-    <div className="flex-1 bg-gray-50 dark:bg-gray-900 p-8 overflow-y-auto relative">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">系统管理</h1>
-            {canManageArtists && activeTab !== 'profile' && (
-                <button
-                    onClick={handleRefresh}
-                    className={`p-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors`}
-                    title="刷新列表"
-                >
-                    <svg className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                </button>
-            )}
-        </div>
+    <div className="page-scroll settings-scroll">
+      <div className="settings-page">
+        <header className="board-head settings-head">
+            <div className="board-head-top">
+                <div>
+                    <h1>设置</h1>
+                </div>
+                {canManageArtists && (activeTab === 'artist' || activeTab === 'users') && (
+                    <IconButton label="刷新列表" onClick={handleRefresh}>
+                        <span className={isLoading ? 'is-spin' : undefined}>
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                        </span>
+                    </IconButton>
+                )}
+            </div>
+            <Seg<'profile' | 'about' | 'artist' | 'users' | 'stats'>
+                className="settings-tabs"
+                aria-label="设置分区"
+                value={activeTab}
+                onChange={setActiveTab}
+                options={tabOptions}
+            />
+        </header>
 
-        <div className="flex space-x-4 mb-8 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
-            {/* 画师管理：admin和vip可见 */}
-            {(isAdmin || isVip) && (
-                <button onClick={() => setActiveTab('artist')} className={`pb-3 px-2 border-b-2 whitespace-nowrap ${activeTab === 'artist' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500'}`}>画师管理</button>
-            )}
-            {/* 用户管理、使用统计：仅admin可见 */}
-            {isAdmin && (
-                <>
-                    <button onClick={() => setActiveTab('users')} className={`pb-3 px-2 border-b-2 whitespace-nowrap ${activeTab === 'users' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500'}`}>用户管理</button>
-                    <button onClick={() => setActiveTab('stats')} className={`pb-3 px-2 border-b-2 whitespace-nowrap ${activeTab === 'stats' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500'}`}>使用统计</button>
-                </>
-            )}
-            <button onClick={() => setActiveTab('profile')} className={`pb-3 px-2 border-b-2 whitespace-nowrap ${activeTab === 'profile' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500'}`}>个人设置</button>
-        </div>
-
-        {/* --- ARTIST TAB --- */}
         {activeTab === 'artist' && canManageArtists && (
-            <>
-                {/* Import Block */}
-                <div className="mb-6 bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800">
-                    <div className="flex justify-between items-center mb-2">
-                        <h3 className="font-bold text-indigo-800 dark:text-indigo-300 text-sm">快速导入</h3>
-                    </div>
+            <div className="settings-stack wide">
+                <Panel title="快速导入">
                     {isImporting ? (
-                        <div className="space-y-2">
-                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4 overflow-hidden">
-                                <div className="bg-green-500 h-full transition-all duration-300" style={{ width: `${importProgress}%` }}></div>
+                        <>
+                            <div className="usage-bar" style={{ height: 8, marginBottom: 8 }}>
+                                <i style={{ width: `${importProgress}%` }} />
                             </div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400 font-mono h-20 overflow-y-auto bg-white dark:bg-black/20 p-2 rounded">
+                            <div className="import-log">
                                 {importLog.map((l, i) => <div key={i}>{l}</div>)}
                             </div>
-                        </div>
+                        </>
                     ) : (
-                        <button 
-                            onClick={handleGithubImport}
-                            className="bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-4 py-2 rounded text-sm font-medium hover:opacity-90 flex items-center gap-2"
-                        >
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                        <Button variant="secondary" onClick={handleGithubImport}>
                             一键从 GitHub 导入 (twoearcat/nai-artists)
-                        </button>
+                        </Button>
                     )}
-                </div>
+                </Panel>
 
-                {/* Sticky Header Container */}
-                <div className="sticky top-0 z-20 bg-gray-50 dark:bg-gray-900 pb-4 pt-2 -mt-2">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                        <h2 className="font-bold dark:text-white mb-4">{editingId ? '编辑画师' : '添加画师'}</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                            <input type="text" value={artistName} onChange={e => setArtistName(e.target.value)} className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="画师名称" />
-                            <div className="flex gap-2">
+                <Panel title={editingId ? '编辑画师' : '添加画师'}>
+                    <div className="create-form">
+                        <Field label="画师名称">
+                            <Input value={artistName} onChange={e => setArtistName(e.target.value)} placeholder="画师名称" />
+                        </Field>
+                        <Field label="图片">
+                            <div className="pref-row">
                                 <input type="file" onChange={handleFileUpload} className="hidden" id="art-up" />
-                                <label htmlFor="art-up" className="px-3 py-2 bg-gray-200 rounded cursor-pointer text-sm flex items-center hover:bg-gray-300 transition-colors whitespace-nowrap">上传</label>
-                                <input type="text" value={artistImg} onChange={e => setArtistImg(e.target.value)} className="flex-1 min-w-0 p-2 border rounded dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="图片 URL/Base64" />
+                                <label htmlFor="art-up" className="btn btn-secondary btn-sm">上传</label>
+                                <Input value={artistImg} onChange={e => setArtistImg(e.target.value)} placeholder="图片 URL/Base64" />
                             </div>
-                        </div>
-                        <div className="flex gap-2">
-                            <button onClick={handleArtistSave} className="bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-500 transition-colors shadow-lg shadow-indigo-500/30">{editingId ? '保存修改' : '添加'}</button>
-                            {editingId && <button onClick={handleCancelEdit} className="bg-gray-400 text-white px-6 py-2 rounded hover:bg-gray-300 transition-colors">取消</button>}
+                        </Field>
+                        <div className="sheet-foot">
+                            {editingId && <Button variant="ghost" onClick={handleCancelEdit}>取消</Button>}
+                            <Button onClick={handleArtistSave}>{editingId ? '保存修改' : '添加'}</Button>
                         </div>
                     </div>
-                </div>
+                </Panel>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-20">
+                <div className="artist-admin-grid">
                     {artists.map(a => (
-                        <div key={a.id} className="bg-white dark:bg-gray-800 p-4 rounded shadow flex items-center justify-between group hover:shadow-md transition-shadow">
-                            <div className="flex items-center gap-2 overflow-hidden">
-                                <img src={a.imageUrl} className="w-8 h-8 rounded object-cover flex-shrink-0" loading="lazy" />
-                                <span className="dark:text-white font-bold text-sm truncate">{a.name}</span>
+                        <div key={a.id} className="artist-admin-item surface">
+                            <div className="card-extra artist-admin-name">
+                                <img src={a.imageUrl} alt="" loading="lazy" />
+                                <strong title={a.name}>{a.name}</strong>
                             </div>
-                            <div className="flex gap-2 text-xs flex-shrink-0 ml-2">
-                                <button onClick={() => handleEditArtist(a)} className="text-indigo-500 hover:text-indigo-700 font-medium">编辑</button>
-                                <button onClick={() => handleArtistDelete(a.id)} className="text-red-500 hover:text-red-700">删除</button>
+                            <div className="card-extra artist-admin-actions">
+                                <IconButton size="sm" label="编辑" onClick={() => handleEditArtist(a)}>
+                                    <IconPencil />
+                                </IconButton>
+                                <IconButton size="sm" danger label="删除" onClick={() => handleArtistDelete(a.id)}>
+                                    <IconTrash />
+                                </IconButton>
                             </div>
                         </div>
                     ))}
                 </div>
-            </>
+            </div>
         )}
 
-        {/* --- USER TAB --- */}
         {activeTab === 'users' && isAdmin && (
-            <div className="space-y-6">
-                {/* Create User Block */}
-                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow">
-                    <h2 className="font-bold dark:text-white mb-4">创建用户</h2>
-                    <div className="flex flex-col md:flex-row gap-4 mb-4">
-                        <input type="text" value={newUsername} onChange={e => setNewUsername(e.target.value)} className="flex-1 p-2 border rounded dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="用户名" />
-                        <input type="text" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="flex-1 p-2 border rounded dark:bg-gray-900 dark:border-gray-600 dark:text-white" placeholder="密码" />
-                        <button onClick={handleCreateUser} className="bg-indigo-600 text-white px-4 py-2 rounded">创建</button>
+            <div className="settings-stack wide">
+                 <Panel title="创建用户">
+                    <div className="pref-row">
+                        <Input value={newUsername} onChange={e => setNewUsername(e.target.value)} placeholder="用户名" />
+                        <Input value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="密码" />
+                        <Button className="pref-action" onClick={handleCreateUser}>创建</Button>
                     </div>
-                </div>
+                </Panel>
 
-                {/* Guest Settings Block */}
-                <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6 rounded-xl shadow">
-                    <h2 className="font-bold text-gray-800 dark:text-gray-200 mb-2">游客访问设置</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">设置游客登录时使用的全局口令。下方显示的是当前生效的口令。</p>
-                    <div className="flex flex-col md:flex-row gap-4">
-                        <div className="relative flex-1">
-                            <input 
-                                type={showGuestCode ? "text" : "password"}
-                                value={guestCode} 
-                                onChange={e => setGuestCode(e.target.value)} 
-                                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 dark:text-white font-mono pr-10" 
-                                placeholder="游客口令" 
-                            />
-                            <button 
-                                onClick={() => setShowGuestCode(!showGuestCode)}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 p-1"
-                                title={showGuestCode ? "隐藏口令" : "显示口令"}
-                            >
-                                {showGuestCode ? (
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
-                                ) : (
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                                )}
-                            </button>
-                        </div>
-                        <button 
-                            onClick={handleUpdateGuestCode} 
-                            disabled={isUpdatingGuest}
-                            className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded transition-colors disabled:opacity-50 flex-shrink-0"
-                        >
-                            {isUpdatingGuest ? '更新中...' : '更新口令'}
-                        </button>
+                <Panel title="批量改回游客">
+                    <p className="hint">
+                        普通用户、15 天内未登录、且配额使用为 0 的账号。
+                        {staleUserCount > 0 ? ` 当前列表中有 ${staleUserCount} 人符合。` : ' 当前列表中没有符合的账号。'}
+                    </p>
+                    <div className="sheet-foot">
+                        <Button onClick={handleBatchDemote} disabled={isLoading}>批量改回游客</Button>
                     </div>
-                </div>
+                </Panel>
 
-                <div className="overflow-x-auto">
-                    <table className="w-full bg-white dark:bg-gray-800 rounded shadow">
-                        <thead><tr className="text-left border-b dark:border-gray-700 text-gray-500 p-2">
-                            <th className="p-4">用户名</th>
-                            <th className="p-4">角色</th>
-                            <th className="p-4">注册时间</th>
-                            <th className="p-4">最后登录</th>
-                            <th className="p-4">存储配额</th>
-                            <th className="p-4">操作</th>
-                        </tr></thead>
+                <div className="page-scroll" style={{ overflowX: 'auto' }}>
+                    <table className="data-table">
+                        <thead>
+                            <tr>
+                                <th>用户名</th>
+                                <th>角色</th>
+                                <th>注册时间</th>
+                                <th>最后登录</th>
+                                <th>存储配额</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
                         <tbody>
                             {users.map(u => {
                                 const usagePercent = u.maxStorage ? Math.min(100, ((u.storageUsage || 0) / u.maxStorage) * 100) : 0;
-                                const isAdminUser = u.role === 'admin';
                                 return (
-                                <tr key={u.id} className={`border-b dark:border-gray-700 last:border-0 dark:text-white ${u.role === 'vip' ? 'bg-yellow-50/30 dark:bg-yellow-900/10' : ''}`}>
-                                    <td className="p-4">
-                                        <span className={u.role === 'vip' ? 'vip-username font-medium' : ''}>{u.username}</span>
-                                        {u.role === 'vip' && <span className="vip-crown ml-1" title="VIP">👑</span>}
+                                <tr key={u.id} className={u.role === 'vip' ? 'vip-row' : undefined}>
+                                    <td>
+                                        <span className={u.role === 'vip' ? 'vip-username' : undefined}>{u.username}</span>
+                                        {u.role === 'vip' && <span className="vip-crown" title="VIP"><IconCrown /></span>}
                                     </td>
-                                    <td className="p-4">
-                                        <select
+                                    <td>
+                                        <Select
+                                            aria-label={`${u.username} 的角色`}
                                             value={u.role}
                                             onChange={async (e) => {
                                                 const newRole = e.target.value;
                                                 try {
-                                                    // 角色变更时不自动重置配额，保留用户现有配额
-                                                    await db.updateUserRole(u.id, newRole, false);
+                                                    await db.updateUserRole(u.id, newRole, newRole === 'guest');
                                                     await onRefreshUsers();
+                                                    toast(`已将 ${u.username} 设为${ROLE_POLICY.getRoleDisplayName(newRole as User['role'])}`, 'success');
                                                 } catch (err) {
-                                                    alert('角色更新失败');
+                                                    toast('角色更新失败', 'error');
                                                 }
                                             }}
-                                            className={`px-2 py-1 rounded text-xs border-0 cursor-pointer ${ROLE_POLICY.getRoleBadgeClass(u.role as any)}`}
+                                            className="role-select"
                                             disabled={u.id === currentUser.id}
                                         >
+                                            <option value="guest">{ROLE_POLICY.getRoleDisplayName('guest')}</option>
                                             <option value="user">{ROLE_POLICY.getRoleDisplayName('user')}</option>
                                             <option value="vip">{ROLE_POLICY.getRoleDisplayName('vip')}</option>
                                             <option value="admin">{ROLE_POLICY.getRoleDisplayName('admin')}</option>
-                                        </select>
+                                        </Select>
                                     </td>
-                                    <td className="p-4 text-sm text-gray-500">{formatDate(u.createdAt)}</td>
-                                    <td className="p-4 text-sm text-gray-500">{formatDateTime(u.lastLogin)}</td>
-                                    <td className="p-4">
-                                        {ROLE_POLICY.isUnlimitedStorage(u.role) ? (
-                                            <div className="text-xs text-gray-500">
-                                                <span className="text-green-600 dark:text-green-400 font-medium">无限制</span>
-                                                <div className="text-gray-400 mt-1">管理员不受存储配额限制</div>
+                                    <td className="hint">{formatDate(u.createdAt)}</td>
+                                    <td className="hint">{formatDateTime(u.lastLogin)}</td>
+                                    <td>
+                                        {u.role === 'guest' ? (
+                                            <div className="hint">无配额</div>
+                                        ) : ROLE_POLICY.isUnlimitedStorage(u.role) ? (
+                                            <div className="hint">
+                                                <strong>无限制</strong>
+                                                <div>管理员不受存储配额限制</div>
                                             </div>
                                         ) : (
                                             <>
-                                                <div className="text-xs text-gray-500 mb-1">
+                                                <div className="hint">
                                                     {formatBytes(u.storageUsage)} / {formatBytes(u.maxStorage || ROLE_POLICY.getDefaultQuota(u.role) || 0)}
                                                 </div>
-                                                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
-                                                    <div
-                                                        className={`h-full rounded-full transition-all ${usagePercent > 90 ? 'bg-red-500' : usagePercent > 70 ? 'bg-yellow-500' : 'bg-green-500'}`}
-                                                        style={{ width: `${usagePercent}%` }}
-                                                    ></div>
+                                                <div className={cx('quota-bar', usagePercent > 90 ? 'hot' : usagePercent > 70 ? 'warn' : 'ok')}>
+                                                    <i style={{ width: `${usagePercent}%` }} />
                                                 </div>
                                                 {editingQuotaUserId === u.id ? (
-                                                    <div className="flex gap-1 mt-2">
-                                                        <input
+                                                    <div className="pref-row" style={{ marginTop: 6 }}>
+                                                        <Input
                                                             type="number"
                                                             value={newQuotaMB}
                                                             onChange={e => setNewQuotaMB(e.target.value)}
-                                                            className="w-20 p-1 text-xs border rounded dark:bg-gray-900 dark:border-gray-600 dark:text-white"
                                                             placeholder="MB"
+                                                            style={{ width: 88 }}
                                                         />
-                                                        <button onClick={() => handleUpdateQuota(u.id)} className="text-xs text-green-600 hover:text-green-700">保存</button>
-                                                        <button onClick={() => { setEditingQuotaUserId(null); setNewQuotaMB(''); }} className="text-xs text-gray-500 hover:text-gray-700">取消</button>
+                                                        <Button size="sm" onClick={() => handleUpdateQuota(u.id)}>保存</Button>
+                                                        <Button size="sm" variant="ghost" onClick={() => { setEditingQuotaUserId(null); setNewQuotaMB(''); }}>取消</Button>
                                                     </div>
                                                 ) : (
-                                                    <button
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
                                                         onClick={() => { setEditingQuotaUserId(u.id); setNewQuotaMB(String(Math.round((u.maxStorage || 0) / (1024 * 1024)))); }}
-                                                        className="text-xs text-indigo-500 hover:text-indigo-700 mt-1"
                                                     >
                                                         修改配额
-                                                    </button>
+                                                    </Button>
                                                 )}
                                             </>
                                         )}
                                     </td>
-                                    <td className="p-4">
-                                        {u.id !== currentUser.id && u.role !== 'guest' && <button onClick={() => handleDeleteUser(u.id)} className="text-red-500">删除</button>}
+                                    <td>
+                                        {u.id !== currentUser.id && u.role !== 'guest' && (
+                                            <Button size="sm" variant="danger" onClick={() => handleDeleteUser(u.id)}>删除</Button>
+                                        )}
                                     </td>
                                 </tr>
                                 );
@@ -564,128 +575,119 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
             </div>
         )}
 
-        {/* --- STATS TAB --- */}
         {activeTab === 'stats' && isAdmin && (
-            <div className="space-y-6">
+            <div className="settings-stack wide">
                 {statsLoading ? (
-                    <div className="text-center py-12 text-gray-500">加载中...</div>
+                    <Empty title="加载中..." />
                 ) : usageStats ? (
                     <>
-                        {/* 存储概览卡片 */}
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow">
-                                <div className="text-2xl font-bold text-indigo-600">{usageStats.storage.userCount}</div>
-                                <div className="text-sm text-gray-500 dark:text-gray-400">注册用户</div>
-                            </div>
-                            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow">
-                                <div className="text-2xl font-bold text-green-600">{usageStats.storage.chainsCount}</div>
-                                <div className="text-sm text-gray-500 dark:text-gray-400">画师串/角色串</div>
-                            </div>
-                            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow">
-                                <div className="text-2xl font-bold text-purple-600">{usageStats.storage.inspirationsCount}</div>
-                                <div className="text-sm text-gray-500 dark:text-gray-400">灵感图</div>
-                            </div>
-                            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow">
-                                <div className="text-2xl font-bold text-orange-600">{usageStats.storage.artistsCount}</div>
-                                <div className="text-sm text-gray-500 dark:text-gray-400">画师库</div>
-                            </div>
-                            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow">
-                                <div className="text-2xl font-bold text-blue-600">{formatBytes(usageStats.storage.totalUserStorage)}</div>
-                                <div className="text-sm text-gray-500 dark:text-gray-400">R2 存储</div>
-                            </div>
+                        <div className="stat-grid">
+                            {(() => {
+                                const latest = usageStats.dailyStats[0];
+                                const prev = usageStats.dailyStats[1];
+                                const todayLogins = latest ? latest.userLogins + latest.guestLogins : null;
+                                const prevLogins = prev ? prev.userLogins + prev.guestLogins : null;
+                                const delta = todayLogins != null && prevLogins != null ? todayLogins - prevLogins : null;
+                                const deltaLabel = delta == null ? null : `${delta > 0 ? '+' : ''}${delta} 较昨日`;
+                                return (
+                                    <>
+                                        <div className="stat-card surface">
+                                            <div className="stat-card-ico"><IconUser /></div>
+                                            <strong>{usageStats.storage.userCount}</strong>
+                                            <span>注册用户</span>
+                                            {deltaLabel ? <i className={cx('stat-delta', delta! > 0 && 'up', delta! < 0 && 'down')}>{deltaLabel}</i> : todayLogins != null ? <i className="stat-delta">今日登录 {todayLogins}</i> : null}
+                                        </div>
+                                        <div className="stat-card surface">
+                                            <div className="stat-card-ico"><IconInbox /></div>
+                                            <strong>{usageStats.storage.chainsCount}</strong>
+                                            <span>画师串/角色串</span>
+                                        </div>
+                                        <div className="stat-card surface">
+                                            <div className="stat-card-ico"><IconPalette /></div>
+                                            <strong>{usageStats.storage.inspirationsCount}</strong>
+                                            <span>灵感图</span>
+                                        </div>
+                                        <div className="stat-card surface">
+                                            <div className="stat-card-ico"><IconChart /></div>
+                                            <strong>{usageStats.storage.artistsCount}</strong>
+                                            <span>画师库</span>
+                                        </div>
+                                        <div className="stat-card surface">
+                                            <div className="stat-card-ico"><IconPackage /></div>
+                                            <strong>{formatBytes(usageStats.storage.totalUserStorage)}</strong>
+                                            <span>R2 存储</span>
+                                        </div>
+                                    </>
+                                );
+                            })()}
                         </div>
 
-                        {/* 每日统计 */}
-                        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow">
-                            <h3 className="font-bold dark:text-white mb-4">近期登录统计</h3>
+                        <Panel title="近期登录统计">
                             {usageStats.dailyStats.length > 0 ? (
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm">
-                                        <thead>
-                                            <tr className="text-left border-b dark:border-gray-700 text-gray-500">
-                                                <th className="pb-2">日期</th>
-                                                <th className="pb-2">游客登录</th>
-                                                <th className="pb-2">用户登录</th>
+                                <table className="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>日期</th>
+                                            <th>游客登录</th>
+                                            <th>用户登录</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {usageStats.dailyStats.slice(0, 7).map((stat) => (
+                                            <tr key={stat.date}>
+                                                <td>{stat.date}</td>
+                                                <td><span className="role-pill role-guest">{stat.guestLogins}</span></td>
+                                                <td><span className="role-pill role-user">{stat.userLogins}</span></td>
                                             </tr>
-                                        </thead>
-                                        <tbody>
-                                            {usageStats.dailyStats.slice(0, 7).map((stat) => (
-                                                <tr key={stat.date} className="border-b dark:border-gray-700 last:border-0">
-                                                    <td className="py-2 dark:text-gray-200">{stat.date}</td>
-                                                    <td className="py-2">
-                                                        <span className="px-2 py-1 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 rounded text-xs font-medium">
-                                                            {stat.guestLogins}
-                                                        </span>
-                                                    </td>
-                                                    <td className="py-2">
-                                                        <span className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded text-xs font-medium">
-                                                            {stat.userLogins}
-                                                        </span>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                        ))}
+                                    </tbody>
+                                </table>
                             ) : (
-                                <div className="text-gray-500 text-center py-4">暂无统计数据</div>
+                                <Empty title="暂无统计数据" />
                             )}
-                        </div>
+                        </Panel>
 
-                        {/* 登录日志 */}
-                        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow">
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="font-bold dark:text-white">登录日志（最近 50 条）</h3>
-                                <button 
-                                    onClick={handleClearLogs}
-                                    disabled={clearingLogs}
-                                    className="text-sm px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded hover:bg-red-200 dark:hover:bg-red-900/50 disabled:opacity-50"
-                                >
+                        <Panel
+                            title="登录日志（最近 50 条）"
+                            meta={(
+                                <Button size="sm" variant="danger" onClick={handleClearLogs} disabled={clearingLogs}>
                                     {clearingLogs ? '清理中...' : '清理 30 天前日志'}
-                                </button>
-                            </div>
+                                </Button>
+                            )}
+                        >
                             {usageStats.recentLogs.length > 0 ? (
-                                <div className="overflow-x-auto max-h-96 overflow-y-auto">
-                                    <table className="w-full text-sm">
-                                        <thead className="sticky top-0 bg-white dark:bg-gray-800">
-                                            <tr className="text-left border-b dark:border-gray-700 text-gray-500">
-                                                <th className="pb-2 pr-4">时间</th>
-                                                <th className="pb-2 pr-4">用户</th>
-                                                <th className="pb-2 pr-4">角色</th>
-                                                <th className="pb-2 pr-4">IP</th>
-                                                <th className="pb-2">操作</th>
+                                <div className="page-scroll" style={{ maxHeight: 360 }}>
+                                    <table className="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>时间</th>
+                                                <th>用户</th>
+                                                <th>角色</th>
+                                                <th>IP</th>
+                                                <th>操作</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {usageStats.recentLogs.map((log) => (
-                                                <tr key={log.id} className={`border-b dark:border-gray-700 last:border-0 ${log.role === 'guest' ? 'bg-yellow-50 dark:bg-yellow-900/10' : ''}`}>
-                                                    <td className="py-2 pr-4 dark:text-gray-300 whitespace-nowrap">{formatDateTime(log.createdAt)}</td>
-                                                    <td className="py-2 pr-4 dark:text-gray-200 font-medium">{log.username}</td>
-                                                    <td className="py-2 pr-4">
-                                                        <span className={`px-2 py-0.5 rounded text-xs ${
-                                                            log.role === 'admin' ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' :
-                                                            log.role === 'guest' ? 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                                                            'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
-                                                        }`}>
-                                                            {log.role}
-                                                        </span>
-                                                    </td>
-                                                    <td className="py-2 pr-4 dark:text-gray-400 font-mono text-xs">{log.ip}</td>
-                                                    <td className="py-2 dark:text-gray-400">{log.action}</td>
+                                                <tr key={log.id} className={log.role === 'guest' ? 'guest-row' : undefined}>
+                                                    <td>{formatDateTime(log.createdAt)}</td>
+                                                    <td>{log.username}</td>
+                                                    <td><span className={ROLE_POLICY.getRoleBadgeClass(log.role as any)}>{log.role}</span></td>
+                                                    <td className="hint" style={{ fontFamily: 'var(--mono)' }}>{log.ip}</td>
+                                                    <td className="hint">{log.action}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
                                     </table>
                                 </div>
                             ) : (
-                                <div className="text-gray-500 text-center py-4">暂无登录日志</div>
+                                <Empty title="暂无登录日志" />
                             )}
-                        </div>
+                        </Panel>
 
-                        {/* Cloudflare 免费额度提示 */}
-                        <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800">
-                            <h4 className="font-bold text-blue-800 dark:text-blue-300 text-sm mb-2">📊 Cloudflare 免费额度参考</h4>
-                            <div className="text-xs text-blue-700 dark:text-blue-400 space-y-1">
+                        <div className="notice mist">
+                            <h4>Cloudflare 免费额度参考</h4>
+                            <div className="hint">
                                 <div>• Workers: 每日 10 万次请求</div>
                                 <div>• D1 数据库: 每日 500 万行读取 / 10 万行写入</div>
                                 <div>• R2 存储: 10GB 存储 + 每月 1000 万次操作</div>
@@ -693,54 +695,101 @@ export const ArtistAdmin: React.FC<ExtendedArtistAdminProps> = ({
                         </div>
                     </>
                 ) : (
-                    <div className="text-center py-12 text-gray-500">无法加载统计数据</div>
+                    <Empty title="无法加载统计数据" />
                 )}
             </div>
         )}
 
-        {/* --- PROFILE TAB --- */}
-        {activeTab === 'profile' && (
-            <div className="space-y-6">
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow max-w-md">
-                    <h2 className="font-bold dark:text-white mb-4">修改密码</h2>
-                    <input type="password" value={myNewPassword} onChange={e => setMyNewPassword(e.target.value)} className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-600 dark:text-white mb-4" placeholder="新密码" />
-                    <button onClick={handleChangePassword} className="bg-indigo-600 text-white px-6 py-2 rounded">更新密码</button>
-                </div>
-                
-                {/* Mobile / Convenient Settings */}
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow max-w-md">
-                     <h2 className="font-bold dark:text-white mb-4">应用设置</h2>
-                     <div className="space-y-4">
-                        {/* Storage Usage Display (Added for Mobile) */}
-                        {currentUser.role !== 'admin' && (
-                            <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-100 dark:border-gray-700">
-                                <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-                                    <span>云端存储空间</span>
-                                    <span>{formatBytes(currentUser.storageUsage)} / 300MB</span>
-                                </div>
-                                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
-                                    <div 
-                                        className={`h-full rounded-full transition-all duration-500 ${getUsagePercentage() > 90 ? 'bg-red-500' : 'bg-indigo-500'}`} 
-                                        style={{ width: `${getUsagePercentage()}%` }}
-                                    ></div>
-                                </div>
-                            </div>
-                        )}
+        {activeTab === 'about' && (
+            <div className="settings-stack wide">
+                <AboutPage />
+            </div>
+        )}
 
-                        {toggleTheme && (
-                            <button onClick={toggleTheme} className="w-full flex items-center justify-between p-3 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
-                                <span>{isDark ? '🌙 深色模式' : '☀️ 亮色模式'}</span>
-                                <span className="text-xs text-gray-500">点击切换</span>
-                            </button>
+        {activeTab === 'profile' && (
+            <div className="settings-stack wide">
+                <section className="settings-block">
+                    <div className="settings-block-head">
+                        <h3>账号</h3>
+                    </div>
+                    <div className="settings-pair account-pair">
+                        <Panel title="Discord">
+                            {currentUser.discordId ? (
+                                <p className="hint">已关联：{currentUser.discordUsername || currentUser.discordId}</p>
+                            ) : (
+                                <>
+                                    <p className="hint">关联后可用 Discord 登录此账号。</p>
+                                    <Button onClick={() => { window.location.href = '/api/auth/discord?link=1'; }}>
+                                        <IconDiscord />
+                                        关联 Discord
+                                    </Button>
+                                </>
+                            )}
+                        </Panel>
+                        {currentUser.role !== 'guest' && (
+                            <Panel title="修改密码">
+                                <div className="pref-row">
+                                    <Input
+                                        type="password"
+                                        value={myNewPassword}
+                                        onChange={e => setMyNewPassword(e.target.value)}
+                                        placeholder="新密码"
+                                        aria-label="新密码"
+                                    />
+                                    <Button className="pref-action" onClick={handleChangePassword}>更新密码</Button>
+                                </div>
+                            </Panel>
                         )}
-                        {onLogout && (
-                            <button onClick={onLogout} className="w-full flex items-center justify-between p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400">
-                                <span>退出登录</span>
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-                            </button>
-                        )}
-                     </div>
-                </div>
+                        <Panel title="API Key" className="account-api-key">
+                            <ApiKeyFields />
+                        </Panel>
+                    </div>
+                </section>
+                <section className="settings-block">
+                    <div className="settings-block-head">
+                        <h3>偏好</h3>
+                    </div>
+                    <div className="settings-pair">
+                        <Panel title="本地图片压缩">
+                            <div className="pref-row">
+                                <div>自动 JPG 保存</div>
+                                <Switch
+                                    checked={autoJpg}
+                                    onCheckedChange={handleAutoJpgChange}
+                                    aria-label="自动 JPG 保存"
+                                />
+                            </div>
+                            <Field label={`JPG 质量 ${jpgQuality.toFixed(2)}`}>
+                                <input
+                                    type="range"
+                                    className="range"
+                                    min="0.1"
+                                    max="1"
+                                    step="0.01"
+                                    value={jpgQuality}
+                                    onChange={e => handleQualityChange(parseFloat(e.target.value))}
+                                />
+                            </Field>
+                            <div className="pref-row hint">
+                                <span>更小（0.10）</span>
+                                <span>更清晰（1.00）</span>
+                            </div>
+                        </Panel>
+                        <Panel title="军火库">
+                            <Seg
+                                fill
+                                aria-label="权重语法"
+                                value={artistWeightSyntax}
+                                onChange={handleArtistWeightSyntaxChange}
+                                options={[
+                                    { value: 'numeric', label: '数字权重' },
+                                    { value: 'bracket', label: '括号权重' },
+                                ]}
+                            />
+                        </Panel>
+                    </div>
+                </section>
+                <AppearanceSettings />
             </div>
         )}
       </div>
