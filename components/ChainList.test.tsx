@@ -122,6 +122,53 @@ describe('ChainList', () => {
     expect(charCard).not.toHaveAttribute('role', 'button');
   });
 
+  it('卡片右上角标明 V4.5 或 V5，并通过类名区分颜色', () => {
+    const { container, rerender, onTypeChange, onCreate, onSelect, onDelete, onRefresh, notify } = renderList({
+      chains: [
+        makeChain({
+          id: 's1',
+          name: '默认V45串',
+          type: 'style',
+          params: { width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral' },
+        }),
+      ],
+    });
+
+    const badgeV45 = container.querySelector('.board-model-badge');
+    expect(badgeV45).toBeTruthy();
+    expect(badgeV45).toHaveTextContent('V4.5');
+    expect(badgeV45).toHaveClass('is-v45');
+    expect(badgeV45).toHaveAttribute('aria-label', '模型版本：V4.5');
+    expect(badgeV45?.closest('.board-cover-box')).toBeTruthy();
+
+    rerender(
+      <ChainList
+        chains={[
+          makeChain({
+            id: 's2',
+            name: '全新V5串',
+            type: 'style',
+            params: { width: 832, height: 1216, steps: 28, scale: 5, sampler: 'k_euler_ancestral', model: 'nai-diffusion-5-full' },
+          }),
+        ]}
+        type="style"
+        onTypeChange={onTypeChange}
+        onCreate={onCreate}
+        onSelect={onSelect}
+        onDelete={onDelete}
+        onRefresh={onRefresh}
+        isLoading={false}
+        notify={notify}
+      />,
+    );
+
+    const badgeV5 = container.querySelector('.board-model-badge');
+    expect(badgeV5).toBeTruthy();
+    expect(badgeV5).toHaveTextContent('V5');
+    expect(badgeV5).toHaveClass('is-v5');
+    expect(badgeV5).toHaveAttribute('aria-label', '模型版本：V5');
+  });
+
   it('更多按钮打开复制/删除，不进入编辑', async () => {
     const user = userEvent.setup();
     const { onSelect, onDelete } = renderList();
