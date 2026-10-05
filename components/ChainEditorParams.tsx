@@ -15,11 +15,39 @@ interface ChainEditorParamsProps {
     onCompositionOpenChange?: (open: boolean) => void;
 }
 
-const RESOLUTIONS = {
-    Portrait: { width: 832, height: 1216, label: '832×1216' },
-    Landscape: { width: 1216, height: 832, label: '1216×832' },
+// 生图尺寸档位：宽高必须为 64 的倍数（NAI 硬性要求），范围按组收口：
+// 方图 512~1024 / 竖图 640×960~832×1216 / 横图 960×640~1216×832。
+const RESOLUTIONS: Record<string, { width: number; height: number; label: string }> = {
+    // —— 方图 ——
+    'Square-512': { width: 512, height: 512, label: '512×512' },
+    'Square-640': { width: 640, height: 640, label: '640×640' },
+    'Square-768': { width: 768, height: 768, label: '768×768' },
+    'Square-896': { width: 896, height: 896, label: '896×896' },
     Square: { width: 1024, height: 1024, label: '1024×1024' },
+    // —— 竖图 ——
+    'Portrait-640x960': { width: 640, height: 960, label: '640×960' },
+    'Portrait-640x1152': { width: 640, height: 1152, label: '640×1152' },
+    'Portrait-640x1216': { width: 640, height: 1216, label: '640×1216' },
+    'Portrait-768x1024': { width: 768, height: 1024, label: '768×1024' },
+    'Portrait-768x1152': { width: 768, height: 1152, label: '768×1152' },
+    'Portrait-832x960': { width: 832, height: 960, label: '832×960' },
+    Portrait: { width: 832, height: 1216, label: '832×1216' },
+    // —— 横图 ——
+    'Landscape-960x640': { width: 960, height: 640, label: '960×640' },
+    'Landscape-960x832': { width: 960, height: 832, label: '960×832' },
+    'Landscape-1024x768': { width: 1024, height: 768, label: '1024×768' },
+    'Landscape-1152x640': { width: 1152, height: 640, label: '1152×640' },
+    'Landscape-1152x768': { width: 1152, height: 768, label: '1152×768' },
+    'Landscape-1216x640': { width: 1216, height: 640, label: '1216×640' },
+    Landscape: { width: 1216, height: 832, label: '1216×832' },
 };
+
+/** 构图分组展示顺序（key = 组前缀本身或 "前缀-…"）。 */
+const RESOLUTION_GROUPS = [
+    { label: '方图', prefix: 'Square' },
+    { label: '竖图', prefix: 'Portrait' },
+    { label: '横图', prefix: 'Landscape' },
+] as const;
 
 export const ChainEditorParams: React.FC<ChainEditorParamsProps> = ({
     params,
@@ -44,10 +72,8 @@ export const ChainEditorParams: React.FC<ChainEditorParamsProps> = ({
     const getCurrentResolutionMode = () => {
         const w = params.width;
         const h = params.height;
-        if (w === 832 && h === 1216) return 'Portrait';
-        if (w === 1216 && h === 832) return 'Landscape';
-        if (w === 1024 && h === 1024) return 'Square';
-        return 'Custom';
+        const hit = Object.entries(RESOLUTIONS).find(([, res]) => res.width === w && res.height === h);
+        return hit ? hit[0] : 'Custom';
     };
 
     const mode = getCurrentResolutionMode();
@@ -143,13 +169,21 @@ export const ChainEditorParams: React.FC<ChainEditorParamsProps> = ({
                     </div>
                     <div className="param-group">
                         <p className="param-group-label">构图</p>
-                        <div className="chips">
-                            {Object.entries(RESOLUTIONS).map(([key, val]) => (
-                                <Chip key={key} active={mode === key || (mode === 'Custom' && key === 'Portrait')} disabled={!canEdit} onClick={() => handleResolutionChange(key)}>
-                                    {val.label}
-                                </Chip>
-                            ))}
-                        </div>
+                        {RESOLUTION_GROUPS.map((group) => {
+                            const keys = Object.keys(RESOLUTIONS).filter((key) => key === group.prefix || key.startsWith(`${group.prefix}-`));
+                            return (
+                                <div key={group.label} className="chip-subgroup">
+                                    <p className="chip-subgroup-label">{group.label}</p>
+                                    <div className="chips">
+                                        {keys.map((key) => (
+                                            <Chip key={key} active={mode === key || (mode === 'Custom' && key === 'Portrait')} disabled={!canEdit} onClick={() => handleResolutionChange(key)}>
+                                                {RESOLUTIONS[key].label}
+                                            </Chip>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                     <div className="param-group">
                         <div className="param-grid">

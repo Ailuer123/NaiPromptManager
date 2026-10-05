@@ -60,6 +60,42 @@ describe('ChainEditorParams', () => {
     expect(screen.queryByRole('button', { name: '流式预览' })).toBeNull();
   });
 
+  it('尺寸档位分三组（方图/竖图/横图），新档位可点击切换到对应宽高', async () => {
+    const user = userEvent.setup();
+    const setParams = vi.fn();
+    render(
+      <ChainEditorParams
+        params={params}
+        setParams={setParams}
+        canEdit
+        markChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('方图')).toBeInTheDocument();
+    expect(screen.getByText('竖图')).toBeInTheDocument();
+    expect(screen.getByText('横图')).toBeInTheDocument();
+
+    // 很窄很长的竖图
+    await user.click(screen.getByRole('button', { name: '640×1216' }));
+    expect(setParams).toHaveBeenCalledWith(expect.objectContaining({ width: 640, height: 1216 }));
+
+    // 接近方图的"胖"竖图
+    await user.click(screen.getByRole('button', { name: '832×960' }));
+    expect(setParams).toHaveBeenCalledWith(expect.objectContaining({ width: 832, height: 960 }));
+
+    // 更小的方图
+    await user.click(screen.getByRole('button', { name: '512×512' }));
+    expect(setParams).toHaveBeenCalledWith(expect.objectContaining({ width: 512, height: 512 }));
+
+    // 很宽很扁的横图
+    await user.click(screen.getByRole('button', { name: '1216×640' }));
+    expect(setParams).toHaveBeenCalledWith(expect.objectContaining({ width: 1216, height: 640 }));
+
+    // 原有标准档位仍可用
+    expect(screen.getByRole('button', { name: '832×1216' })).toBeInTheDocument();
+  });
+
   it('点击透明模式问号显示说明', async () => {
     const user = userEvent.setup();
     render(

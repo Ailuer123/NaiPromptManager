@@ -1515,6 +1515,20 @@ html[data-theme-mode="dark"] .role-select {
   gap: 6px;
 }
 
+.chip-subgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chip-subgroup-label {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.04em;
+  color: var(--mute);
+}
+
 .help-tip {
   position: relative;
   display: inline-flex;
