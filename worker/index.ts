@@ -3,6 +3,12 @@ import bcrypt from 'bcryptjs';
 import { APP_REPO_URL, APP_VERSION } from '../app/version';
 import { STALE_GUEST_IDLE_MS } from '../config/staleUsers';
 import {
+  buildUserListWhere,
+  parseUserListQuery,
+  userListOffset,
+  userListTotalPages,
+} from '../config/userListQuery';
+import {
   discordAuthorizeUrl,
   exchangeDiscordCode,
   fetchDiscordIdentity,
@@ -11,6 +17,7 @@ import {
   verifyDiscordGuildMembership,
   type DiscordEnv,
 } from './discordOAuth';
+import { resolveNaiEndpoint } from './naiEndpoint';
 
 // Add missing D1 type definitions locally
 interface D1Result<T = unknown> {
@@ -92,7 +99,7 @@ const ROLE_POLICY = {
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Cookie, Server-Timing',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Cookie, Server-Timing, x-custom-endpoint',
   'Access-Control-Allow-Credentials': 'true',
 };
 
@@ -790,7 +797,8 @@ export default {
         const body = await request.json();
         const clientAuth = request.headers.get('Authorization'); 
         if (!clientAuth) return error('Missing API Key', 401);
-        const naiRes = await fetch("https://image.novelai.net/ai/generate-image", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": clientAuth }, body: JSON.stringify(body) });
+        const targetUrl = resolveNaiEndpoint(request, '/ai/generate-image');
+        const naiRes = await fetch(targetUrl, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": clientAuth }, body: JSON.stringify(body) });
         if (!naiRes.ok) return error(await naiRes.text(), naiRes.status);
         const blob = await naiRes.blob();
         return new Response(blob, { headers: { ...corsHeaders, 'Content-Type': 'application/zip' } });
@@ -800,7 +808,8 @@ export default {
         const body = await request.json();
         const clientAuth = request.headers.get('Authorization');
         if (!clientAuth) return error('Missing API Key', 401);
-        const naiRes = await fetch("https://image.novelai.net/ai/generate-image-stream", {
+        const targetUrl = resolveNaiEndpoint(request, '/ai/generate-image-stream');
+        const naiRes = await fetch(targetUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": clientAuth, "Accept": "text/event-stream" },
           body: JSON.stringify(body),
@@ -814,7 +823,8 @@ export default {
       if (path === '/api/nai/subscription' && method === 'GET') {
         const clientAuth = request.headers.get('Authorization');
         if (!clientAuth) return error('Missing API Key', 401);
-        const naiRes = await fetch("https://image.novelai.net/user/subscription", {
+        const targetUrl = resolveNaiEndpoint(request, '/user/subscription');
+        const naiRes = await fetch(targetUrl, {
           headers: { "Authorization": clientAuth, "Accept": "application/json" },
         });
         if (!naiRes.ok) return error(await naiRes.text(), naiRes.status);
@@ -875,21 +885,24 @@ export default {
       }
       if (path === '/api/users' && method === 'GET') {
           if (currentUser.role !== 'admin') return error('Forbidden', 403);
-          
-          // 支持分页参数
-          const page = parseInt(url.searchParams.get('page') || '0');
-          const pageSize = Math.min(parseInt(url.searchParams.get('pageSize') || '50'), 100); // 最大100条
-          const offset = page * pageSize;
-          
-          // 获取总数
-          const countResult = await db.prepare('SELECT COUNT(*) as total FROM users').first<{total: number}>();
+
+          const query = parseUserListQuery({
+              page: url.searchParams.get('page'),
+              pageSize: url.searchParams.get('pageSize'),
+              q: url.searchParams.get('q'),
+              role: url.searchParams.get('role'),
+          });
+          const where = buildUserListWhere(query);
+          const countStmt = db.prepare(`SELECT COUNT(*) as total FROM users ${where.sql}`);
+          const countResult = where.binds.length
+              ? await countStmt.bind(...where.binds).first<{total: number}>()
+              : await countStmt.first<{total: number}>();
           const total = countResult?.total || 0;
-          
-          // 分页查询
-          const res = await db.prepare('SELECT id, username, role, created_at, last_login, storage_usage, max_storage, discord_id, discord_username FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?')
-            .bind(pageSize, offset).all();
-          
-          // 将数据库字段名（下划线）映射为前端字段名（驼峰）
+          const offset = userListOffset(query);
+          const listSql = `SELECT id, username, role, created_at, last_login, storage_usage, max_storage, discord_id, discord_username FROM users ${where.sql} ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+          const listStmt = db.prepare(listSql);
+          const res = await listStmt.bind(...where.binds, query.pageSize, offset).all();
+
           return json({
               data: res.results.map((u: any) => ({
                   id: u.id,
@@ -903,10 +916,10 @@ export default {
                   discordUsername: u.discord_username || null,
               })),
               pagination: {
-                  page,
-                  pageSize,
+                  page: query.page,
+                  pageSize: query.pageSize,
                   total,
-                  totalPages: Math.ceil(total / pageSize)
+                  totalPages: userListTotalPages(total, query.pageSize),
               }
           });
       }
